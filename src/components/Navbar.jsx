@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { ADD_TO_DISCORD_URL } from '../constants';
 
 const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
@@ -65,7 +66,7 @@ const Navbar = () => {
           Dashboard
         </Link>
         <a
-          href="https://discord.com/oauth2/authorize"
+          href={ADD_TO_DISCORD_URL}
           className="btn-primary"
           style={{ textDecoration: 'none', padding: '8px 16px', fontSize: '13px' }}
         >

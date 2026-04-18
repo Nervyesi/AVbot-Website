@@ -198,6 +198,43 @@ const EngageMockup = () => (
   </Embed>
 );
 
+const ProtectionMockup = () => (
+  <>
+    {/* Phishing link auto-delete */}
+    <Embed
+      title="⚠️ Phishing Link Deleted"
+      color="#da3744"
+      fields={[
+        { name: 'User',    value: '@suspicious.user' },
+        { name: 'Domain',  value: 'free-nft-claim.xyz' },
+        { name: 'Channel', value: '#general' },
+        { name: 'Action',  value: 'Message deleted' },
+      ]}
+      footer="AVbot Protection • Phishing Detection"
+    >
+      A known phishing domain was detected and the message was automatically removed.
+      The user has been warned via DM.
+    </Embed>
+
+    {/* Spam mute (second log entry) */}
+    <div style={{ marginTop: '12px' }}>
+      <Embed
+        title="🚫 Spam Detected — User Muted"
+        color="#FF6600"
+        fields={[
+          { name: 'User',    value: '@spammer_01' },
+          { name: 'Trigger', value: '7 messages in 10s' },
+          { name: 'Channel', value: '#trading' },
+          { name: 'Action',  value: 'Muted role applied' },
+        ]}
+        footer="AVbot Protection • Spam Detection"
+      >
+        Spam threshold exceeded. The Muted role has been applied automatically.
+      </Embed>
+    </div>
+  </>
+);
+
 const SectionRolesMockup = () => (
   <Embed
     title="🏠 Server Sections"
@@ -224,6 +261,7 @@ const MOCKUPS = {
   raidSystem:      <RaidMockup />,
   engageForEngage: <EngageMockup />,
   sectionRoles:    <SectionRolesMockup />,
+  protection:      <ProtectionMockup />,
 };
 
 // ── Discord window shell ──────────────────────────────────────────────────

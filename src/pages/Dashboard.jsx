@@ -245,44 +245,94 @@ const ModuleStatus = ({ name, icon, status }) => (
   </div>
 );
 
+// ── Reusable sub-section header ───────────────────────────────────────────
+
+const GroupHeader = ({ icon, title }) => (
+  <div style={{
+    display: 'flex', alignItems: 'center', gap: '8px',
+    fontSize: '12px', fontWeight: 700, color: C.gold,
+    textTransform: 'uppercase', letterSpacing: '0.1em',
+    marginBottom: '12px', marginTop: '4px',
+  }}>
+    <span>{icon}</span>{title}
+  </div>
+);
+
+// ── Sparkline-style bar (purely decorative, shows relative magnitude) ─────
+
+const MiniBar = ({ value, max, color = C.gold }) => (
+  <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px', marginTop: '6px' }}>
+    <div style={{ width: `${Math.min(100, (value / max) * 100)}%`, height: '100%', background: color, borderRadius: '2px', transition: 'width 0.6s ease' }} />
+  </div>
+);
+
 const Overview = () => (
   <div>
     <PageHeader icon="📊" title="Overview" desc="Last 7 days · AmeretaVerse" />
 
+    {/* ── Server Analytics ── */}
+    <GroupHeader icon="🏛️" title="Server Analytics" />
     <div style={{
-      display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))',
-      gap: '14px', marginBottom: '24px',
+      display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))',
+      gap: '12px', marginBottom: '28px',
     }}>
-      <StatCard label="Total Members" value="1,247" icon="👥" change="+83" />
-      <StatCard label="Verified Members" value="1,104" icon="✅" change="+71" />
-      <StatCard label="Active Raids" value="2" icon="⚔️" change="+1" />
-      <StatCard label="Points Distributed" value="48,320" icon="⭐" change="+9,640" />
-      <StatCard label="Creator Applications" value="12" icon="📋" change="+4" />
-      <StatCard label="Flagged Users" value="8" icon="🚩" change="-3" changeType="down" />
+      <StatCard label="Total Members"   value="1,247" icon="👥" change="+83" />
+      <StatCard label="Verified"         value="1,104" icon="✅" change="+71" />
+      <StatCard label="Daily Messages"   value="3,840" icon="💬" change="+420" />
+      <StatCard label="Weekly Messages"  value="24,310" icon="📊" change="+3,200" />
+      <StatCard label="Monthly Messages" value="98,720" icon="📈" change="+11,450" />
+      <StatCard label="Voice Activity"   value="182h"  icon="🎙️" change="+24h" />
     </div>
 
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '20px' }}>
-      {/* Recent Activity */}
+    {/* ── Protection Stats ── */}
+    <GroupHeader icon="🛡️" title="Protection Stats" />
+    <div style={{
+      display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))',
+      gap: '12px', marginBottom: '28px',
+    }}>
+      <StatCard label="Messages Deleted"  value="214"  icon="🗑️" change="+28" />
+      <StatCard label="Users Flagged"     value="31"   icon="🚩" change="-4" changeType="down" />
+      <StatCard label="Raids Blocked"     value="2"    icon="🔒" change="0" />
+      <StatCard label="Spam Mutes"        value="19"   icon="🔇" change="+3" />
+      <StatCard label="Phishing Deleted"  value="47"   icon="⚠️" change="+9" />
+      <StatCard label="Banned Words Hit"  value="88"   icon="🚫" change="+12" />
+    </div>
+
+    {/* ── Engagement Stats ── */}
+    <GroupHeader icon="⚡" title="Engagement Stats" />
+    <div style={{
+      display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))',
+      gap: '12px', marginBottom: '28px',
+    }}>
+      <StatCard label="Active Raids"      value="2"     icon="⚔️" change="+1" />
+      <StatCard label="Points Distributed" value="48,320" icon="⭐" change="+9,640" />
+      <StatCard label="Creator Apps"       value="12"    icon="📋" change="+4" />
+      <StatCard label="E4E Engagements"    value="1,840" icon="🔄" change="+340" />
+      <StatCard label="Top Earner Pts"     value="4,820" icon="🏆" change="+480" />
+    </div>
+
+    {/* ── Bottom row: activity + module status ── */}
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '20px' }}>
       <Card>
-        <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '16px' }}>
-          Recent Activity
-        </div>
+        <GroupHeader icon="🕐" title="Recent Activity" />
         {[
-          { icon: '⚔️', text: 'Raid on @AmeretaProject launched by Admin', time: '4m ago',  color: C.gold },
-          { icon: '✅', text: '9 new members verified via captcha',          time: '11m ago', color: '#3ba55c' },
-          { icon: '📋', text: 'Creator application #0062 approved',          time: '38m ago', color: '#5865F2' },
-          { icon: '🔄', text: 'E4E pool refreshed — 28 new tweets added',   time: '1h ago',  color: C.gold },
-          { icon: '⭐', text: 'Top raider @Nervyesi earned 480 points',      time: '2h ago',  color: C.gold },
-          { icon: '🚩', text: 'User @spambot123 auto-flagged',               time: '5h ago',  color: '#ed4245' },
+          { icon: '⚠️', text: 'Phishing link deleted from #general',          time: '2m ago',  color: '#ed4245' },
+          { icon: '⚔️', text: 'Raid on @AmeretaProject launched by Admin',    time: '8m ago',  color: C.gold },
+          { icon: '🚫', text: 'Spam mute applied to @spammer_x',              time: '14m ago', color: '#FF6600' },
+          { icon: '✅', text: '9 new members verified via captcha',            time: '22m ago', color: '#3ba55c' },
+          { icon: '📋', text: 'Creator application #0062 approved',           time: '41m ago', color: '#5865F2' },
+          { icon: '🔄', text: 'E4E pool refreshed — 28 new tweets added',     time: '1h ago',  color: C.gold },
+          { icon: '⭐', text: 'Top raider @Nervyesi earned 480 points',        time: '2h ago',  color: C.gold },
+          { icon: '🔒', text: 'Anti-raid lockdown triggered and lifted',       time: '4h ago',  color: '#ed4245' },
         ].map((a, i, arr) => (
           <div key={i} style={{
-            display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0',
+            display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 0',
             borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
           }}>
             <div style={{
-              width: '32px', height: '32px', borderRadius: '8px', flexShrink: 0,
-              background: `${a.color}20`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px',
+              width: '30px', height: '30px', borderRadius: '8px', flexShrink: 0,
+              background: `${a.color}18`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px',
             }}>{a.icon}</div>
             <div style={{ flex: 1, fontSize: '13px', color: 'rgba(255,255,255,0.75)' }}>{a.text}</div>
             <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.28)', flexShrink: 0 }}>{a.time}</div>
@@ -290,24 +340,22 @@ const Overview = () => (
         ))}
       </Card>
 
-      {/* Module status */}
       <Card>
-        <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
-          Module Status
-        </div>
+        <GroupHeader icon="⚙️" title="Module Status" />
         <ModuleStatus name="Verification"    icon="🔐" status="Active" />
         <ModuleStatus name="Role Selection"  icon="🎭" status="Active" />
         <ModuleStatus name="Creator Ticket"  icon="📋" status="Active" />
         <ModuleStatus name="Raid System"     icon="⚔️" status="Active" />
         <ModuleStatus name="Engage Pool"     icon="🔄" status="Active" />
         <ModuleStatus name="Section Roles"   icon="🏠" status="Active" />
+        <ModuleStatus name="Protection"      icon="🛡️" status="Active" />
 
         <a
           href="https://discord.gg/zueuN7xmWx"
           target="_blank" rel="noreferrer"
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-            marginTop: '18px', padding: '10px', borderRadius: '8px',
+            marginTop: '16px', padding: '10px', borderRadius: '8px',
             background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.25)',
             color: '#7289da', textDecoration: 'none', fontSize: '13px', fontWeight: 600,
             transition: 'background 0.2s',
@@ -848,6 +896,132 @@ const ServerSelector = ({ server, onSelect }) => {
   );
 };
 
+// ── Protection Settings ───────────────────────────────────────────────────
+
+const ProtectionSettings = () => {
+  const [v, setV] = useState({
+    linkDetection:      true,
+    linkWhitelist:      'twitter.com, x.com, discord.gg, youtube.com',
+    spamDetection:      true,
+    spamThreshold:      '5',
+    spamWindow:         '10',
+    suspiciousUsers:    true,
+    suspiciousAction:   'flag',
+    suspiciousAge:      '7',
+    phishingDetection:  true,
+    antiRaid:           true,
+    antiRaidThreshold:  '10',
+    antiRaidWindow:     '60',
+    bannedWords:        false,
+    bannedWordsList:    '',
+    logChannel:         'mod-log',
+    muteRole:           'Muted',
+  });
+  const set = k => val => setV(p => ({ ...p, [k]: val }));
+  const [saved, save] = useSave();
+
+  return (
+    <div>
+      <PageHeader icon="🛡️" title="Auto-Moderation" badge="MODULE"
+        desc="Automated protection: link filtering, spam control, phishing detection, anti-raid, and more." />
+
+      {/* ── Link Detection ── */}
+      <SettingsCard title="Link Detection">
+        <Toggle value={v.linkDetection} onChange={set('linkDetection')}
+          label="Enable Link Detection"
+          desc="Auto-delete messages containing URLs not on the whitelist." />
+        <div style={{ marginTop: '14px' }}>
+          <Field label="Allowed Domains" hint="comma-separated whitelist">
+            <Input value={v.linkWhitelist} onChange={set('linkWhitelist')}
+              placeholder="twitter.com, x.com, discord.gg" />
+          </Field>
+        </div>
+      </SettingsCard>
+
+      {/* ── Phishing Detection ── */}
+      <SettingsCard title="Phishing Detection">
+        <Toggle value={v.phishingDetection} onChange={set('phishingDetection')}
+          label="Enable Phishing Detection"
+          desc="Block and delete messages containing known phishing domains. Users receive a DM warning." />
+      </SettingsCard>
+
+      {/* ── Spam Detection ── */}
+      <SettingsCard title="Spam Detection">
+        <Toggle value={v.spamDetection} onChange={set('spamDetection')}
+          label="Enable Spam Detection"
+          desc="Automatically mute users who send too many messages in a short window." />
+        <FieldRow style={{ marginTop: '14px' }}>
+          <Field label="Message Threshold" hint="per window">
+            <Input type="number" value={v.spamThreshold} onChange={set('spamThreshold')} placeholder="5" />
+          </Field>
+          <Field label="Time Window (seconds)">
+            <Input type="number" value={v.spamWindow} onChange={set('spamWindow')} placeholder="10" />
+          </Field>
+        </FieldRow>
+        <Field label="Mute Role Name" hint="created automatically if it doesn't exist">
+          <Input value={v.muteRole} onChange={set('muteRole')} placeholder="Muted" style={{ maxWidth: '240px' }} />
+        </Field>
+      </SettingsCard>
+
+      {/* ── Suspicious Users ── */}
+      <SettingsCard title="Suspicious User Detection">
+        <Toggle value={v.suspiciousUsers} onChange={set('suspiciousUsers')}
+          label="Enable Suspicious User Detection"
+          desc="Flag users on join based on account age, default avatar, and scam keywords in name." />
+        <FieldRow style={{ marginTop: '14px' }}>
+          <Field label="Action on Detection">
+            <Select value={v.suspiciousAction} onChange={set('suspiciousAction')} options={[
+              { value: 'flag', label: 'Flag only — log to mod-log' },
+              { value: 'kick', label: 'Kick — remove from server' },
+              { value: 'ban',  label: 'Ban — permanent removal' },
+            ]} />
+          </Field>
+          <Field label="Minimum Account Age (days)">
+            <Input type="number" value={v.suspiciousAge} onChange={set('suspiciousAge')} placeholder="7" />
+          </Field>
+        </FieldRow>
+      </SettingsCard>
+
+      {/* ── Anti-Raid ── */}
+      <SettingsCard title="Anti-Raid">
+        <Toggle value={v.antiRaid} onChange={set('antiRaid')}
+          label="Enable Anti-Raid"
+          desc="If a burst of users join at once, all invites are paused and admins are pinged." />
+        <FieldRow style={{ marginTop: '14px' }}>
+          <Field label="Join Threshold" hint="users to trigger lockdown">
+            <Input type="number" value={v.antiRaidThreshold} onChange={set('antiRaidThreshold')} placeholder="10" />
+          </Field>
+          <Field label="Time Window (seconds)">
+            <Input type="number" value={v.antiRaidWindow} onChange={set('antiRaidWindow')} placeholder="60" />
+          </Field>
+        </FieldRow>
+      </SettingsCard>
+
+      {/* ── Banned Words ── */}
+      <SettingsCard title="Banned Words Filter">
+        <Toggle value={v.bannedWords} onChange={set('bannedWords')}
+          label="Enable Banned Words Filter"
+          desc="Auto-delete messages containing any of the words in the list below." />
+        <div style={{ marginTop: '14px' }}>
+          <Field label="Banned Words" hint="comma-separated">
+            <Textarea value={v.bannedWordsList} onChange={set('bannedWordsList')}
+              rows={3} placeholder="word1, word2, word3" />
+          </Field>
+        </div>
+      </SettingsCard>
+
+      {/* ── Logging ── */}
+      <SettingsCard title="Logging">
+        <Field label="Mod Log Channel" hint="all protection actions are posted here">
+          <Input value={v.logChannel} onChange={set('logChannel')} placeholder="mod-log" style={{ maxWidth: '240px' }} />
+        </Field>
+      </SettingsCard>
+
+      <SaveBtn saved={saved} onSave={save} />
+    </div>
+  );
+};
+
 // ── Nav config ────────────────────────────────────────────────────────────
 
 const NAV = [
@@ -858,6 +1032,7 @@ const NAV = [
   { id: 'raid',            icon: '⚔️', label: 'Raid System',    group: 'Settings' },
   { id: 'engage',          icon: '🔄', label: 'Engage Pool',    group: 'Settings' },
   { id: 'sections',        icon: '🏠', label: 'Section Roles',  group: 'Settings' },
+  { id: 'protection',      icon: '🛡️', label: 'Protection',     group: 'Settings' },
   { id: 'points',          icon: '⭐', label: 'Points',         group: 'More' },
 ];
 
@@ -869,6 +1044,7 @@ const PAGES = {
   raid:           <RaidSettings />,
   engage:         <EngageSettings />,
   sections:       <SectionSettings />,
+  protection:     <ProtectionSettings />,
   points:         <PointsPage />,
 };
 

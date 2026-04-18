@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import DiscordMockup from '../components/DiscordMockup';
+import { ADD_TO_DISCORD_URL } from '../constants';
 
 // ── Scroll Animation Hook ──────────────────────────────────────────────────
 function useScrollReveal() {
@@ -53,6 +54,12 @@ const features = [
     title: 'Section Roles',
     desc: 'Organize your server with toggle-based section rooms. Members pick their interests (NFTs, Trading, AI, Degen) and unlock relevant channels. Zero config needed.',
     icon: '🏠',
+  },
+  {
+    mockup: 'protection',
+    title: 'Auto-Moderation',
+    desc: 'Full server protection on autopilot. Link detection, spam muting, phishing blocklist, suspicious user flagging, and anti-raid lockdown — all logged to your mod channel.',
+    icon: '🛡️',
   },
 ];
 
@@ -195,7 +202,7 @@ const Landing = () => {
           display: 'flex', gap: '14px', flexWrap: 'wrap', justifyContent: 'center',
           transitionDelay: '0.4s',
         }}>
-          <a href="https://discord.com/oauth2/authorize" className="btn-primary" style={{ textDecoration: 'none', fontSize: '15px', padding: '14px 28px' }}>
+          <a href={ADD_TO_DISCORD_URL} className="btn-primary" style={{ textDecoration: 'none', fontSize: '15px', padding: '14px 28px' }}>
             <span>🤖</span> Add to Discord
           </a>
           <a href="#features" className="btn-secondary" style={{ textDecoration: 'none', fontSize: '15px', padding: '14px 28px' }}>
@@ -385,7 +392,7 @@ const Landing = () => {
           }}>
             Join hundreds of Web3 communities already running on AVbot.
           </p>
-          <a href="https://discord.com/oauth2/authorize" className="btn-primary" style={{
+          <a href={ADD_TO_DISCORD_URL} className="btn-primary" style={{
             textDecoration: 'none', fontSize: '16px', padding: '16px 36px',
           }}>
             <span>🤖</span> Add AVbot to Discord — It's Free
