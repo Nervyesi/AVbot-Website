@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import Analytics from './Analytics';
 
 // ── Design tokens ────────────────────────────────────────────────────────
 const C = {
@@ -245,103 +246,136 @@ const ModuleStatus = ({ name, icon, status }) => (
   </div>
 );
 
-// ── Reusable sub-section header ───────────────────────────────────────────
+// ── Pulse placeholder (waiting for live data) ─────────────────────────────
 
-const GroupHeader = ({ icon, title }) => (
+const LivePending = ({ label }) => (
   <div style={{
     display: 'flex', alignItems: 'center', gap: '8px',
-    fontSize: '12px', fontWeight: 700, color: C.gold,
-    textTransform: 'uppercase', letterSpacing: '0.1em',
-    marginBottom: '12px', marginTop: '4px',
+    color: C.muted, fontSize: '13px',
   }}>
-    <span>{icon}</span>{title}
+    <div style={{
+      width: '7px', height: '7px', borderRadius: '50%',
+      background: 'rgba(200,168,78,0.5)',
+      animation: 'pulse 2s ease-in-out infinite',
+    }} />
+    {label}
+    <style>{`
+      @keyframes pulse {
+        0%,100% { opacity:0.3; transform:scale(1); }
+        50%      { opacity:1;   transform:scale(1.4); }
+      }
+    `}</style>
   </div>
 );
 
-// ── Sparkline-style bar (purely decorative, shows relative magnitude) ─────
-
-const MiniBar = ({ value, max, color = C.gold }) => (
-  <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px', marginTop: '6px' }}>
-    <div style={{ width: `${Math.min(100, (value / max) * 100)}%`, height: '100%', background: color, borderRadius: '2px', transition: 'width 0.6s ease' }} />
+const LiveCard = ({ label, icon }) => (
+  <div style={{
+    background: C.surface, border: `1px solid ${C.border}`,
+    borderRadius: '12px', padding: '20px 22px',
+  }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div>
+        <div style={{ color: C.muted, fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '10px' }}>{label}</div>
+        <LivePending label="Connect bot to see live data" />
+      </div>
+      <div style={{
+        width: '38px', height: '38px', borderRadius: '10px',
+        background: 'rgba(200,168,78,0.07)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '17px',
+      }}>{icon}</div>
+    </div>
   </div>
 );
 
 const Overview = () => (
   <div>
-    <PageHeader icon="📊" title="Overview" desc="Last 7 days · AmeretaVerse" />
-
-    {/* ── Server Analytics ── */}
-    <GroupHeader icon="🏛️" title="Server Analytics" />
+    {/* ── Server identity ── */}
     <div style={{
-      display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))',
-      gap: '12px', marginBottom: '28px',
+      display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '28px',
+      padding: '20px 24px',
+      background: C.surface, border: `1px solid ${C.border}`, borderRadius: '14px',
     }}>
-      <StatCard label="Total Members"   value="1,247" icon="👥" change="+83" />
-      <StatCard label="Verified"         value="1,104" icon="✅" change="+71" />
-      <StatCard label="Daily Messages"   value="3,840" icon="💬" change="+420" />
-      <StatCard label="Weekly Messages"  value="24,310" icon="📊" change="+3,200" />
-      <StatCard label="Monthly Messages" value="98,720" icon="📈" change="+11,450" />
-      <StatCard label="Voice Activity"   value="182h"  icon="🎙️" change="+24h" />
+      <div style={{
+        width: '56px', height: '56px', borderRadius: '14px', flexShrink: 0,
+        background: 'linear-gradient(135deg,#C8A84E,#94730D)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px',
+      }}>⚡</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: '1.3rem', fontWeight: 800, letterSpacing: '-0.02em' }}>AmeretaVerse</div>
+        <div style={{ color: C.muted, fontSize: '13px', marginTop: '2px' }}>
+          Web3 community server
+        </div>
+      </div>
+      <a
+        href="https://discord.gg/zueuN7xmWx"
+        target="_blank" rel="noreferrer"
+        style={{
+          display: 'flex', alignItems: 'center', gap: '6px',
+          background: 'rgba(88,101,242,0.1)', border: '1px solid rgba(88,101,242,0.25)',
+          color: '#7289da', textDecoration: 'none',
+          padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+          transition: 'background 0.2s', flexShrink: 0,
+        }}
+        onMouseOver={e => e.currentTarget.style.background = 'rgba(88,101,242,0.2)'}
+        onMouseOut={e => e.currentTarget.style.background = 'rgba(88,101,242,0.1)'}
+      >
+        <span>💬</span> Open Discord
+      </a>
     </div>
 
-    {/* ── Protection Stats ── */}
-    <GroupHeader icon="🛡️" title="Protection Stats" />
+    {/* ── Live stat placeholders ── */}
+    <div style={{ fontSize: '11px', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>
+      Server Stats
+    </div>
     <div style={{
-      display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))',
-      gap: '12px', marginBottom: '28px',
+      display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))',
+      gap: '12px', marginBottom: '24px',
     }}>
-      <StatCard label="Messages Deleted"  value="214"  icon="🗑️" change="+28" />
-      <StatCard label="Users Flagged"     value="31"   icon="🚩" change="-4" changeType="down" />
-      <StatCard label="Raids Blocked"     value="2"    icon="🔒" change="0" />
-      <StatCard label="Spam Mutes"        value="19"   icon="🔇" change="+3" />
-      <StatCard label="Phishing Deleted"  value="47"   icon="⚠️" change="+9" />
-      <StatCard label="Banned Words Hit"  value="88"   icon="🚫" change="+12" />
+      <LiveCard label="Total Members"   icon="👥" />
+      <LiveCard label="Online Now"      icon="🟢" />
+      <LiveCard label="Active Raids"    icon="⚔️" />
+      <LiveCard label="Points Today"    icon="⭐" />
     </div>
 
-    {/* ── Engagement Stats ── */}
-    <GroupHeader icon="⚡" title="Engagement Stats" />
-    <div style={{
-      display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))',
-      gap: '12px', marginBottom: '28px',
-    }}>
-      <StatCard label="Active Raids"      value="2"     icon="⚔️" change="+1" />
-      <StatCard label="Points Distributed" value="48,320" icon="⭐" change="+9,640" />
-      <StatCard label="Creator Apps"       value="12"    icon="📋" change="+4" />
-      <StatCard label="E4E Engagements"    value="1,840" icon="🔄" change="+340" />
-      <StatCard label="Top Earner Pts"     value="4,820" icon="🏆" change="+480" />
-    </div>
-
-    {/* ── Bottom row: activity + module status ── */}
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '20px' }}>
+    {/* ── Module status + recent activity ── */}
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: '20px' }}>
+      {/* Recent activity */}
       <Card>
-        <GroupHeader icon="🕐" title="Recent Activity" />
+        <div style={{ fontSize: '12px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '14px' }}>
+          Recent Activity
+        </div>
         {[
-          { icon: '⚠️', text: 'Phishing link deleted from #general',          time: '2m ago',  color: '#ed4245' },
-          { icon: '⚔️', text: 'Raid on @AmeretaProject launched by Admin',    time: '8m ago',  color: C.gold },
-          { icon: '🚫', text: 'Spam mute applied to @spammer_x',              time: '14m ago', color: '#FF6600' },
-          { icon: '✅', text: '9 new members verified via captcha',            time: '22m ago', color: '#3ba55c' },
-          { icon: '📋', text: 'Creator application #0062 approved',           time: '41m ago', color: '#5865F2' },
-          { icon: '🔄', text: 'E4E pool refreshed — 28 new tweets added',     time: '1h ago',  color: C.gold },
-          { icon: '⭐', text: 'Top raider @Nervyesi earned 480 points',        time: '2h ago',  color: C.gold },
-          { icon: '🔒', text: 'Anti-raid lockdown triggered and lifted',       time: '4h ago',  color: '#ed4245' },
+          { icon: '⚠️', text: 'Phishing link deleted from #general',       time: '2m ago',  color: '#ed4245' },
+          { icon: '⚔️', text: 'Raid on @AmeretaProject launched',           time: '8m ago',  color: C.gold },
+          { icon: '🚫', text: 'Spam mute applied to @spammer_x',            time: '14m ago', color: '#FF6600' },
+          { icon: '✅', text: '9 new members verified via captcha',          time: '22m ago', color: '#3ba55c' },
+          { icon: '📋', text: 'Creator application #0062 approved',         time: '41m ago', color: '#5865F2' },
+          { icon: '🔄', text: 'E4E pool refreshed — 28 new tweets added',   time: '1h ago',  color: C.gold },
+          { icon: '⭐', text: '@Nervyesi earned 480 points from raid',       time: '2h ago',  color: C.gold },
+          { icon: '🔒', text: 'Anti-raid lockdown triggered and lifted',     time: '4h ago',  color: '#ed4245' },
+          { icon: '👤', text: 'Suspicious user @sc4m_acc flagged on join',   time: '6h ago',  color: '#FF6600' },
+          { icon: '📋', text: 'Creator application #0061 submitted',         time: '7h ago',  color: '#5865F2' },
         ].map((a, i, arr) => (
           <div key={i} style={{
-            display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 0',
+            display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0',
             borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
           }}>
             <div style={{
-              width: '30px', height: '30px', borderRadius: '8px', flexShrink: 0,
+              width: '28px', height: '28px', borderRadius: '7px', flexShrink: 0,
               background: `${a.color}18`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px',
             }}>{a.icon}</div>
             <div style={{ flex: 1, fontSize: '13px', color: 'rgba(255,255,255,0.75)' }}>{a.text}</div>
-            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.28)', flexShrink: 0 }}>{a.time}</div>
+            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}>{a.time}</div>
           </div>
         ))}
       </Card>
 
+      {/* Module status */}
       <Card>
-        <GroupHeader icon="⚙️" title="Module Status" />
+        <div style={{ fontSize: '12px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
+          Module Status
+        </div>
         <ModuleStatus name="Verification"    icon="🔐" status="Active" />
         <ModuleStatus name="Role Selection"  icon="🎭" status="Active" />
         <ModuleStatus name="Creator Ticket"  icon="📋" status="Active" />
@@ -349,22 +383,6 @@ const Overview = () => (
         <ModuleStatus name="Engage Pool"     icon="🔄" status="Active" />
         <ModuleStatus name="Section Roles"   icon="🏠" status="Active" />
         <ModuleStatus name="Protection"      icon="🛡️" status="Active" />
-
-        <a
-          href="https://discord.gg/zueuN7xmWx"
-          target="_blank" rel="noreferrer"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-            marginTop: '16px', padding: '10px', borderRadius: '8px',
-            background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.25)',
-            color: '#7289da', textDecoration: 'none', fontSize: '13px', fontWeight: 600,
-            transition: 'background 0.2s',
-          }}
-          onMouseOver={e => e.currentTarget.style.background = 'rgba(88,101,242,0.22)'}
-          onMouseOut={e => e.currentTarget.style.background = 'rgba(88,101,242,0.12)'}
-        >
-          <span>💬</span> Join AmeretaVerse
-        </a>
       </Card>
     </div>
   </div>
@@ -925,6 +943,24 @@ const ProtectionSettings = () => {
       <PageHeader icon="🛡️" title="Auto-Moderation" badge="MODULE"
         desc="Automated protection: link filtering, spam control, phishing detection, anti-raid, and more." />
 
+      {/* ── Protection Stats (live placeholders) ── */}
+      <div style={{ fontSize: '11px', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>
+        Protection Stats · Last 7 Days
+      </div>
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))',
+        gap: '12px', marginBottom: '28px',
+      }}>
+        {[
+          { label: 'Messages Deleted', icon: '🗑️' },
+          { label: 'Users Flagged',    icon: '🚩' },
+          { label: 'Raids Blocked',    icon: '🔒' },
+          { label: 'Spam Mutes',       icon: '🔇' },
+          { label: 'Phishing Deleted', icon: '⚠️' },
+          { label: 'Banned Words Hit', icon: '🚫' },
+        ].map(s => <LiveCard key={s.label} {...s} />)}
+      </div>
+
       {/* ── Link Detection ── */}
       <SettingsCard title="Link Detection">
         <Toggle value={v.linkDetection} onChange={set('linkDetection')}
@@ -1026,6 +1062,7 @@ const ProtectionSettings = () => {
 
 const NAV = [
   { id: 'overview',        icon: '📊', label: 'Overview',       group: null },
+  { id: 'analytics',       icon: '📈', label: 'Analytics',      group: null },
   { id: 'verification',    icon: '🔐', label: 'Verification',   group: 'Settings' },
   { id: 'roles',           icon: '🎭', label: 'Role Selection', group: 'Settings' },
   { id: 'creator-ticket',  icon: '📋', label: 'Creator Ticket', group: 'Settings' },
@@ -1038,6 +1075,7 @@ const NAV = [
 
 const PAGES = {
   overview:       <Overview />,
+  analytics:      <Analytics />,
   verification:   <VerificationSettings />,
   roles:          <RoleSettings />,
   'creator-ticket': <CreatorTicketSettings />,
