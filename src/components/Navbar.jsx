@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router-dom';
 
 const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
   const isLanding = location.pathname === '/';
 
