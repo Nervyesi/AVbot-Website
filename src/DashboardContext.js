@@ -1,8 +1,8 @@
 import { createContext } from 'react';
 
-// Shared context so Overview, Analytics, settings pages can all read
-// the active server + logged-in user without prop-drilling.
 export const DashboardContext = createContext({
-  server: null,   // { id, name, icon, members }
-  user:   null,   // { user_id, username, avatar, guilds }
+  server:    null,       // { id, name, icon, members }
+  user:      null,       // { user_id, username, avatar }
+  servers:   [],         // all servers where bot is present
+  setServer: () => {},   // switch active server
 });
