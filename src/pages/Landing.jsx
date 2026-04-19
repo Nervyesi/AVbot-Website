@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import DiscordMockup from '../components/DiscordMockup';
 import { ADD_TO_DISCORD_URL } from '../constants';
 
