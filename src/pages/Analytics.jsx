@@ -75,6 +75,21 @@ const LivePending = () => (
   </div>
 );
 
+const NoDataYet = ({ dataStarted, height = 210 }) => (
+  <div style={{
+    height, display: 'flex', flexDirection: 'column', alignItems: 'center',
+    justifyContent: 'center', gap: '10px', color: C.muted, textAlign: 'center', padding: '0 24px',
+  }}>
+    <div style={{ fontSize: '26px' }}>📊</div>
+    <div style={{ fontSize: '13px', fontWeight: 600 }}>No data yet.</div>
+    <div style={{ fontSize: '12px', opacity: 0.7 }}>
+      {dataStarted
+        ? `Analytics data collection started ${dataStarted}. Check back in 24 hours.`
+        : 'Data collection started today. Check back in 24 hours.'}
+    </div>
+  </div>
+);
+
 const NumCard = ({ label, value, sub, color = '#fff' }) => (
   <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '18px 20px' }}>
     <div style={{ color: C.muted, fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{label}</div>
@@ -113,19 +128,18 @@ const TimeToggle = ({ value, onChange }) => (
   </div>
 );
 
-const ChartCard = ({ title, timeframe, onTimeframe, height = 220, children }) => (
+const ChartCard = ({ title, timeframe, onTimeframe, height = 220, children, noData, dataStarted }) => (
   <Card>
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
       <CardTitle style={{ marginBottom: 0 }}>{title}</CardTitle>
       {onTimeframe && <TimeToggle value={timeframe} onChange={onTimeframe} />}
     </div>
-    {children ? (
-      <ResponsiveContainer width="100%" height={height}>
-        {children}
-      </ResponsiveContainer>
-    ) : (
-      <ChartPlaceholder height={height} />
-    )}
+    {noData
+      ? <NoDataYet dataStarted={dataStarted} height={height} />
+      : children
+        ? <ResponsiveContainer width="100%" height={height}>{children}</ResponsiveContainer>
+        : <ChartPlaceholder height={height} />
+    }
   </Card>
 );
 
@@ -143,23 +157,30 @@ const Analytics = () => {
   useEffect(() => {
     if (!server?.id) return;
     setLoading(true);
-    fetchServerAnalytics(server.id)
+    fetchServerAnalytics(server.id, memberTf)
       .then(d => { setApiData(d); setLoading(false); })
       .catch(() => { setApiData(null); setLoading(false); });
-  }, [server?.id]);
+  }, [server?.id]); // eslint-disable-line
 
   const d = apiData;
-  const serverName = server?.name ?? 'No server selected';
+  const serverName  = server?.name ?? 'No server selected';
+  const dataStarted = d?.data_started ?? null;
 
-  // Pull timeframe-specific data from API if available
-  const memberData  = d?.member_growth?.[memberTf] ?? null;
-  const msgData     = d?.messages?.[msgTf] ?? null;
-  const voiceData   = d?.voice?.[voiceTf] ?? null;
-  const pointsData  = d?.points?.[ptsTf] ?? null;
-  const channelData = d?.channels ?? null;
-  const voiceChData = d?.voice_channels ?? null;
-  const topChatters = d?.top_chatters ?? null;
-  const e4eData     = d?.e4e ?? null;
+  // Pull timeframe-specific data; null = loading/no API, [] = API returned empty
+  const memberRaw  = d?.member_growth?.[memberTf] ?? null;
+  const msgRaw     = d?.messages?.[msgTf]         ?? null;
+  const voiceData  = d?.voice?.[voiceTf]          ?? null;
+  const pointsData = d?.points?.[ptsTf]           ?? null;
+
+  const memberNoData = Array.isArray(memberRaw) && memberRaw.length === 0;
+  const msgNoData    = Array.isArray(msgRaw)    && msgRaw.length === 0;
+  const memberData   = memberNoData ? null : memberRaw;
+  const msgData      = msgNoData    ? null : msgRaw;
+
+  const channelData = d?.channels        ?? null;
+  const voiceChData = d?.voice_channels  ?? null;
+  const topChatters = d?.top_chatters    ?? null;
+  const e4eData     = d?.e4e             ?? null;
 
   return (
     <div style={{ fontFamily: 'Sora, sans-serif', color: '#fff' }}>
@@ -181,7 +202,7 @@ const Analytics = () => {
         <NumCard label="Verified"       value={d?.verified_count?.toLocaleString()}      sub={d ? `${((d.verified_count / d.member_count) * 100).toFixed(1)}% rate` : null} color={C.green} />
       </div>
 
-      <ChartCard title="Member Growth" timeframe={memberTf} onTimeframe={setMemberTf} height={230}>
+      <ChartCard title="Member Growth" timeframe={memberTf} onTimeframe={setMemberTf} height={230} noData={memberNoData} dataStarted={dataStarted}>
         {memberData ? (
           <AreaChart data={memberData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
             <defs>
@@ -214,7 +235,7 @@ const Analytics = () => {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-        <ChartCard title="Messages Over Time" timeframe={msgTf} onTimeframe={setMsgTf} height={210}>
+        <ChartCard title="Messages Over Time" timeframe={msgTf} onTimeframe={setMsgTf} height={210} noData={msgNoData} dataStarted={dataStarted}>
           {msgData ? (
             <AreaChart data={msgData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
               <defs>

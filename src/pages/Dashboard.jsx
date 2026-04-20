@@ -4,7 +4,8 @@ import Analytics from './Analytics';
 import { DashboardContext } from '../DashboardContext';
 import {
   loginWithDiscord, fetchMe, fetchServers, fetchServerStats,
-  fetchServerAnalytics, fetchProtectionLog, fetchFlaggedUsers, fetchAuditLog,
+  fetchServerAnalytics, fetchConfig, saveConfig,
+  fetchProtectionLog, fetchFlaggedUsers, fetchAuditLog,
   clearToken, getToken, setToken,
 } from '../api';
 import { DISCORD_INVITE_URL } from '../constants';
@@ -119,22 +120,133 @@ function useSave() {
   return [saved, save];
 }
 
-const ActionBar = ({ saved, onSave, onSend, sendLabel = 'Send Message' }) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '28px', flexWrap: 'wrap' }}>
-    <button onClick={onSave} className="btn-primary" style={{ padding: '11px 28px', fontSize: '14px' }}>
-      {saved ? '✓  Saved' : 'Save Changes'}
-    </button>
-    {onSend && (
-      <button onClick={onSend}
-        style={{ background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.3)', color: '#7289da', padding: '11px 24px', borderRadius: '8px', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '14px', fontWeight: 600, transition: 'background 0.2s' }}
-        onMouseOver={e => e.currentTarget.style.background = 'rgba(88,101,242,0.25)'}
-        onMouseOut={e => e.currentTarget.style.background = 'rgba(88,101,242,0.12)'}>
-        📨 {sendLabel}
+// ── Config maps — maps form field key → config table key ─────────────────────
+// Only keys that exist in DEFAULT_CONFIG are included here.
+
+const ENGAGE_CONFIG_MAP = {
+  linkLifetime:  'engage_link_lifetime_hours',
+  pointsPerLink: 'engage_points_per_link',
+  likeWeight:    'engage_weight_like',
+  commentWeight: 'engage_weight_comment',
+  retweetWeight: 'engage_weight_retweet',
+  dailyLimit:    'engage_daily_limit',
+  submitCost:    'engage_submit_cost',
+};
+
+const PROTECT_CONFIG_MAP = {
+  linkEnabled:       'protection_link_detection',
+  linkWhitelist:     'protection_link_whitelist',
+  spamEnabled:       'protection_spam_detection',
+  spamThreshold:     'protection_spam_threshold',
+  spamWindow:        'protection_spam_window',
+  suspEnabled:       'protection_suspicious_users',
+  suspAction:        'protection_suspicious_action',
+  suspAge:           'protection_suspicious_account_age',
+  phishingEnabled:   'protection_phishing_detection',
+  antiRaidEnabled:   'protection_anti_raid',
+  antiRaidThreshold: 'protection_anti_raid_threshold',
+  antiRaidWindow:    'protection_anti_raid_window',
+  bannedEnabled:     'protection_banned_words',
+  bannedList:        'protection_banned_words_list',
+  logChannel:        'protection_log_channel',
+};
+
+const RAID_CONFIG_MAP = {
+  likeWeight:    'engage_weight_like',
+  commentWeight: 'engage_weight_comment',
+  retweetWeight: 'engage_weight_retweet',
+};
+
+/**
+ * useSaveConfig — load config on mount, save only changed keys on demand.
+ * @param {string|number} serverId
+ * @param {Object}        configMap   { formKey: configKey }
+ * @param {Object}        formDefaults  initial form state (used to detect boolean fields)
+ * @param {Function}      setForm     state setter from useState
+ */
+function useSaveConfig(serverId, configMap, formDefaults, setForm) {
+  const [saveState, setSaveState] = useState('idle'); // idle | saving | saved | error
+  const configRef = useRef({});
+
+  useEffect(() => {
+    if (!serverId) return;
+    fetchConfig(serverId)
+      .then(cfg => {
+        configRef.current = cfg;
+        setForm(prev => {
+          const updates = { ...prev };
+          for (const [fk, ck] of Object.entries(configMap)) {
+            if (cfg[ck] !== undefined) {
+              updates[fk] = typeof formDefaults[fk] === 'boolean'
+                ? cfg[ck] === '1'
+                : cfg[ck];
+            }
+          }
+          return updates;
+        });
+      })
+      .catch(() => {}); // keep defaults on failure
+  }, [serverId]); // eslint-disable-line
+
+  const save = (currentValues) => {
+    if (!serverId || saveState === 'saving') return;
+    const cfg = configRef.current;
+    const updates = {};
+    for (const [fk, ck] of Object.entries(configMap)) {
+      const cur = typeof currentValues[fk] === 'boolean'
+        ? (currentValues[fk] ? '1' : '0')
+        : String(currentValues[fk] ?? '');
+      const prev = cfg[ck] !== undefined ? String(cfg[ck]) : null;
+      if (prev === null || cur !== prev) updates[ck] = cur;
+    }
+    if (Object.keys(updates).length === 0) {
+      setSaveState('saved');
+      setTimeout(() => setSaveState('idle'), 2000);
+      return;
+    }
+    setSaveState('saving');
+    saveConfig(serverId, updates)
+      .then(() => {
+        for (const [fk, ck] of Object.entries(configMap)) {
+          configRef.current[ck] = typeof currentValues[fk] === 'boolean'
+            ? (currentValues[fk] ? '1' : '0')
+            : String(currentValues[fk] ?? '');
+        }
+        setSaveState('saved');
+        setTimeout(() => setSaveState('idle'), 2000);
+      })
+      .catch(() => {
+        setSaveState('error');
+        setTimeout(() => setSaveState('idle'), 3000);
+      });
+  };
+
+  return { saveState, save };
+}
+
+const ActionBar = ({ saved, saveState: saveStateProp, onSave, onSend, sendLabel = 'Send Message' }) => {
+  const s = saveStateProp ?? (saved ? 'saved' : 'idle');
+  const btnText = s === 'saving' ? 'Saving…' : s === 'saved' ? '✓  Saved' : s === 'error' ? '✗  Error' : 'Save Changes';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '28px', flexWrap: 'wrap' }}>
+      <button onClick={onSave} className="btn-primary"
+        disabled={s === 'saving'}
+        style={{ padding: '11px 28px', fontSize: '14px', opacity: s === 'saving' ? 0.7 : 1 }}>
+        {btnText}
       </button>
-    )}
-    {saved && <span style={{ color: C.green, fontSize: '13px' }}>Settings saved successfully.</span>}
-  </div>
-);
+      {onSend && (
+        <button onClick={onSend}
+          style={{ background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.3)', color: '#7289da', padding: '11px 24px', borderRadius: '8px', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '14px', fontWeight: 600, transition: 'background 0.2s' }}
+          onMouseOver={e => e.currentTarget.style.background = 'rgba(88,101,242,0.25)'}
+          onMouseOut={e => e.currentTarget.style.background = 'rgba(88,101,242,0.12)'}>
+          📨 {sendLabel}
+        </button>
+      )}
+      {s === 'saved' && <span style={{ color: C.green, fontSize: '13px' }}>Settings saved successfully.</span>}
+      {s === 'error'  && <span style={{ color: C.red,   fontSize: '13px' }}>Save failed. Please try again.</span>}
+    </div>
+  );
+};
 
 // Indented sub-toggle used inside DM sections
 const SubToggle = ({ value, onChange, label, desc, children }) => (
@@ -386,6 +498,7 @@ const VerificationSettings = () => {
         </SettingsCard>
       </>)}
 
+      {/* TODO: wire in Phase 4-5 when config keys are added for verification */}
       <ActionBar saved={saved} onSave={save} onSend={() => {}} sendLabel="Send Message" />
     </div>
   );
@@ -520,6 +633,7 @@ const RoleSettings = () => {
           + Create New Embed
         </button>
       </>)}
+      {/* TODO: wire in Phase 4-5 when config keys are added for role selection */}
       <ActionBar saved={saved} onSave={save} />
     </div>
   );
@@ -632,6 +746,7 @@ const FormsSettings = () => {
         </SettingsCard>
       </>)}
 
+      {/* TODO: wire in Phase 4-5 when config keys are added for forms */}
       <ActionBar saved={saved} onSave={save} onSend={() => {}} sendLabel="Send Message" />
     </div>
   );
@@ -726,6 +841,7 @@ const TicketsSettings = () => {
         </SettingsCard>
       </>)}
 
+      {/* TODO: wire in Phase 4-5 when config keys are added for tickets */}
       <ActionBar saved={saved} onSave={save} onSend={() => {}} sendLabel="Send Message" />
     </div>
   );
@@ -733,19 +849,22 @@ const TicketsSettings = () => {
 
 // ── Raid ──────────────────────────────────────────────────────────────────────
 
+const RAID_DEFAULTS = {
+  enabled: true,
+  channel: '#raids',
+  category: 'Raids',
+  likeWeight:    '30',
+  commentWeight: '50',
+  retweetWeight: '20',
+  dmEnabled: false,
+  dmConfirmMsg: '✅ Your raid participation has been confirmed! Points have been added to your account.',
+};
+
 const RaidSettings = () => {
-  const [v, setV] = useState({
-    enabled: true,
-    channel: '#raids',
-    category: 'Raids',
-    likeWeight:    '30',
-    commentWeight: '50',
-    retweetWeight: '20',
-    dmEnabled: false,
-    dmConfirmMsg: "✅ Your raid participation has been confirmed! Points have been added to your account.",
-  });
+  const { server } = useContext(DashboardContext);
+  const [v, setV] = useState({ ...RAID_DEFAULTS });
   const set = k => val => setV(p => ({ ...p, [k]: val }));
-  const [saved, save] = useSave();
+  const { saveState, save } = useSaveConfig(server?.id, RAID_CONFIG_MAP, RAID_DEFAULTS, setV);
 
   return (
     <div>
@@ -789,28 +908,31 @@ const RaidSettings = () => {
         </SettingsCard>
       </>)}
 
-      <ActionBar saved={saved} onSave={save} />
+      <ActionBar saveState={saveState} onSave={() => save(v)} />
     </div>
   );
 };
 
 // ── Engage ────────────────────────────────────────────────────────────────────
 
+const ENGAGE_DEFAULTS = {
+  enabled: true,
+  channel: '#engage',
+  creatorChannel: '#creator-engage',
+  linkLifetime: '24',
+  pointsPerLink: '30',
+  likeWeight: '1.0', commentWeight: '1.5', retweetWeight: '1.2',
+  dailyLimit: '5',
+  submitCost: '0',
+  minFollowers: '500',
+  autoReset: true,
+};
+
 const EngageSettings = () => {
-  const [v, setV] = useState({
-    enabled: true,
-    channel: '#engage',
-    creatorChannel: '#creator-engage',
-    linkLifetime: '24',
-    pointsPerLink: '30',
-    likeWeight: '1.0', commentWeight: '1.5', retweetWeight: '1.2',
-    dailyLimit: '5',
-    submitCost: '0',
-    minFollowers: '500',
-    autoReset: true,
-  });
+  const { server } = useContext(DashboardContext);
+  const [v, setV] = useState({ ...ENGAGE_DEFAULTS });
   const set = k => val => setV(p => ({ ...p, [k]: val }));
-  const [saved, save] = useSave();
+  const { saveState, save } = useSaveConfig(server?.id, ENGAGE_CONFIG_MAP, ENGAGE_DEFAULTS, setV);
 
   return (
     <div>
@@ -857,64 +979,61 @@ const EngageSettings = () => {
         </SettingsCard>
       </>)}
 
-      <ActionBar saved={saved} onSave={save} />
+      <ActionBar saveState={saveState} onSave={() => save(v)} />
     </div>
   );
 };
 
 // ── Protection ────────────────────────────────────────────────────────────────
 
+const PROTECT_DEFAULTS = {
+  enabled: true,
+  logChannel: 'mod-log',
+  // Link Detection
+  linkEnabled: true,
+  linkWhitelist: 'twitter.com, x.com, discord.gg, youtube.com',
+  linkAction: 'none',
+  linkDm: false,
+  linkDmMsg: 'Your message was removed because it contained a link not on the allowed list.',
+  // Phishing
+  phishingEnabled: true,
+  phishingAction: 'mute',
+  phishingDm: true,
+  phishingDmMsg: 'Your message was removed — it contained a known phishing link. Do not share suspicious links in this server.',
+  // Spam
+  spamEnabled: true,
+  spamThreshold: '5',
+  spamWindow: '10',
+  spamAction: 'mute',
+  spamDm: true,
+  spamDmMsg: "You've been muted for sending messages too quickly. Please slow down.",
+  // Banned Words
+  bannedEnabled: false,
+  bannedList: '',
+  bannedAction: 'none',
+  bannedDm: false,
+  bannedDmMsg: 'Your message was removed because it contained a word that is not allowed in this server.',
+  // Suspicious Users
+  suspEnabled: true,
+  suspNoAvatar: true,
+  suspAge: '7',
+  suspUsernameKeywords: 'scam, hack, free crypto, airdrop, nft giveaway',
+  suspBioKeywords: '',
+  suspAction: 'flag',
+  suspDm: false,
+  suspDmMsg: 'Your account has been flagged by our automated moderation. A moderator will review your account shortly.',
+  // Anti-Raid
+  antiRaidEnabled: true,
+  antiRaidThreshold: '10',
+  antiRaidWindow: '60',
+  antiRaidPingRole: '',
+};
+
 const ProtectionSettings = () => {
-  const [v, setV] = useState({
-    enabled: true,
-    logChannel: 'mod-log',
-
-    // Link Detection
-    linkEnabled: true,
-    linkWhitelist: 'twitter.com, x.com, discord.gg, youtube.com',
-    linkAction: 'none',
-    linkDm: false,
-    linkDmMsg: 'Your message was removed because it contained a link not on the allowed list.',
-
-    // Phishing
-    phishingEnabled: true,
-    phishingAction: 'mute',
-    phishingDm: true,
-    phishingDmMsg: 'Your message was removed — it contained a known phishing link. Do not share suspicious links in this server.',
-
-    // Spam
-    spamEnabled: true,
-    spamThreshold: '5',
-    spamWindow: '10',
-    spamAction: 'mute',
-    spamDm: true,
-    spamDmMsg: "You've been muted for sending messages too quickly. Please slow down.",
-
-    // Banned Words
-    bannedEnabled: false,
-    bannedList: '',
-    bannedAction: 'none',
-    bannedDm: false,
-    bannedDmMsg: 'Your message was removed because it contained a word that is not allowed in this server.',
-
-    // Suspicious Users
-    suspEnabled: true,
-    suspNoAvatar: true,
-    suspAge: '7',
-    suspUsernameKeywords: 'scam, hack, free crypto, airdrop, nft giveaway',
-    suspBioKeywords: '',
-    suspAction: 'flag',
-    suspDm: false,
-    suspDmMsg: 'Your account has been flagged by our automated moderation. A moderator will review your account shortly.',
-
-    // Anti-Raid
-    antiRaidEnabled: true,
-    antiRaidThreshold: '10',
-    antiRaidWindow: '60',
-    antiRaidPingRole: '',
-  });
+  const { server } = useContext(DashboardContext);
+  const [v, setV] = useState({ ...PROTECT_DEFAULTS });
   const set = k => val => setV(p => ({ ...p, [k]: val }));
-  const [saved, save] = useSave();
+  const { saveState, save } = useSaveConfig(server?.id, PROTECT_CONFIG_MAP, PROTECT_DEFAULTS, setV);
 
   const DmRow = ({ enabledKey, msgKey, placeholder }) => (
     <>
@@ -1061,7 +1180,7 @@ const ProtectionSettings = () => {
         </SettingsCard>
       </>)}
 
-      <ActionBar saved={saved} onSave={save} />
+      <ActionBar saveState={saveState} onSave={() => save(v)} />
     </div>
   );
 };
@@ -1163,7 +1282,7 @@ const ModLog = () => {
   useEffect(() => {
     if (!server?.id) return;
     setLoading(true); setLog(null);
-    fetchProtectionLog(server.id, 50)
+    fetchAuditLog(server.id, 50)
       .then(data => { setLog(Array.isArray(data) ? data : data?.logs ?? []); setLoading(false); })
       .catch(() => { setLog([]); setLoading(false); });
   }, [server?.id]);

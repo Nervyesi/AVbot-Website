@@ -33,7 +33,8 @@ export const fetchMe = () => apiFetch('/auth/me');
 
 export const fetchServers = () => apiFetch('/api/servers');
 export const fetchServerStats = id => apiFetch(`/api/servers/${id}/stats`);
-export const fetchServerAnalytics = id => apiFetch(`/api/servers/${id}/analytics`);
+export const fetchServerAnalytics = (id, timeframe = 'week') =>
+  apiFetch(`/api/servers/${id}/analytics?timeframe=${timeframe}`);
 export const fetchConfig = id => apiFetch(`/api/servers/${id}/config`);
 export const saveConfig = (id, updates) =>
   apiFetch(`/api/servers/${id}/config`, { method: 'POST', body: JSON.stringify(updates) });
