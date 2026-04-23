@@ -93,12 +93,14 @@ const NoDataYet = ({ dataStarted, height = 210 }) => (
 const NumCard = ({ label, value, sub, color = '#fff' }) => (
   <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '18px 20px' }}>
     <div style={{ color: C.muted, fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{label}</div>
-    {value != null
-      ? <>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color, letterSpacing: '-0.02em', lineHeight: 1 }}>{value}</div>
-          {sub && <div style={{ fontSize: '12px', color: C.muted, marginTop: '4px' }}>{sub}</div>}
-        </>
-      : <LivePending />
+    {value === undefined
+      ? <div style={{ color: C.muted, fontSize: '13px' }}>No data yet</div>
+      : value != null
+        ? <>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800, color, letterSpacing: '-0.02em', lineHeight: 1 }}>{value}</div>
+            {sub && <div style={{ fontSize: '12px', color: C.muted, marginTop: '4px' }}>{sub}</div>}
+          </>
+        : <LivePending />
     }
   </div>
 );
@@ -165,6 +167,11 @@ const Analytics = () => {
   const d = apiData;
   const serverName  = server?.name ?? 'No server selected';
   const dataStarted = d?.data_started ?? null;
+  const sc          = d?.stat_cards ?? null;
+  const hasData     = d?.has_any_data ?? null;
+
+  // snapVal: null = still loading (show LivePending); undefined = no data yet; value = show it
+  const snapVal = (v) => d === null ? null : (!hasData ? undefined : (v ?? 0));
 
   // Pull timeframe-specific data; null = loading/no API, [] = API returned empty
   const memberRaw  = d?.member_growth?.[memberTf] ?? null;
@@ -187,7 +194,7 @@ const Analytics = () => {
       <div style={{ marginBottom: '8px' }}>
         <h2 style={{ margin: '0 0 4px', fontSize: '1.4rem', fontWeight: 800, letterSpacing: '-0.02em' }}>Analytics</h2>
         <p style={{ margin: 0, color: C.muted, fontSize: '13px' }}>
-          {serverName} · {loading ? 'Loading…' : d ? 'Live data' : 'Connect bot to see live data'}
+          {serverName} · {loading ? 'Loading…' : d ? 'Live data' : 'Select a server to view analytics'}
         </p>
       </div>
 
@@ -195,11 +202,13 @@ const Analytics = () => {
       <SectionHeading icon="👥" title="Members" />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: '12px', marginBottom: '16px' }}>
-        <NumCard label="Total Members"  value={d?.member_count?.toLocaleString()}        sub="all time"       color={C.gold} />
-        <NumCard label="Today"          value={d?.joins_today != null ? `+${d.joins_today}` : null} sub="new today" />
-        <NumCard label="This Week"      value={d?.joins_week != null ? `+${d.joins_week}` : null}   sub="joins" />
-        <NumCard label="This Month"     value={d?.joins_month != null ? `+${d.joins_month}` : null} sub="joins" />
-        <NumCard label="Verified"       value={d?.verified_count?.toLocaleString()}      sub={d ? `${((d.verified_count / d.member_count) * 100).toFixed(1)}% rate` : null} color={C.green} />
+        <NumCard label="Total Members"  value={sc?.total_members != null ? sc.total_members.toLocaleString() : null}  sub="all time" color={C.gold} />
+        <NumCard label="Today"          value={snapVal(sc?.today_joins) === undefined ? undefined : snapVal(sc?.today_joins) != null ? `+${snapVal(sc.today_joins)}` : null} sub="new today" />
+        <NumCard label="This Week"      value={snapVal(sc?.week_joins) === undefined ? undefined : snapVal(sc?.week_joins) != null ? `+${snapVal(sc.week_joins)}` : null}   sub="joins" />
+        <NumCard label="This Month"     value={snapVal(sc?.month_joins) === undefined ? undefined : snapVal(sc?.month_joins) != null ? `+${snapVal(sc.month_joins)}` : null} sub="joins" />
+        <NumCard label="Verified"       value={sc?.verified_count != null ? sc.verified_count.toLocaleString() : null}
+          sub={sc?.total_members > 0 ? `${((sc.verified_count / sc.total_members) * 100).toFixed(1)}% rate` : null}
+          color={C.green} />
       </div>
 
       <ChartCard title="Member Growth" timeframe={memberTf} onTimeframe={setMemberTf} height={230} noData={memberNoData} dataStarted={dataStarted}>
@@ -227,11 +236,11 @@ const Analytics = () => {
       <SectionHeading icon="💬" title="Messages" />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: '12px', marginBottom: '16px' }}>
-        <NumCard label="Today"      value={d?.messages_today?.toLocaleString()}  sub="messages" color={C.gold} />
-        <NumCard label="This Week"  value={d?.messages_week?.toLocaleString()}   sub="messages" />
-        <NumCard label="This Month" value={d?.messages_month?.toLocaleString()}  sub="messages" />
-        <NumCard label="This Year"  value={d?.messages_year?.toLocaleString()}   sub="messages" />
-        <NumCard label="Avg / Day"  value={d?.messages_avg_day?.toLocaleString()} sub="last 30d" />
+        <NumCard label="Today"      value={snapVal(sc?.messages_today) === undefined ? undefined : snapVal(sc?.messages_today) != null ? snapVal(sc.messages_today).toLocaleString() : null} sub="messages" color={C.gold} />
+        <NumCard label="This Week"  value={snapVal(sc?.messages_week) === undefined ? undefined : snapVal(sc?.messages_week) != null ? snapVal(sc.messages_week).toLocaleString() : null}   sub="messages" />
+        <NumCard label="This Month" value={snapVal(sc?.messages_month) === undefined ? undefined : snapVal(sc?.messages_month) != null ? snapVal(sc.messages_month).toLocaleString() : null} sub="messages" />
+        <NumCard label="This Year"  value={snapVal(sc?.messages_year) === undefined ? undefined : snapVal(sc?.messages_year) != null ? snapVal(sc.messages_year).toLocaleString() : null}   sub="messages" />
+        <NumCard label="Avg / Day"  value={snapVal(sc?.messages_avg_per_day) === undefined ? undefined : snapVal(sc?.messages_avg_per_day) != null ? snapVal(sc.messages_avg_per_day).toLocaleString() : null} sub="last 30d" />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>

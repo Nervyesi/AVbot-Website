@@ -5,7 +5,7 @@ import { DashboardContext } from '../DashboardContext';
 import {
   loginWithDiscord, fetchMe, fetchServers, fetchServerStats,
   fetchServerAnalytics, fetchConfig, saveConfig,
-  fetchProtectionLog, fetchFlaggedUsers, fetchAuditLog,
+  sendProtectionMessage, fetchFlaggedUsers, fetchAuditLog,
   clearToken, getToken, setToken,
 } from '../api';
 import { DISCORD_INVITE_URL } from '../constants';
@@ -134,21 +134,44 @@ const ENGAGE_CONFIG_MAP = {
 };
 
 const PROTECT_CONFIG_MAP = {
-  linkEnabled:       'protection_link_detection',
-  linkWhitelist:     'protection_link_whitelist',
-  spamEnabled:       'protection_spam_detection',
-  spamThreshold:     'protection_spam_threshold',
-  spamWindow:        'protection_spam_window',
-  suspEnabled:       'protection_suspicious_users',
-  suspAction:        'protection_suspicious_action',
-  suspAge:           'protection_suspicious_account_age',
-  phishingEnabled:   'protection_phishing_detection',
-  antiRaidEnabled:   'protection_anti_raid',
-  antiRaidThreshold: 'protection_anti_raid_threshold',
-  antiRaidWindow:    'protection_anti_raid_window',
-  bannedEnabled:     'protection_banned_words',
-  bannedList:        'protection_banned_words_list',
-  logChannel:        'protection_log_channel',
+  // Feature toggles
+  linkEnabled:          'protection_link_detection',
+  linkWhitelist:        'protection_link_whitelist',
+  linkAction:           'protection_link_action',
+  spamEnabled:          'protection_spam_detection',
+  spamThreshold:        'protection_spam_threshold',
+  spamWindow:           'protection_spam_window',
+  spamAction:           'protection_spam_action',
+  spamMuteDuration:     'protection_spam_mute_duration',
+  suspEnabled:          'protection_suspicious_users',
+  suspAction:           'protection_suspicious_action',
+  suspAge:              'protection_suspicious_account_age',
+  suspNoAvatar:         'protection_suspicious_no_avatar',
+  suspUsernameEnabled:  'protection_suspicious_username_keywords',
+  suspBioEnabled:       'protection_suspicious_bio_keywords',
+  suspKeywordsList:     'protection_suspicious_keywords_list',
+  phishingEnabled:      'protection_phishing_detection',
+  phishingAction:       'protection_phishing_action',
+  phishingList:         'protection_phishing_list',
+  antiRaidEnabled:      'protection_anti_raid',
+  antiRaidThreshold:    'protection_anti_raid_threshold',
+  antiRaidWindow:       'protection_anti_raid_window',
+  antiRaidAction:       'protection_anti_raid_action',
+  bannedEnabled:        'protection_banned_words',
+  bannedList:           'protection_banned_words_list',
+  bannedAction:         'protection_banned_words_action',
+  logChannel:           'protection_log_channel',
+  // DM settings
+  dmEnabled:            'protection_dm_on_action',
+  dmLinkMsg:            'protection_dm_link_message',
+  dmSpamMsg:            'protection_dm_spam_message',
+  dmBannedMsg:          'protection_dm_banned_word_message',
+  dmPhishingMsg:        'protection_dm_phishing_message',
+  dmSuspMsg:            'protection_dm_suspicious_message',
+  // Main embed (Send Message)
+  mainEmbedTitle:       'protection_main_embed_title',
+  mainEmbedDesc:        'protection_main_embed_description',
+  mainEmbedChannel:     'protection_main_embed_channel',
 };
 
 const RAID_CONFIG_MAP = {
@@ -351,14 +374,27 @@ const Overview = () => {
     ]).then(([s, a]) => { setStats(s); setAnalytics(a); setLoading(false); });
   }, [server?.id]);
 
-  const growth30d      = analytics?.member_growth_30d ?? analytics?.joins_30d ?? null;
-  const totalMessages  = analytics?.total_messages ?? analytics?.messages_total ?? null;
+  const sc         = analytics?.stat_cards ?? null;
+  const hasData    = analytics?.has_any_data ?? null;
+
+  // undefined signals "No data yet" (bot connected but no snapshots); null = loading
+  const snapVal = (v) => analytics === null ? null : (!hasData ? undefined : (v ?? 0));
+
+  const growth30d     = snapVal(sc?.month_joins);
+  const totalMessages = snapVal(sc?.messages_month);
+
+  const fmtGrowth = growth30d == null ? null
+    : growth30d === undefined ? undefined
+    : `+${growth30d.toLocaleString()}`;
+  const fmtMessages = totalMessages == null ? null
+    : totalMessages === undefined ? undefined
+    : totalMessages.toLocaleString();
 
   const cards = [
     { label: 'Total Members',           icon: '👥', val: stats?.member_count?.toLocaleString() },
     { label: 'Active Members',          icon: '🟢', val: stats?.online_count?.toLocaleString(), sub: 'online now' },
-    { label: 'Member Growth (30 days)', icon: '📈', val: growth30d != null ? `+${growth30d.toLocaleString()}` : null, sub: 'net joins' },
-    { label: 'Total Messages',          icon: '💬', val: totalMessages?.toLocaleString() },
+    { label: 'Member Growth (30 days)', icon: '📈', val: fmtGrowth, sub: 'net joins' },
+    { label: 'Total Messages',          icon: '💬', val: fmtMessages },
   ];
 
   return (
@@ -372,9 +408,15 @@ const Overview = () => {
 
       {/* ── 4 stat cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: '14px', marginBottom: '32px' }}>
-        {cards.map(c => c.val != null
-          ? <StatCard key={c.label} label={c.label} icon={c.icon} value={c.val} sub={c.sub} />
-          : <LiveCard key={c.label} label={c.label} icon={c.icon} />
+        {cards.map(c =>
+          c.val === undefined
+            ? <div key={c.label} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '14px', padding: '22px' }}>
+                <div style={{ color: C.muted, fontSize: '12px', fontWeight: 600, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{c.label}</div>
+                <div style={{ color: C.muted, fontSize: '13px' }}>No data yet</div>
+              </div>
+            : c.val != null
+              ? <StatCard key={c.label} label={c.label} icon={c.icon} value={c.val} sub={c.sub} />
+              : <LiveCard key={c.label} label={c.label} icon={c.icon} />
         )}
       </div>
 
@@ -989,45 +1031,76 @@ const EngageSettings = () => {
 const PROTECT_DEFAULTS = {
   enabled: true,
   logChannel: 'mod-log',
+  // Main embed
+  mainEmbedTitle:      '🛡️ Server Protection',
+  mainEmbedDesc:       'This server is protected by AVbot. Attempting spam, phishing, raids, or abuse will result in automated action.',
+  mainEmbedChannel:    '',
   // Link Detection
-  linkEnabled: true,
-  linkWhitelist: 'twitter.com, x.com, discord.gg, youtube.com',
-  linkAction: 'none',
-  linkDm: false,
-  linkDmMsg: 'Your message was removed because it contained a link not on the allowed list.',
+  linkEnabled:         true,
+  linkWhitelist:       'twitter.com,x.com,discord.gg,youtube.com',
+  linkAction:          'delete',
+  linkDm:              false,
+  dmLinkMsg:           "Your link was removed because it's not whitelisted on this server.",
   // Phishing
-  phishingEnabled: true,
-  phishingAction: 'mute',
-  phishingDm: true,
-  phishingDmMsg: 'Your message was removed — it contained a known phishing link. Do not share suspicious links in this server.',
+  phishingEnabled:     true,
+  phishingAction:      'delete',
+  phishingList:        '',
+  phishingDm:          false,
+  dmPhishingMsg:       'Your message was removed — it contained a phishing link.',
   // Spam
-  spamEnabled: true,
-  spamThreshold: '5',
-  spamWindow: '10',
-  spamAction: 'mute',
-  spamDm: true,
-  spamDmMsg: "You've been muted for sending messages too quickly. Please slow down.",
+  spamEnabled:         true,
+  spamThreshold:       '5',
+  spamWindow:          '10',
+  spamAction:          'mute',
+  spamMuteDuration:    '600',
+  spamDm:              false,
+  dmSpamMsg:           'You were muted for spamming. Duration: {duration}s.',
   // Banned Words
-  bannedEnabled: false,
-  bannedList: '',
-  bannedAction: 'none',
-  bannedDm: false,
-  bannedDmMsg: 'Your message was removed because it contained a word that is not allowed in this server.',
+  bannedEnabled:       false,
+  bannedList:          '',
+  bannedAction:        'delete',
+  bannedDm:            false,
+  dmBannedMsg:         'Your message contained a banned word and was removed.',
   // Suspicious Users
-  suspEnabled: true,
-  suspNoAvatar: true,
-  suspAge: '7',
-  suspUsernameKeywords: 'scam, hack, free crypto, airdrop, nft giveaway',
-  suspBioKeywords: '',
-  suspAction: 'flag',
-  suspDm: false,
-  suspDmMsg: 'Your account has been flagged by our automated moderation. A moderator will review your account shortly.',
+  suspEnabled:         true,
+  suspNoAvatar:        true,
+  suspUsernameEnabled: true,
+  suspBioEnabled:      false,
+  suspAge:             '7',
+  suspKeywordsList:    'admin,mod,moderator,support,giveaway,airdrop,staff,team',
+  suspAction:          'flag',
+  suspDm:              false,
+  dmSuspMsg:           'Your account was flagged due to suspicious characteristics.',
   // Anti-Raid
-  antiRaidEnabled: true,
-  antiRaidThreshold: '10',
-  antiRaidWindow: '60',
-  antiRaidPingRole: '',
+  antiRaidEnabled:     true,
+  antiRaidThreshold:   '10',
+  antiRaidWindow:      '60',
+  antiRaidAction:      'lockdown',
+  // Master DM toggle
+  dmEnabled:           false,
 };
+
+const LINK_ACTION_OPTS = [
+  { value: 'delete', label: 'Delete only' },
+  { value: 'warn',   label: 'Delete + Warn' },
+  { value: 'kick',   label: 'Delete + Kick' },
+  { value: 'ban',    label: 'Delete + Ban' },
+];
+const SPAM_ACTION_OPTS = [
+  { value: 'mute', label: 'Mute' },
+  { value: 'kick', label: 'Kick' },
+  { value: 'ban',  label: 'Ban' },
+];
+const SUSP_ACTION_OPTS = [
+  { value: 'flag', label: 'Flag — log to mod-log only' },
+  { value: 'kick', label: 'Kick' },
+  { value: 'ban',  label: 'Ban' },
+];
+const RAID_ACTION_OPTS = [
+  { value: 'lockdown',  label: 'Lockdown — pause all invites' },
+  { value: 'kick_new',  label: 'Kick new joiners' },
+  { value: 'ban_new',   label: 'Ban new joiners' },
+];
 
 const ProtectionSettings = () => {
   const { server } = useContext(DashboardContext);
@@ -1035,18 +1108,41 @@ const ProtectionSettings = () => {
   const set = k => val => setV(p => ({ ...p, [k]: val }));
   const { saveState, save } = useSaveConfig(server?.id, PROTECT_CONFIG_MAP, PROTECT_DEFAULTS, setV);
 
-  const DmRow = ({ enabledKey, msgKey, placeholder }) => (
-    <>
-      <Toggle value={v[enabledKey]} onChange={set(enabledKey)} label="Send DM warning?" />
-      {v[enabledKey] && (
-        <div style={{ marginTop: '8px', marginBottom: '4px' }}>
-          <Textarea value={v[msgKey]} onChange={set(msgKey)} rows={2} placeholder={placeholder} />
-        </div>
-      )}
-    </>
+  const [sendState, setSendState] = useState('idle'); // idle | sending | sent | error
+  const [sendMsg,   setSendMsg]   = useState('');
+
+  const handleSendEmbed = async () => {
+    if (!server?.id || sendState === 'sending') return;
+    setSendState('sending');
+    try {
+      const res = await sendProtectionMessage(server.id);
+      setSendMsg(`✓ Sent to #${res.channel_name}`);
+      setSendState('sent');
+    } catch (e) {
+      setSendMsg(e.message || 'Failed to send');
+      setSendState('error');
+    }
+    setTimeout(() => { setSendState('idle'); setSendMsg(''); }, 4000);
+  };
+
+  const DmMsgField = ({ msgKey, placeholder }) => (
+    v.dmEnabled ? (
+      <div style={{ marginTop: '8px' }}>
+        <Textarea value={v[msgKey]} onChange={set(msgKey)} rows={2} placeholder={placeholder} />
+      </div>
+    ) : null
   );
 
-  const ActionRow = ({ actionKey, opts = ACTION_OPTS }) => (
+  const FeatureDmSection = ({ enabledKey, msgKey, placeholder }) => (
+    v.dmEnabled ? (
+      <>
+        <Toggle value={v[enabledKey]} onChange={set(enabledKey)} label="Send DM warning?" />
+        {v[enabledKey] && <DmMsgField msgKey={msgKey} placeholder={placeholder} />}
+      </>
+    ) : null
+  );
+
+  const ActionRow = ({ actionKey, opts }) => (
     <Field label="Action on detection">
       <Select value={v[actionKey]} onChange={set(actionKey)} options={opts} />
     </Field>
@@ -1055,6 +1151,40 @@ const ProtectionSettings = () => {
   return (
     <div>
       <PageHeader icon="🛡️" title="Protection" badge="MODULE" desc="Automated moderation — each feature is individually configurable." />
+
+      {/* Main Embed (Send Message) */}
+      <SettingsCard title="Send Message">
+        <FieldRow>
+          <Field label="Embed Title">
+            <Input value={v.mainEmbedTitle} onChange={set('mainEmbedTitle')} placeholder="🛡️ Server Protection" />
+          </Field>
+          <Field label="Embed Channel" hint="name or ID where the embed will be sent">
+            <Input value={v.mainEmbedChannel} onChange={set('mainEmbedChannel')} placeholder="general or 123456789" />
+          </Field>
+        </FieldRow>
+        <Field label="Embed Description">
+          <Textarea value={v.mainEmbedDesc} onChange={set('mainEmbedDesc')} rows={2} placeholder="This server is protected by AVbot." />
+        </Field>
+        <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          <button
+            onClick={handleSendEmbed}
+            disabled={sendState === 'sending'}
+            style={{
+              background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.3)',
+              color: '#7289da', padding: '10px 22px', borderRadius: '8px', cursor: sendState === 'sending' ? 'not-allowed' : 'pointer',
+              fontFamily: 'Sora, sans-serif', fontSize: '14px', fontWeight: 600,
+              opacity: sendState === 'sending' ? 0.6 : 1, transition: 'background 0.2s',
+            }}
+            onMouseOver={e => { if (sendState !== 'sending') e.currentTarget.style.background = 'rgba(88,101,242,0.25)'; }}
+            onMouseOut={e => e.currentTarget.style.background = 'rgba(88,101,242,0.12)'}>
+            {sendState === 'sending' ? '📨 Sending…' : '📨 Send Embed'}
+          </button>
+          {sendMsg && (
+            <span style={{ fontSize: '13px', color: sendState === 'error' ? C.red : C.green }}>{sendMsg}</span>
+          )}
+        </div>
+      </SettingsCard>
+
       <SettingsCard title="Module">
         <Toggle value={v.enabled} onChange={set('enabled')} label="Enable Protection" />
       </SettingsCard>
@@ -1067,6 +1197,12 @@ const ProtectionSettings = () => {
           </Field>
         </SettingsCard>
 
+        {/* Master DM toggle */}
+        <SettingsCard title="DM Warnings">
+          <Toggle value={v.dmEnabled} onChange={set('dmEnabled')} label="Enable DM Warnings"
+            desc="When on, send DM messages to users when an action is taken against them." />
+        </SettingsCard>
+
         {/* Link Detection */}
         <SettingsCard title="Link Detection">
           <Toggle value={v.linkEnabled} onChange={set('linkEnabled')} label="Enable Link Detection"
@@ -1074,12 +1210,12 @@ const ProtectionSettings = () => {
           {v.linkEnabled && (<>
             <div style={{ marginTop: '14px', marginBottom: '14px' }}>
               <Field label="Allowed Domains" hint="comma-separated">
-                <Input value={v.linkWhitelist} onChange={set('linkWhitelist')} placeholder="twitter.com, x.com, discord.gg" />
+                <Input value={v.linkWhitelist} onChange={set('linkWhitelist')} placeholder="twitter.com,x.com,discord.gg" />
               </Field>
             </div>
-            <ActionRow actionKey="linkAction" opts={DELETE_ACTION_OPTS} />
-            <DmRow enabledKey="linkDm" msgKey="linkDmMsg"
-              placeholder="Your message was removed because it contained a link not on the allowed list." />
+            <ActionRow actionKey="linkAction" opts={LINK_ACTION_OPTS} />
+            <FeatureDmSection enabledKey="linkDm" msgKey="dmLinkMsg"
+              placeholder="Your link was removed because it's not whitelisted on this server." />
           </>)}
         </SettingsCard>
 
@@ -1089,9 +1225,15 @@ const ProtectionSettings = () => {
             desc="Delete messages containing known phishing domains." />
           {v.phishingEnabled && (<>
             <div style={{ marginTop: '14px' }}>
-              <ActionRow actionKey="phishingAction" opts={ACTION_OPTS.filter(o => ['mute','kick','ban'].includes(o.value))} />
+              <ActionRow actionKey="phishingAction" opts={LINK_ACTION_OPTS} />
             </div>
-            <DmRow enabledKey="phishingDm" msgKey="phishingDmMsg"
+            <div style={{ marginTop: '14px', marginBottom: '14px' }}>
+              <Field label="Phishing Domain List" hint="comma-separated — overrides built-in defaults if set">
+                <Textarea value={v.phishingList} onChange={set('phishingList')} rows={3}
+                  placeholder="discorcl.com,discord-nitro.com,free-nitro.com,…" />
+              </Field>
+            </div>
+            <FeatureDmSection enabledKey="phishingDm" msgKey="dmPhishingMsg"
               placeholder="Your message was removed — it contained a phishing link." />
           </>)}
         </SettingsCard>
@@ -1105,9 +1247,16 @@ const ProtectionSettings = () => {
               <Field label="Message Threshold" hint="per window"><Input type="number" value={v.spamThreshold} onChange={set('spamThreshold')} placeholder="5" /></Field>
               <Field label="Time Window (seconds)"><Input type="number" value={v.spamWindow} onChange={set('spamWindow')} placeholder="10" /></Field>
             </FieldRow>
-            <ActionRow actionKey="spamAction" opts={ACTION_OPTS.filter(o => ['mute','kick','ban'].includes(o.value))} />
-            <DmRow enabledKey="spamDm" msgKey="spamDmMsg"
-              placeholder="You've been muted for sending messages too quickly." />
+            <FieldRow>
+              <ActionRow actionKey="spamAction" opts={SPAM_ACTION_OPTS} />
+              {v.spamAction === 'mute' && (
+                <Field label="Mute Duration (seconds)">
+                  <Input type="number" value={v.spamMuteDuration} onChange={set('spamMuteDuration')} placeholder="600" />
+                </Field>
+              )}
+            </FieldRow>
+            <FeatureDmSection enabledKey="spamDm" msgKey="dmSpamMsg"
+              placeholder="You were muted for spamming. Duration: {duration}s." />
           </>)}
         </SettingsCard>
 
@@ -1121,9 +1270,9 @@ const ProtectionSettings = () => {
                 <Textarea value={v.bannedList} onChange={set('bannedList')} rows={3} placeholder="word1, word2, phrase here" />
               </Field>
             </div>
-            <ActionRow actionKey="bannedAction" opts={DELETE_ACTION_OPTS} />
-            <DmRow enabledKey="bannedDm" msgKey="bannedDmMsg"
-              placeholder="Your message was removed because it contained a word not allowed here." />
+            <ActionRow actionKey="bannedAction" opts={LINK_ACTION_OPTS} />
+            <FeatureDmSection enabledKey="bannedDm" msgKey="dmBannedMsg"
+              placeholder="Your message contained a banned word and was removed." />
           </>)}
         </SettingsCard>
 
@@ -1136,46 +1285,44 @@ const ProtectionSettings = () => {
               <div style={{ fontSize: '12px', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>Detection Criteria</div>
               <Toggle value={v.suspNoAvatar} onChange={set('suspNoAvatar')} label="No profile picture"
                 desc="Flag users who join with the default Discord avatar." />
-              <div style={{ marginTop: '8px' }}>
-                <Field label="Minimum Account Age (days)" hint="flag accounts newer than this">
+              <Toggle value={v.suspUsernameEnabled} onChange={set('suspUsernameEnabled')} label="Suspicious username keywords"
+                desc="Flag users whose username contains scam-related words." />
+              <Toggle value={v.suspBioEnabled} onChange={set('suspBioEnabled')} label="Suspicious bio keywords"
+                desc="Flag users whose bio contains scam-related words (reserved — Discord API limitation)." />
+              <div style={{ marginTop: '14px' }}>
+                <Field label="Suspicious Keywords" hint="comma-separated — used for username and bio checks">
+                  <Textarea value={v.suspKeywordsList} onChange={set('suspKeywordsList')} rows={2}
+                    placeholder="admin,mod,moderator,giveaway,airdrop,staff" />
+                </Field>
+              </div>
+              <div style={{ marginTop: '14px' }}>
+                <Field label="Minimum Account Age (days)" hint="flag accounts newer than this — set 0 to disable">
                   <Input type="number" value={v.suspAge} onChange={set('suspAge')} placeholder="7" style={{ maxWidth: '140px' }} />
-                </Field>
-              </div>
-              <div style={{ marginTop: '14px' }}>
-                <Field label="Suspicious Username Keywords" hint="comma-separated — flag if username contains any">
-                  <Input value={v.suspUsernameKeywords} onChange={set('suspUsernameKeywords')} placeholder="scam, hack, free crypto" />
-                </Field>
-              </div>
-              <div style={{ marginTop: '14px' }}>
-                <Field label="Suspicious Bio Keywords" hint="comma-separated — flag if bio contains any (leave blank to skip)">
-                  <Input value={v.suspBioKeywords} onChange={set('suspBioKeywords')} placeholder="dm me for profits, nft giveaway" />
                 </Field>
               </div>
             </div>
             <div style={{ marginTop: '14px' }}>
-              <ActionRow actionKey="suspAction" opts={ACTION_OPTS.filter(o => ['flag','kick','ban'].includes(o.value))} />
+              <ActionRow actionKey="suspAction" opts={SUSP_ACTION_OPTS} />
             </div>
-            <DmRow enabledKey="suspDm" msgKey="suspDmMsg"
-              placeholder="Your account has been flagged. A moderator will review it shortly." />
+            <FeatureDmSection enabledKey="suspDm" msgKey="dmSuspMsg"
+              placeholder="Your account was flagged due to suspicious characteristics." />
           </>)}
         </SettingsCard>
 
         {/* Anti-Raid */}
         <SettingsCard title="Anti-Raid">
           <Toggle value={v.antiRaidEnabled} onChange={set('antiRaidEnabled')} label="Enable Anti-Raid"
-            desc="If too many users join at once, pause all invites and ping admins." />
+            desc="If too many users join at once, take action and ping admins." />
           {v.antiRaidEnabled && (<>
             <FieldRow style={{ marginTop: '14px' }}>
-              <Field label="Join Threshold" hint="users joining to trigger lockdown">
+              <Field label="Join Threshold" hint="users joining to trigger action">
                 <Input type="number" value={v.antiRaidThreshold} onChange={set('antiRaidThreshold')} placeholder="10" />
               </Field>
               <Field label="Time Window (seconds)">
                 <Input type="number" value={v.antiRaidWindow} onChange={set('antiRaidWindow')} placeholder="60" />
               </Field>
             </FieldRow>
-            <Field label="Ping Role on Raid" hint="name or ID — leave blank to disable">
-              <Input value={v.antiRaidPingRole} onChange={set('antiRaidPingRole')} placeholder="Admins or 123456789" style={{ maxWidth: '280px' }} />
-            </Field>
+            <ActionRow actionKey="antiRaidAction" opts={RAID_ACTION_OPTS} />
           </>)}
         </SettingsCard>
       </>)}

@@ -44,6 +44,8 @@ export const saveConfig = (id, updates) =>
 export const fetchProtectionStats = id => apiFetch(`/api/servers/${id}/protection/stats`);
 export const fetchProtectionLog = (id, limit = 50) =>
   apiFetch(`/api/servers/${id}/protection/log?limit=${limit}`);
+export const sendProtectionMessage = id =>
+  apiFetch(`/api/servers/${id}/protection/send-message`, { method: 'POST' });
 
 // ── Admin ──────────────────────────────────────────────────────────────────
 
