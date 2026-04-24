@@ -130,12 +130,19 @@ const TimeToggle = ({ value, onChange }) => (
   </div>
 );
 
-const ChartCard = ({ title, timeframe, onTimeframe, height = 220, children, noData, dataStarted }) => (
+const TrackingBanner = ({ text }) => (
+  <div style={{ fontSize: '11px', color: C.muted, marginBottom: '10px', opacity: 0.8 }}>
+    📅 {text}
+  </div>
+);
+
+const ChartCard = ({ title, timeframe, onTimeframe, height = 220, children, noData, dataStarted, banner }) => (
   <Card>
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
       <CardTitle style={{ marginBottom: 0 }}>{title}</CardTitle>
       {onTimeframe && <TimeToggle value={timeframe} onChange={onTimeframe} />}
     </div>
+    {banner && <TrackingBanner text={banner} />}
     {noData
       ? <NoDataYet dataStarted={dataStarted} height={height} />
       : children
@@ -150,6 +157,7 @@ const ChartCard = ({ title, timeframe, onTimeframe, height = 220, children, noDa
 const Analytics = () => {
   const { server } = useContext(DashboardContext);
   const [memberTf, setMemberTf] = useState('week');
+  const [jlTf,     setJlTf]     = useState('week');
   const [msgTf,    setMsgTf]    = useState('week');
   const [voiceTf,  setVoiceTf]  = useState('week');
   const [ptsTf,    setPtsTf]    = useState('week');
@@ -166,22 +174,27 @@ const Analytics = () => {
 
   const d = apiData;
   const serverName  = server?.name ?? 'No server selected';
-  const dataStarted = d?.data_started ?? null;
-  const sc          = d?.stat_cards ?? null;
-  const hasData     = d?.has_any_data ?? null;
+  const dataStarted       = d?.data_started ?? null;
+  const sc                = d?.stat_cards ?? null;
+  const hasData           = d?.has_any_data ?? null;
+  const leavesStarted     = d?.leaves_tracking_started ?? null;
+  const firstMsgDate      = d?.first_message_tracked_date ?? null;
 
   // snapVal: null = still loading (show LivePending); undefined = no data yet; value = show it
   const snapVal = (v) => d === null ? null : (!hasData ? undefined : (v ?? 0));
 
   // Pull timeframe-specific data; null = loading/no API, [] = API returned empty
   const memberRaw  = d?.member_growth?.[memberTf] ?? null;
+  const jlRaw      = d?.joins_leaves?.[jlTf]     ?? null;
   const msgRaw     = d?.messages?.[msgTf]         ?? null;
   const voiceData  = d?.voice?.[voiceTf]          ?? null;
   const pointsData = d?.points?.[ptsTf]           ?? null;
 
   const memberNoData = Array.isArray(memberRaw) && memberRaw.length === 0;
+  const jlNoData     = Array.isArray(jlRaw)     && jlRaw.length === 0;
   const msgNoData    = Array.isArray(msgRaw)    && msgRaw.length === 0;
   const memberData   = memberNoData ? null : memberRaw;
+  const jlData       = jlNoData     ? null : jlRaw;
   const msgData      = msgNoData    ? null : msgRaw;
 
   const channelData = d?.channels        ?? null;
@@ -224,11 +237,30 @@ const Analytics = () => {
             <XAxis dataKey="label" tick={axisStyle} />
             <YAxis tick={axisStyle} />
             <Tooltip content={<CustomTooltip />} />
-            <Area type="monotone" dataKey={memberTf === 'year' ? 'members' : 'joins'} name={memberTf === 'year' ? 'Members' : 'Joins'} stroke={C.gold} fill="url(#goldGrad)" strokeWidth={2} dot={false} />
-            {(memberTf === 'week' || memberTf === 'month') &&
-              <Area type="monotone" dataKey="leaves" name="Leaves" stroke={C.red} fill="transparent" strokeWidth={2} strokeDasharray="4 2" dot={false} />
-            }
+            <Area type="monotone" dataKey="value" name="Members" stroke={C.gold} fill="url(#goldGrad)" strokeWidth={2} dot={false} />
           </AreaChart>
+        ) : null}
+      </ChartCard>
+
+      <ChartCard
+        title="Joins / Leaves"
+        timeframe={jlTf}
+        onTimeframe={setJlTf}
+        height={230}
+        noData={jlNoData}
+        dataStarted={dataStarted}
+        banner={leavesStarted ? `Leaves tracked from ${leavesStarted} — earlier data shows joins only` : null}
+      >
+        {jlData ? (
+          <BarChart data={jlData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
+            <XAxis dataKey="label" tick={axisStyle} />
+            <YAxis tick={axisStyle} />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend wrapperStyle={{ fontSize: '11px', color: C.muted }} />
+            <Bar dataKey="joins"  name="Joins"  fill={C.green} radius={[3, 3, 0, 0]} />
+            <Bar dataKey="leaves" name="Leaves" fill={C.red}   radius={[3, 3, 0, 0]} />
+          </BarChart>
         ) : null}
       </ChartCard>
 
@@ -244,7 +276,15 @@ const Analytics = () => {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-        <ChartCard title="Messages Over Time" timeframe={msgTf} onTimeframe={setMsgTf} height={210} noData={msgNoData} dataStarted={dataStarted}>
+        <ChartCard
+          title="Messages Over Time"
+          timeframe={msgTf}
+          onTimeframe={setMsgTf}
+          height={210}
+          noData={msgNoData}
+          dataStarted={dataStarted}
+          banner={firstMsgDate ? `Message tracking started ${firstMsgDate}` : null}
+        >
           {msgData ? (
             <AreaChart data={msgData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
               <defs>
@@ -257,7 +297,7 @@ const Analytics = () => {
               <XAxis dataKey="label" tick={axisStyle} />
               <YAxis tick={axisStyle} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
               <Tooltip content={<CustomTooltip />} />
-              <Area type="monotone" dataKey="messages" name="Messages" stroke={C.blue} fill="url(#blueGrad)" strokeWidth={2} dot={false} />
+              <Area type="monotone" dataKey="value" name="Messages" stroke={C.blue} fill="url(#blueGrad)" strokeWidth={2} dot={false} />
             </AreaChart>
           ) : null}
         </ChartCard>
