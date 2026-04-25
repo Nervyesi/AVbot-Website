@@ -5,7 +5,7 @@ import { DashboardContext } from '../DashboardContext';
 import {
   loginWithDiscord, fetchMe, fetchServers, fetchServerStats,
   fetchServerAnalytics, fetchConfig, saveConfig,
-  sendProtectionMessage, fetchFlaggedUsers, fetchAuditLog,
+  sendProtectionMessage, sendTicketsPanel, fetchFlaggedUsers, fetchAuditLog,
   clearToken, getToken, setToken,
 } from '../api';
 import { DISCORD_INVITE_URL } from '../constants';
@@ -178,6 +178,48 @@ const RAID_CONFIG_MAP = {
   likeWeight:    'engage_weight_like',
   commentWeight: 'engage_weight_comment',
   retweetWeight: 'engage_weight_retweet',
+};
+
+const TICKETS_CONFIG_MAP = {
+  enabled:               'tickets_enabled',
+  panelChannel:          'tickets_panel_channel',
+  panelTitle:            'tickets_panel_title',
+  panelDesc:             'tickets_panel_description',
+  panelButtonLabel:      'tickets_panel_button_label',
+  category:              'tickets_category',
+  staffRoles:            'tickets_staff_roles',
+  pingRole:              'tickets_ping_role',
+  welcomeMessage:        'tickets_welcome_message',
+  archiveChannel:        'tickets_archive_channel',
+  autoCloseEnabled:      'tickets_auto_close_enabled',
+  autoCloseWarningHours: 'tickets_auto_close_warning_hours',
+  autoCloseFinalHours:   'tickets_auto_close_final_hours',
+  autoCloseWarningMsg:   'tickets_auto_close_warning_message',
+  dmOnOpenEnabled:       'tickets_dm_on_open_enabled',
+  dmOnOpenMessage:       'tickets_dm_on_open_message',
+  dmOnCloseEnabled:      'tickets_dm_on_close_enabled',
+  dmOnCloseMessage:      'tickets_dm_on_close_message',
+};
+
+const TICKETS_DEFAULTS = {
+  enabled:               false,
+  panelChannel:          '',
+  panelTitle:            'Support Tickets',
+  panelDesc:             'Need help? Click the button below to open a support ticket. A staff member will assist you shortly.',
+  panelButtonLabel:      'Open Ticket',
+  category:              '',
+  staffRoles:            '',
+  pingRole:              '',
+  welcomeMessage:        'Hi {user}, thanks for opening a ticket. A staff member will be with you shortly. Please describe your issue in detail.',
+  archiveChannel:        '',
+  autoCloseEnabled:      true,
+  autoCloseWarningHours: '48',
+  autoCloseFinalHours:   '72',
+  autoCloseWarningMsg:   'This ticket has been inactive for 48 hours. It will be auto-closed in 24 hours unless someone responds.',
+  dmOnOpenEnabled:       true,
+  dmOnOpenMessage:       "Your support ticket has been opened in {server}. We'll be in touch soon.",
+  dmOnCloseEnabled:      true,
+  dmOnCloseMessage:      'Your support ticket in {server} has been closed. If you need further help, feel free to open a new one.',
 };
 
 /**
@@ -797,94 +839,155 @@ const FormsSettings = () => {
 // ── Tickets ───────────────────────────────────────────────────────────────────
 
 const TicketsSettings = () => {
-  const [v, setV] = useState({
-    enabled: true,
-    channel: '#support',
-    category: 'Support Tickets',
-    mainMessage: 'Need help? Click the button below to open a support ticket.\n\nOur team will respond as soon as possible.',
-    welcomeMessage: 'Thanks for opening a ticket! A support team member will be with you shortly.\n\nPlease describe your issue in detail.',
-    openRoles: 'everyone',
-    seeRoles: 'Support Team',
-    respondRoles: 'Support Team',
-    pingRole: 'Support Team',
-    dmEnabled: false,
-    dmOnOpen: true,
-    dmOpenMsg: "Your support ticket has been opened. Our team will respond shortly.",
-    dmOnClose: true,
-    dmCloseMsg: "Your support ticket has been closed. Thanks for reaching out!",
-  });
+  const { server } = useContext(DashboardContext);
+  const [v, setV] = useState({ ...TICKETS_DEFAULTS });
   const set = k => val => setV(p => ({ ...p, [k]: val }));
-  const [saved, save] = useSave();
+  const { saveState, save } = useSaveConfig(server?.id, TICKETS_CONFIG_MAP, TICKETS_DEFAULTS, setV);
+
+  const [sendState, setSendState] = useState('idle');
+  const [sendMsg,   setSendMsg]   = useState('');
+
+  const handleSendPanel = async () => {
+    if (!server?.id || sendState === 'sending') return;
+    setSendState('sending');
+    try {
+      const res = await sendTicketsPanel(server.id);
+      setSendMsg(`✓ Sent to #${res.channel_name}`);
+      setSendState('sent');
+    } catch (e) {
+      setSendMsg(e.message || 'Failed to send');
+      setSendState('error');
+    }
+    setTimeout(() => { setSendState('idle'); setSendMsg(''); }, 4000);
+  };
+
+  const dmMaster = v.dmOnOpenEnabled || v.dmOnCloseEnabled;
+  const toggleDmMaster = (val) => {
+    if (!val) {
+      set('dmOnOpenEnabled')(false);
+      set('dmOnCloseEnabled')(false);
+    } else {
+      set('dmOnOpenEnabled')(true);
+    }
+  };
 
   return (
     <div>
-      <PageHeader icon="🎫" title="Tickets" badge="MODULE" desc="Standard support ticket system — members open threads with one click." />
+      <PageHeader icon="🎫" title="Tickets" badge="MODULE" desc="Config-driven support ticket system — members open private channels with one click." />
+
       <SettingsCard title="Module">
         <Toggle value={v.enabled} onChange={set('enabled')} label="Enable Tickets" />
       </SettingsCard>
 
       {v.enabled && (<>
-        <SettingsCard title="Channels">
-          <FieldRow>
-            <Field label="Button Channel" hint="name or ID — where the Open Ticket button is posted">
-              <Input value={v.channel} onChange={set('channel')} placeholder="#support or 123456789" />
+        {/* Panel Embed */}
+        <SettingsCard title="Panel Embed">
+          <Field label="Panel Channel" hint="name or ID — where the Open Ticket button is posted">
+            <Input value={v.panelChannel} onChange={set('panelChannel')} placeholder="#support or 123456789" />
+          </Field>
+          <FieldRow style={{ marginTop: '14px' }}>
+            <Field label="Embed Title">
+              <Input value={v.panelTitle} onChange={set('panelTitle')} placeholder="Support Tickets" />
             </Field>
-            <Field label="Ticket Category" hint="Discord category for ticket threads">
+            <Field label="Button Label">
+              <Input value={v.panelButtonLabel} onChange={set('panelButtonLabel')} placeholder="Open Ticket" />
+            </Field>
+          </FieldRow>
+          <Field label="Embed Description">
+            <Textarea value={v.panelDesc} onChange={set('panelDesc')} rows={2}
+              placeholder="Need help? Click below to open a ticket." />
+          </Field>
+          <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+            <button
+              onClick={handleSendPanel}
+              disabled={sendState === 'sending'}
+              style={{
+                background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.3)',
+                color: '#7289da', padding: '10px 22px', borderRadius: '8px',
+                cursor: sendState === 'sending' ? 'not-allowed' : 'pointer',
+                fontFamily: 'Sora, sans-serif', fontSize: '14px', fontWeight: 600,
+                opacity: sendState === 'sending' ? 0.6 : 1, transition: 'background 0.2s',
+              }}
+              onMouseOver={e => { if (sendState !== 'sending') e.currentTarget.style.background = 'rgba(88,101,242,0.25)'; }}
+              onMouseOut={e => e.currentTarget.style.background = 'rgba(88,101,242,0.12)'}>
+              {sendState === 'sending' ? '📨 Sending…' : '📨 Send Panel'}
+            </button>
+            {sendMsg && (
+              <span style={{ fontSize: '13px', color: sendState === 'error' ? C.red : C.green }}>{sendMsg}</span>
+            )}
+          </div>
+        </SettingsCard>
+
+        {/* Ticket Channels */}
+        <SettingsCard title="Ticket Channels">
+          <FieldRow>
+            <Field label="Ticket Category" hint="Discord category where ticket channels are created">
               <Input value={v.category} onChange={set('category')} placeholder="Support Tickets" />
             </Field>
-          </FieldRow>
-        </SettingsCard>
-
-        <SettingsCard title="Main Message">
-          <Field label="Embed Message" hint="the embed users see with the Open Ticket button">
-            <Textarea value={v.mainMessage} onChange={set('mainMessage')} rows={3} placeholder="Need help? Open a ticket below." />
-          </Field>
-        </SettingsCard>
-
-        <SettingsCard title="Welcome Message">
-          <Field label="Message sent inside each new ticket">
-            <Textarea value={v.welcomeMessage} onChange={set('welcomeMessage')} rows={3}
-              placeholder="Thanks for opening a ticket! A support member will be with you shortly." />
-          </Field>
-        </SettingsCard>
-
-        <SettingsCard title="Roles & Permissions">
-          <FieldRow>
-            <Field label="Who Can Open Tickets" hint="role name, ID, or 'everyone'">
-              <Input value={v.openRoles} onChange={set('openRoles')} placeholder="everyone" />
-            </Field>
-            <Field label="Who Can See Tickets" hint="multiple — comma separated">
-              <Input value={v.seeRoles} onChange={set('seeRoles')} placeholder="Support Team, Admins" />
+            <Field label="Archive Channel" hint="optional — transcript posted here on close">
+              <Input value={v.archiveChannel} onChange={set('archiveChannel')} placeholder="#ticket-archive or 123456789" />
             </Field>
           </FieldRow>
           <FieldRow>
-            <Field label="Who Can Respond" hint="multiple — comma separated">
-              <Input value={v.respondRoles} onChange={set('respondRoles')} placeholder="Support Team, Admins" />
+            <Field label="Staff Roles" hint="comma-separated names or IDs — can view and close tickets">
+              <Input value={v.staffRoles} onChange={set('staffRoles')} placeholder="Support Team, Admins" />
             </Field>
-            <Field label="Ping Role on New Ticket" hint="leave blank to disable">
+            <Field label="Ping Role on New Ticket" hint="optional — leave blank to disable">
               <Input value={v.pingRole} onChange={set('pingRole')} placeholder="Support Team" />
             </Field>
           </FieldRow>
         </SettingsCard>
 
+        {/* Welcome Message */}
+        <SettingsCard title="Welcome Message">
+          <Field label="Sent inside each new ticket channel" hint="use {user} for the opener's mention">
+            <Textarea value={v.welcomeMessage} onChange={set('welcomeMessage')} rows={3}
+              placeholder="Hi {user}, thanks for opening a ticket. A staff member will be with you shortly." />
+          </Field>
+        </SettingsCard>
+
+        {/* Auto-Close */}
+        <SettingsCard title="Auto-Close">
+          <Toggle value={v.autoCloseEnabled} onChange={set('autoCloseEnabled')} label="Enable Auto-Close"
+            desc="Automatically close tickets after a period of inactivity." />
+          {v.autoCloseEnabled && (<>
+            <FieldRow style={{ marginTop: '14px' }}>
+              <Field label="Warning after (hours)" hint="inactivity hours before warning is sent">
+                <Input type="number" value={v.autoCloseWarningHours} onChange={set('autoCloseWarningHours')} placeholder="48" />
+              </Field>
+              <Field label="Close after (hours)" hint="inactivity hours before ticket is auto-closed">
+                <Input type="number" value={v.autoCloseFinalHours} onChange={set('autoCloseFinalHours')} placeholder="72" />
+              </Field>
+            </FieldRow>
+            <Field label="Warning message">
+              <Textarea value={v.autoCloseWarningMsg} onChange={set('autoCloseWarningMsg')} rows={2}
+                placeholder="This ticket has been inactive for 48 hours..." />
+            </Field>
+          </>)}
+        </SettingsCard>
+
+        {/* DM Section */}
         <SettingsCard title="Direct Messages">
-          <Toggle value={v.dmEnabled} onChange={set('dmEnabled')} label="Send DM?"
-            desc="Send direct messages to members for ticket events." />
-          {v.dmEnabled && (<>
-            <SubToggle value={v.dmOnOpen} onChange={set('dmOnOpen')} label="DM on ticket open">
-              <Textarea value={v.dmOpenMsg} onChange={set('dmOpenMsg')} rows={2}
-                placeholder="Your ticket has been opened. We'll respond soon." />
+          <Toggle
+            value={dmMaster}
+            onChange={toggleDmMaster}
+            label="Send DMs to ticket opener?"
+            desc="Send direct messages when tickets are opened or closed."
+          />
+          {dmMaster && (<>
+            <SubToggle value={v.dmOnOpenEnabled} onChange={set('dmOnOpenEnabled')} label="DM on ticket open">
+              <Textarea value={v.dmOnOpenMessage} onChange={set('dmOnOpenMessage')} rows={2}
+                placeholder="Your support ticket has been opened in {server}. We'll be in touch soon." />
             </SubToggle>
-            <SubToggle value={v.dmOnClose} onChange={set('dmOnClose')} label="DM on ticket close">
-              <Textarea value={v.dmCloseMsg} onChange={set('dmCloseMsg')} rows={2}
-                placeholder="Your ticket has been closed. Thanks for reaching out!" />
+            <SubToggle value={v.dmOnCloseEnabled} onChange={set('dmOnCloseEnabled')} label="DM on ticket close">
+              <Textarea value={v.dmOnCloseMessage} onChange={set('dmOnCloseMessage')} rows={2}
+                placeholder="Your support ticket in {server} has been closed." />
             </SubToggle>
           </>)}
         </SettingsCard>
       </>)}
 
-      {/* TODO: wire in Phase 4-5 when config keys are added for tickets */}
-      <ActionBar saved={saved} onSave={save} onSend={() => {}} sendLabel="Send Message" />
+      <ActionBar saveState={saveState} onSave={() => save(v)} />
     </div>
   );
 };

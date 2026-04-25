@@ -61,6 +61,14 @@ export const fetchEngage = id => apiFetch(`/api/servers/${id}/engage`);
 export const fetchLeaderboard = (id, limit = 25) =>
   apiFetch(`/api/servers/${id}/leaderboard?limit=${limit}`);
 
+// ── Tickets ────────────────────────────────────────────────────────────────
+
+export const sendTicketsPanel = id =>
+  apiFetch(`/api/servers/${id}/tickets/send-panel`, { method: 'POST' });
+export const fetchTicketsList = (id, status = 'open', limit = 50) =>
+  apiFetch(`/api/servers/${id}/tickets/list?status=${status}&limit=${limit}`);
+export const fetchTicketsStats = id => apiFetch(`/api/servers/${id}/tickets/stats`);
+
 // ── Health ─────────────────────────────────────────────────────────────────
 
 export const fetchHealth = () =>
