@@ -335,21 +335,6 @@ const AdvancedSection = ({ children }) => {
   );
 };
 
-// Action dropdown options
-const ACTION_OPTS = [
-  { value: 'flag',  label: 'Flag only — log to mod-log' },
-  { value: 'warn',  label: 'Warn — send a warning message' },
-  { value: 'mute',  label: 'Mute — apply mute role' },
-  { value: 'kick',  label: 'Kick — remove from server' },
-  { value: 'ban',   label: 'Ban — permanent removal' },
-];
-const DELETE_ACTION_OPTS = [
-  { value: 'none',  label: 'Delete only — no further action' },
-  { value: 'warn',  label: 'Delete + Warn' },
-  { value: 'mute',  label: 'Delete + Mute' },
-  { value: 'kick',  label: 'Delete + Kick' },
-  { value: 'ban',   label: 'Delete + Ban' },
-];
 
 // ── Live-data placeholder ─────────────────────────────────────────────────────
 
