@@ -69,6 +69,53 @@ export const fetchTicketsList = (id, status = 'open', limit = 50) =>
   apiFetch(`/api/servers/${id}/tickets/list?status=${status}&limit=${limit}`);
 export const fetchTicketsStats = id => apiFetch(`/api/servers/${id}/tickets/stats`);
 
+// ── RoleSelect ─────────────────────────────────────────────────────────────
+
+export const listRolePanels = (serverId) =>
+  apiFetch(`/api/servers/${serverId}/roleselect/panels`);
+
+export const createRolePanel = (serverId, body) =>
+  apiFetch(`/api/servers/${serverId}/roleselect/panels`, {
+    method: 'POST', body: JSON.stringify(body),
+  });
+
+export const updateRolePanel = (serverId, panelId, body) =>
+  apiFetch(`/api/servers/${serverId}/roleselect/panels/${panelId}`, {
+    method: 'PATCH', body: JSON.stringify(body),
+  });
+
+export const deleteRolePanel = (serverId, panelId) =>
+  apiFetch(`/api/servers/${serverId}/roleselect/panels/${panelId}`, {
+    method: 'DELETE',
+  });
+
+export const createRoleButton = (serverId, panelId, body) =>
+  apiFetch(`/api/servers/${serverId}/roleselect/panels/${panelId}/buttons`, {
+    method: 'POST', body: JSON.stringify(body),
+  });
+
+export const updateRoleButton = (serverId, panelId, buttonId, body) =>
+  apiFetch(
+    `/api/servers/${serverId}/roleselect/panels/${panelId}/buttons/${buttonId}`,
+    { method: 'PATCH', body: JSON.stringify(body) }
+  );
+
+export const deleteRoleButton = (serverId, panelId, buttonId) =>
+  apiFetch(
+    `/api/servers/${serverId}/roleselect/panels/${panelId}/buttons/${buttonId}`,
+    { method: 'DELETE' }
+  );
+
+export const sendRolePanel = (serverId, panelId, channelId) =>
+  apiFetch(`/api/servers/${serverId}/roleselect/panels/${panelId}/send`, {
+    method: 'POST', body: JSON.stringify({ channel_id: parseInt(channelId, 10) }),
+  });
+
+export const refreshRolePanel = (serverId, panelId) =>
+  apiFetch(`/api/servers/${serverId}/roleselect/panels/${panelId}/refresh`, {
+    method: 'POST',
+  });
+
 // ── Health ─────────────────────────────────────────────────────────────────
 
 export const fetchHealth = () =>

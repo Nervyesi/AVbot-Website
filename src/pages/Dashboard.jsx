@@ -7,6 +7,9 @@ import {
   fetchServerAnalytics, fetchConfig, saveConfig,
   sendProtectionMessage, sendTicketsPanel, fetchFlaggedUsers, fetchAuditLog,
   clearToken, getToken, setToken,
+  listRolePanels, createRolePanel, updateRolePanel, deleteRolePanel,
+  createRoleButton, updateRoleButton, deleteRoleButton,
+  sendRolePanel, refreshRolePanel,
 } from '../api';
 import { DISCORD_INVITE_URL } from '../constants';
 
@@ -573,137 +576,518 @@ const VerificationSettings = () => {
   );
 };
 
-// ── Role Selection ────────────────────────────────────────────────────────────
+// ── Role Select ───────────────────────────────────────────────────────────────
 
-const mkEmbed = () => ({
-  id: Date.now(),
-  channel: '#roles',
-  mainMessage: 'Select your roles below to unlock channels that match your interests.',
-  giveOnly: false,
-  confirmEnabled: false,
-  confirmGetMsg: '✅ You\'ve been given the **{role}** role!',
-  confirmRemoveMsg: '❌ The **{role}** role has been removed.',
-  dmEnabled: false,
-  dmOnGet: true,
-  dmGetMsg: 'You\'ve been given the **{role}** role in **{server}**.',
-  dmOnRemove: true,
-  dmRemoveMsg: 'The **{role}** role has been removed in **{server}**.',
-  roles: [
-    { id: 1, emoji: '🎨', name: 'Creator',   label: 'Creator' },
-    { id: 2, emoji: '👥', name: 'Community', label: 'Community' },
-  ],
-});
-
-const EmbedEditor = ({ embed, onChange, onSend, onDelete, index }) => {
-  const set = k => val => onChange({ ...embed, [k]: val });
-  const updRole = (id, field, val) => onChange({ ...embed, roles: embed.roles.map(r => r.id === id ? { ...r, [field]: val } : r) });
-  const delRole = id => onChange({ ...embed, roles: embed.roles.filter(r => r.id !== id) });
-  const addRole = () => onChange({ ...embed, roles: [...embed.roles, { id: Date.now(), emoji: '✨', name: 'New Role', label: 'New Role' }] });
-
-  const miniInput = (val, cb, placeholder) => (
-    <input value={val} onChange={e => cb(e.target.value)} placeholder={placeholder}
-      style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '8px 10px', color: '#fff', fontSize: '13px', fontFamily: 'Sora, sans-serif', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
-  );
-
-  return (
-    <Card style={{ marginBottom: '16px', border: '1px solid rgba(200,168,78,0.2)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-        <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Embed #{index + 1}</div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={onSend} style={{ background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.3)', color: '#7289da', padding: '6px 14px', borderRadius: '6px', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>📨 Send Message</button>
-          <button onClick={onDelete} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '14px', padding: '4px 8px' }}>× Remove</button>
-        </div>
-      </div>
-
-      <FieldRow>
-        <Field label="Channel" hint="name or ID"><Input value={embed.channel} onChange={set('channel')} placeholder="#roles or 123456789" /></Field>
-        <Field label="Mode">
-          <Select value={embed.giveOnly ? 'give' : 'toggle'} onChange={v => set('giveOnly')(v === 'give')} options={[
-            { value: 'toggle', label: 'Give & Remove (toggle)' },
-            { value: 'give',   label: 'Give Only' },
-          ]} />
-        </Field>
-      </FieldRow>
-
-      <Field label="Embed Message" hint="shown above the role buttons">
-        <Textarea value={embed.mainMessage} onChange={set('mainMessage')} rows={2} placeholder="Select your roles below." />
-      </Field>
-
-      <div style={{ marginTop: '18px', marginBottom: '6px' }}>
-        <Label>Roles</Label>
-        <div style={{ display: 'grid', gridTemplateColumns: '40px 1fr 1fr auto', gap: '8px', marginBottom: '6px' }}>
-          {['', 'Name / ID', 'Button Label', ''].map((h, i) => <div key={i} style={{ fontSize: '10px', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</div>)}
-        </div>
-        {embed.roles.map(r => (
-          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '40px 1fr 1fr auto', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-            {miniInput(r.emoji, v => updRole(r.id, 'emoji', v), '🎨')}
-            {miniInput(r.name, v => updRole(r.id, 'name', v), 'Role name or ID')}
-            {miniInput(r.label, v => updRole(r.id, 'label', v), 'Button label')}
-            <button onClick={() => delRole(r.id)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px' }}>×</button>
-          </div>
-        ))}
-        <button onClick={addRole} style={{ marginTop: '4px', background: 'rgba(200,168,78,0.08)', border: '1px dashed rgba(200,168,78,0.3)', color: C.gold, padding: '7px 14px', borderRadius: '7px', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>+ Add Role</button>
-      </div>
-
-      <div style={{ marginTop: '18px', borderTop: `1px solid ${C.border}`, paddingTop: '16px' }}>
-        <Toggle value={embed.confirmEnabled} onChange={set('confirmEnabled')} label="Show confirmation before action?"
-          desc="Prompt the user before giving or removing the role." />
-        {embed.confirmEnabled && (<>
-          <div style={{ marginTop: '8px' }}>
-            <Label hint="use {role}">When giving a role</Label>
-            <Textarea value={embed.confirmGetMsg} onChange={set('confirmGetMsg')} rows={2} placeholder="You'll receive the {role} role. Confirm?" />
-          </div>
-          <div style={{ marginTop: '10px' }}>
-            <Label hint="use {role}">When removing a role</Label>
-            <Textarea value={embed.confirmRemoveMsg} onChange={set('confirmRemoveMsg')} rows={2} placeholder="The {role} role will be removed. Confirm?" />
-          </div>
-        </>)}
-      </div>
-
-      <div style={{ marginTop: '14px', borderTop: `1px solid ${C.border}`, paddingTop: '16px' }}>
-        <Toggle value={embed.dmEnabled} onChange={set('dmEnabled')} label="Send DM?"
-          desc="Send a direct message when a role is given or removed." />
-        {embed.dmEnabled && (<>
-          <SubToggle value={embed.dmOnGet} onChange={v => set('dmOnGet')(v)} label="DM on role get">
-            <Textarea value={embed.dmGetMsg} onChange={set('dmGetMsg')} rows={2} placeholder="You've been given the {role} role in {server}." />
-          </SubToggle>
-          <SubToggle value={embed.dmOnRemove} onChange={v => set('dmOnRemove')(v)} label="DM on role remove">
-            <Textarea value={embed.dmRemoveMsg} onChange={set('dmRemoveMsg')} rows={2} placeholder="The {role} role has been removed in {server}." />
-          </SubToggle>
-        </>)}
-      </div>
-    </Card>
-  );
+const BTN_FORM_DEFAULTS = {
+  label: '',
+  emoji: '',
+  role: '',
+  mode: 'toggle',
+  confirm_give_enabled: false,
+  confirm_give_message: 'Are you sure you want this role?',
+  confirm_take_enabled: false,
+  confirm_take_message: 'Are you sure you want to remove this role?',
+  dm_give_enabled: false,
+  dm_give_message: 'You received the {role} role in {server}.',
+  dm_take_enabled: false,
+  dm_take_message: 'You no longer have the {role} role in {server}.',
 };
 
-const RoleSettings = () => {
-  const [enabled, setEnabled] = useState(true);
-  const [embeds, setEmbeds]   = useState([mkEmbed()]);
-  const [saved, save]         = useSave();
+const MODE_BADGE_STYLES = {
+  give:   { label: 'Give',   color: '#3ba55c' },
+  take:   { label: 'Take',   color: '#ed4245' },
+  toggle: { label: 'Toggle', color: '#C8A84E' },
+};
 
-  const upd = (id, data) => setEmbeds(prev => prev.map(e => e.id === id ? data : e));
-  const del = id => setEmbeds(prev => prev.filter(e => e.id !== id));
+const RoleSelectSettings = () => {
+  const { server } = useContext(DashboardContext);
+  const serverId = server?.id;
+
+  const [panels, setPanels]               = useState([]);
+  const [loading, setLoading]             = useState(true);
+  const [error, setError]                 = useState(null);
+  const [activePanelId, setActivePanelId] = useState(null);
+
+  const [panelForm, setPanelForm]     = useState({ title: '', description: '', style: 'buttons', channel: '' });
+  const setPF                         = k => v => setPanelForm(p => ({ ...p, [k]: v }));
+  const [panelSaving, setPanelSaving] = useState(false);
+  const [panelSaveMsg, setPanelSaveMsg] = useState('');
+
+  const [sendState, setSendState] = useState('idle');
+  const [sendMsg,   setSendMsg]   = useState('');
+
+  const [buttonModal, setButtonModal] = useState(null);
+  const [btnForm, setBtnForm]         = useState({ ...BTN_FORM_DEFAULTS });
+  const setBF                         = k => v => setBtnForm(p => ({ ...p, [k]: v }));
+  const [btnSaving, setBtnSaving]     = useState(false);
+  const [btnSaveMsg, setBtnSaveMsg]   = useState('');
+
+  const [confirmPanelId, setConfirmPanelId]   = useState(null);
+  const [confirmButtonId, setConfirmButtonId] = useState(null);
+
+  const doFetch = async () => {
+    if (!serverId) return;
+    try {
+      const { panels: p } = await listRolePanels(serverId);
+      setPanels(p);
+      setError(null);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  useEffect(() => {
+    if (!serverId) { setLoading(false); return; }
+    setLoading(true);
+    setActivePanelId(null);
+    setPanels([]);
+    listRolePanels(serverId)
+      .then(({ panels: p }) => { setPanels(p); setError(null); })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [serverId]); // eslint-disable-line
+
+  useEffect(() => {
+    const p = panels.find(x => x.panel_id === activePanelId);
+    if (!p) return;
+    setPanelForm({
+      title:       p.title       || '',
+      description: p.description || '',
+      style:       p.style       || 'buttons',
+      channel:     p.channel_id  ? String(p.channel_id) : '',
+    });
+    setSendMsg('');
+    setSendState('idle');
+    setPanelSaveMsg('');
+  }, [activePanelId]); // eslint-disable-line
+
+  const activePanel = panels.find(p => p.panel_id === activePanelId) || null;
+
+  const handleCreatePanel = async () => {
+    if (!serverId) return;
+    try {
+      const created = await createRolePanel(serverId, { title: '🎯 Role Selection', description: '', style: 'buttons' });
+      await doFetch();
+      setActivePanelId(created.panel_id);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const handleSavePanel = async () => {
+    if (!serverId || !activePanelId || panelSaving) return;
+    setPanelSaving(true);
+    setPanelSaveMsg('');
+    try {
+      const updates = { title: panelForm.title, description: panelForm.description, style: panelForm.style };
+      const chId = parseInt(panelForm.channel, 10);
+      if (panelForm.channel && !isNaN(chId)) updates.channel_id = chId;
+      await updateRolePanel(serverId, activePanelId, updates);
+      setPanelSaveMsg('✓ Saved');
+      await doFetch();
+    } catch (e) {
+      setPanelSaveMsg('✗ ' + e.message);
+    } finally {
+      setPanelSaving(false);
+      setTimeout(() => setPanelSaveMsg(''), 3000);
+    }
+  };
+
+  const handleDeletePanel = async (panelId) => {
+    if (!serverId) return;
+    try {
+      await deleteRolePanel(serverId, panelId);
+      setConfirmPanelId(null);
+      if (activePanelId === panelId) setActivePanelId(null);
+      await doFetch();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const handleSend = async () => {
+    if (!serverId || !activePanelId || sendState === 'sending') return;
+    const chId = parseInt(panelForm.channel, 10);
+    if (!panelForm.channel || isNaN(chId)) {
+      setSendMsg('Please enter a valid channel ID in the Channel field above');
+      setSendState('error');
+      setTimeout(() => { setSendMsg(''); setSendState('idle'); }, 4000);
+      return;
+    }
+    setSendState('sending');
+    try {
+      const res = await sendRolePanel(serverId, activePanelId, panelForm.channel);
+      setSendMsg(`✓ Sent (message ${res.message_id})`);
+      setSendState('sent');
+      await doFetch();
+    } catch (e) {
+      setSendMsg('✗ ' + e.message);
+      setSendState('error');
+    }
+    setTimeout(() => { setSendMsg(''); setSendState('idle'); }, 5000);
+  };
+
+  const handleRefresh = async () => {
+    if (!serverId || !activePanelId || sendState === 'sending') return;
+    setSendState('sending');
+    try {
+      await refreshRolePanel(serverId, activePanelId);
+      setSendMsg('✓ Embed refreshed in Discord');
+      setSendState('sent');
+    } catch (e) {
+      setSendMsg('✗ ' + e.message);
+      setSendState('error');
+    }
+    setTimeout(() => { setSendMsg(''); setSendState('idle'); }, 4000);
+  };
+
+  const openNewButton = () => {
+    setBtnForm({ ...BTN_FORM_DEFAULTS });
+    setBtnSaveMsg('');
+    setButtonModal({ mode: 'new' });
+  };
+
+  const openEditButton = (btn) => {
+    setBtnForm({
+      label:                btn.label                || '',
+      emoji:                btn.emoji                || '',
+      role:                 btn.role                 || '',
+      mode:                 btn.mode                 || 'toggle',
+      confirm_give_enabled: btn.confirm_give_enabled === 1,
+      confirm_give_message: btn.confirm_give_message || BTN_FORM_DEFAULTS.confirm_give_message,
+      confirm_take_enabled: btn.confirm_take_enabled === 1,
+      confirm_take_message: btn.confirm_take_message || BTN_FORM_DEFAULTS.confirm_take_message,
+      dm_give_enabled:      btn.dm_give_enabled      === 1,
+      dm_give_message:      btn.dm_give_message      || BTN_FORM_DEFAULTS.dm_give_message,
+      dm_take_enabled:      btn.dm_take_enabled      === 1,
+      dm_take_message:      btn.dm_take_message      || BTN_FORM_DEFAULTS.dm_take_message,
+    });
+    setBtnSaveMsg('');
+    setButtonModal({ mode: 'edit', buttonId: btn.button_id });
+  };
+
+  const handleSaveButton = async () => {
+    if (!serverId || !activePanelId || btnSaving) return;
+    if (!btnForm.label.trim()) { setBtnSaveMsg('Label is required'); return; }
+    if (!btnForm.role.trim())  { setBtnSaveMsg('Role is required');  return; }
+    setBtnSaving(true);
+    setBtnSaveMsg('');
+    try {
+      const payload = {
+        ...btnForm,
+        confirm_give_enabled: btnForm.confirm_give_enabled ? 1 : 0,
+        confirm_take_enabled: btnForm.confirm_take_enabled ? 1 : 0,
+        dm_give_enabled:      btnForm.dm_give_enabled      ? 1 : 0,
+        dm_take_enabled:      btnForm.dm_take_enabled      ? 1 : 0,
+      };
+      if (buttonModal.mode === 'new') {
+        await createRoleButton(serverId, activePanelId, payload);
+      } else {
+        await updateRoleButton(serverId, activePanelId, buttonModal.buttonId, payload);
+      }
+      setButtonModal(null);
+      await doFetch();
+    } catch (e) {
+      setBtnSaveMsg('✗ ' + e.message);
+    } finally {
+      setBtnSaving(false);
+    }
+  };
+
+  const handleDeleteButton = async (buttonId) => {
+    if (!serverId || !activePanelId) return;
+    try {
+      await deleteRoleButton(serverId, activePanelId, buttonId);
+      setConfirmButtonId(null);
+      await doFetch();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
 
   return (
     <div>
-      <PageHeader icon="🎭" title="Role Selection" badge="MODULE" desc="Create role selection embeds — each embed has its own channel and role set." />
-      <SettingsCard title="Module">
-        <Toggle value={enabled} onChange={setEnabled} label="Enable Role Selection" />
+      <PageHeader icon="🎭" title="Role Selection" badge="MODULE"
+        desc="Create role selection embeds — each embed is a Discord message with role buttons." />
+
+      {error && (
+        <div style={{ background: 'rgba(237,66,69,0.1)', border: '1px solid rgba(237,66,69,0.3)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', color: C.red, fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {error}
+          <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '18px', padding: '0 4px' }}>×</button>
+        </div>
+      )}
+
+      {/* ── Section A: Embed list ── */}
+      <SettingsCard>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px' }}>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Role Selection Embeds</div>
+            <div style={{ fontSize: '12px', color: C.muted, marginTop: '4px' }}>Each embed is a Discord message with role buttons inside. You can have multiple embeds in different channels.</div>
+          </div>
+          <button onClick={handleCreatePanel}
+            style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '9px 16px', color: '#0A0A0F', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, flexShrink: 0, marginLeft: '16px' }}>
+            + New Embed
+          </button>
+        </div>
+
+        {loading ? (
+          <div style={{ color: C.muted, fontSize: '13px', padding: '16px 0' }}>Loading…</div>
+        ) : panels.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '32px 0', color: C.muted }}>
+            <div style={{ fontSize: '28px', marginBottom: '10px' }}>🎭</div>
+            <div style={{ fontSize: '14px' }}>No embeds yet. Click <strong style={{ color: C.gold }}>+ New Embed</strong> to start.</div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {panels.map(panel => {
+              const isActive = activePanelId === panel.panel_id;
+              const isSent   = !!panel.message_id;
+              const btnCount = (panel.buttons || []).length;
+              return (
+                <div key={panel.panel_id}
+                  style={{ background: isActive ? 'rgba(200,168,78,0.07)' : 'rgba(0,0,0,0.2)', border: `1px solid ${isActive ? C.gold : 'rgba(255,255,255,0.07)'}`, borderRadius: '10px', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '14px', transition: 'border-color 0.2s' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{panel.title}</div>
+                    <div style={{ fontSize: '11px', color: C.muted, marginTop: '3px', display: 'flex', gap: '12px' }}>
+                      <span>{isSent ? `✓ Sent` : '⏳ Not sent yet'}</span>
+                      <span>🔘 {btnCount} button{btnCount !== 1 ? 's' : ''}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0, alignItems: 'center' }}>
+                    <button onClick={() => setActivePanelId(isActive ? null : panel.panel_id)}
+                      style={{ background: isActive ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isActive ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '6px', padding: '5px 12px', color: isActive ? C.gold : '#fff', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
+                      {isActive ? '▲ Close' : '✏️ Edit'}
+                    </button>
+                    {confirmPanelId === panel.panel_id ? (
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11px', color: C.red }}>Delete?</span>
+                        <button onClick={() => handleDeletePanel(panel.panel_id)}
+                          style={{ background: 'rgba(237,66,69,0.2)', border: '1px solid rgba(237,66,69,0.4)', borderRadius: '6px', padding: '4px 10px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>Yes</button>
+                        <button onClick={() => setConfirmPanelId(null)}
+                          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '4px 10px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>No</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setConfirmPanelId(panel.panel_id)}
+                        style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px', padding: '4px 6px', lineHeight: 1 }}>🗑</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </SettingsCard>
-      {enabled && (<>
-        {embeds.map((embed, i) => (
-          <EmbedEditor key={embed.id} embed={embed} index={i}
-            onChange={data => upd(embed.id, data)}
-            onSend={() => {}}
-            onDelete={() => del(embed.id)} />
-        ))}
-        <button onClick={() => setEmbeds(p => [...p, mkEmbed()])}
-          style={{ width: '100%', background: 'rgba(200,168,78,0.04)', border: '1px dashed rgba(200,168,78,0.25)', color: C.gold, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '14px', fontWeight: 600, marginBottom: '4px' }}>
-          + Create New Embed
-        </button>
+
+      {/* ── Section B: Panel editor ── */}
+      {activePanel && (<>
+        <SettingsCard title="Embed Details">
+          <FieldRow>
+            <Field label="Title">
+              <Input value={panelForm.title} onChange={setPF('title')} placeholder="🎯 Role Selection" />
+            </Field>
+            <Field label="Style">
+              <Select value={panelForm.style} onChange={setPF('style')} options={[
+                { value: 'buttons',  label: 'Buttons' },
+                { value: 'dropdown', label: 'Dropdown menu' },
+              ]} />
+            </Field>
+          </FieldRow>
+          <Field label="Description" hint="shown in the embed body — optional">
+            <Textarea value={panelForm.description} onChange={setPF('description')} rows={2}
+              placeholder="Select a role below to gain access to the section." />
+          </Field>
+          <div style={{ marginTop: '14px' }}>
+            <Field label="Channel" hint="channel name or ID — e.g. role-select or 1234567890123456789">
+              <Input value={panelForm.channel} onChange={setPF('channel')} placeholder="1234567890123456789" />
+            </Field>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '18px', flexWrap: 'wrap' }}>
+            <button onClick={handleSavePanel} disabled={panelSaving} className="btn-primary"
+              style={{ padding: '10px 24px', fontSize: '14px', opacity: panelSaving ? 0.7 : 1 }}>
+              {panelSaving ? 'Saving…' : 'Save Embed Details'}
+            </button>
+            {panelSaveMsg && (
+              <span style={{ fontSize: '13px', color: panelSaveMsg.startsWith('✓') ? C.green : C.red }}>{panelSaveMsg}</span>
+            )}
+          </div>
+        </SettingsCard>
+
+        <SettingsCard title="Role Buttons">
+          <p style={{ margin: '0 0 16px', color: C.muted, fontSize: '13px' }}>Each button gives, removes, or toggles a role when clicked.</p>
+          {(activePanel.buttons || []).length === 0 ? (
+            <div style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>
+              No buttons yet. Click + Add Button to create your first one.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
+              {(activePanel.buttons || []).map((btn, idx) => {
+                const modeStyle = MODE_BADGE_STYLES[btn.mode] || MODE_BADGE_STYLES.toggle;
+                return (
+                  <div key={btn.button_id}
+                    style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'rgba(200,168,78,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', color: C.gold, fontWeight: 700, flexShrink: 0 }}>{idx + 1}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '14px', fontWeight: 600 }}>{btn.emoji ? `${btn.emoji} ` : ''}{btn.label}</div>
+                      <div style={{ fontSize: '11px', color: C.muted, marginTop: '2px' }}>{btn.role}</div>
+                    </div>
+                    <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '100px', background: `${modeStyle.color}20`, border: `1px solid ${modeStyle.color}40`, color: modeStyle.color, letterSpacing: '0.04em', flexShrink: 0 }}>{modeStyle.label}</span>
+                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center' }}>
+                      <button onClick={() => openEditButton(btn)}
+                        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '5px', padding: '4px 10px', color: '#fff', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>Edit</button>
+                      {confirmButtonId === btn.button_id ? (
+                        <>
+                          <button onClick={() => handleDeleteButton(btn.button_id)}
+                            style={{ background: 'rgba(237,66,69,0.2)', border: '1px solid rgba(237,66,69,0.4)', borderRadius: '5px', padding: '4px 10px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>Yes</button>
+                          <button onClick={() => setConfirmButtonId(null)}
+                            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '5px', padding: '4px 10px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>No</button>
+                        </>
+                      ) : (
+                        <button onClick={() => setConfirmButtonId(btn.button_id)}
+                          style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px', padding: '2px 6px', lineHeight: 1 }}>×</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <button onClick={openNewButton}
+            style={{ background: 'rgba(200,168,78,0.08)', border: '1px dashed rgba(200,168,78,0.3)', color: C.gold, padding: '8px 16px', borderRadius: '7px', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 600 }}>
+            + Add Button
+          </button>
+        </SettingsCard>
+
+        <SettingsCard title="Discord">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <button onClick={handleSend} disabled={sendState === 'sending'}
+              style={{ background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.3)', color: '#7289da', padding: '10px 22px', borderRadius: '8px', cursor: sendState === 'sending' ? 'not-allowed' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '14px', fontWeight: 600, opacity: sendState === 'sending' ? 0.6 : 1, transition: 'background 0.2s' }}
+              onMouseOver={e => { if (sendState !== 'sending') e.currentTarget.style.background = 'rgba(88,101,242,0.25)'; }}
+              onMouseOut={e => { e.currentTarget.style.background = 'rgba(88,101,242,0.12)'; }}>
+              {sendState === 'sending' ? '📨 Sending…' : activePanel.message_id ? '📨 Re-send' : '📨 Send to Discord'}
+            </button>
+            {activePanel.message_id && (
+              <button onClick={handleRefresh} disabled={sendState === 'sending'}
+                style={{ background: 'rgba(200,168,78,0.08)', border: '1px solid rgba(200,168,78,0.25)', color: C.gold, padding: '10px 22px', borderRadius: '8px', cursor: sendState === 'sending' ? 'not-allowed' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '14px', fontWeight: 600, opacity: sendState === 'sending' ? 0.6 : 1, transition: 'background 0.2s' }}
+                onMouseOver={e => { if (sendState !== 'sending') e.currentTarget.style.background = 'rgba(200,168,78,0.18)'; }}
+                onMouseOut={e => { e.currentTarget.style.background = 'rgba(200,168,78,0.08)'; }}>
+                🔄 Refresh
+              </button>
+            )}
+            {sendMsg && (
+              <span style={{ fontSize: '13px', color: sendState === 'error' ? C.red : C.green }}>{sendMsg}</span>
+            )}
+          </div>
+          <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: `1px solid ${C.border}` }}>
+            {confirmPanelId === activePanel.panel_id ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '13px', color: C.red }}>Delete this embed permanently?</span>
+                <button onClick={() => handleDeletePanel(activePanel.panel_id)}
+                  style={{ background: 'rgba(237,66,69,0.2)', border: '1px solid rgba(237,66,69,0.4)', borderRadius: '7px', padding: '7px 14px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 600 }}>Yes, Delete</button>
+                <button onClick={() => setConfirmPanelId(null)}
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '7px', padding: '7px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px' }}>Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmPanelId(activePanel.panel_id)}
+                style={{ background: 'rgba(237,66,69,0.08)', border: '1px solid rgba(237,66,69,0.25)', borderRadius: '7px', padding: '8px 18px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 600 }}>
+                🗑️ Delete this Embed
+              </button>
+            )}
+          </div>
+        </SettingsCard>
       </>)}
-      {/* TODO: wire in Phase 4-5 when config keys are added for role selection */}
-      <ActionBar saved={saved} onSave={save} />
+
+      {/* ── Section C: Button editor modal ── */}
+      {buttonModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }}>
+          <div style={{ background: '#13131a', border: `1px solid ${C.border}`, borderRadius: '16px', padding: '28px', maxWidth: '560px', width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                {buttonModal.mode === 'new' ? 'Add Role Button' : 'Edit Role Button'}
+              </div>
+              <button onClick={() => { setButtonModal(null); setBtnSaveMsg(''); }}
+                style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: '22px', lineHeight: 1, padding: '0 4px' }}>×</button>
+            </div>
+
+            <FieldRow>
+              <Field label="Label">
+                <Input value={btnForm.label} onChange={setBF('label')} placeholder="Click me" />
+              </Field>
+              <Field label="Emoji" hint="single emoji or leave empty">
+                <Input value={btnForm.emoji} onChange={setBF('emoji')} placeholder="🎯" />
+              </Field>
+            </FieldRow>
+            <FieldRow>
+              <Field label="Role" hint="role name or ID">
+                <Input value={btnForm.role} onChange={setBF('role')} placeholder="Member" />
+              </Field>
+              <Field label="Mode">
+                <Select value={btnForm.mode} onChange={setBF('mode')} options={[
+                  { value: 'toggle', label: 'Toggle (give & take)' },
+                  { value: 'give',   label: 'Give only' },
+                  { value: 'take',   label: 'Take only' },
+                ]} />
+              </Field>
+            </FieldRow>
+
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '14px' }}>
+              <Toggle value={btnForm.confirm_give_enabled} onChange={setBF('confirm_give_enabled')}
+                label="Confirm before giving" desc="Ask the user to confirm before adding the role." />
+              {btnForm.confirm_give_enabled && (
+                <div style={{ marginTop: '8px' }}>
+                  <Textarea value={btnForm.confirm_give_message} onChange={setBF('confirm_give_message')} rows={2}
+                    placeholder="Are you sure you want this role?" />
+                </div>
+              )}
+            </div>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '10px' }}>
+              <Toggle value={btnForm.confirm_take_enabled} onChange={setBF('confirm_take_enabled')}
+                label="Confirm before removing" desc="Ask the user to confirm before removing the role." />
+              {btnForm.confirm_take_enabled && (
+                <div style={{ marginTop: '8px' }}>
+                  <Textarea value={btnForm.confirm_take_message} onChange={setBF('confirm_take_message')} rows={2}
+                    placeholder="Are you sure you want to remove this role?" />
+                </div>
+              )}
+            </div>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '10px' }}>
+              <Toggle value={btnForm.dm_give_enabled} onChange={setBF('dm_give_enabled')}
+                label="Send DM when given" desc="DM the user when the role is added." />
+              {btnForm.dm_give_enabled && (
+                <div style={{ marginTop: '8px' }}>
+                  <Label hint="use {role} and {server}">Message</Label>
+                  <Textarea value={btnForm.dm_give_message} onChange={setBF('dm_give_message')} rows={2}
+                    placeholder="You received the {role} role in {server}." />
+                </div>
+              )}
+            </div>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '10px', marginBottom: '20px' }}>
+              <Toggle value={btnForm.dm_take_enabled} onChange={setBF('dm_take_enabled')}
+                label="Send DM when removed" desc="DM the user when the role is removed." />
+              {btnForm.dm_take_enabled && (
+                <div style={{ marginTop: '8px' }}>
+                  <Label hint="use {role} and {server}">Message</Label>
+                  <Textarea value={btnForm.dm_take_message} onChange={setBF('dm_take_message')} rows={2}
+                    placeholder="You no longer have the {role} role in {server}." />
+                </div>
+              )}
+            </div>
+
+            {btnSaveMsg && (
+              <div style={{ marginBottom: '14px', fontSize: '13px', color: btnSaveMsg.startsWith('✗') ? C.red : C.green }}>{btnSaveMsg}</div>
+            )}
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button onClick={handleSaveButton} disabled={btnSaving} className="btn-primary"
+                style={{ padding: '10px 28px', fontSize: '14px', opacity: btnSaving ? 0.7 : 1 }}>
+                {btnSaving ? 'Saving…' : 'Save Button'}
+              </button>
+              <button onClick={() => { setButtonModal(null); setBtnSaveMsg(''); }}
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '10px 20px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '14px' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1812,7 +2196,7 @@ const Dashboard = () => {
     overview:     <Overview />,
     analytics:    <Analytics />,
     verification: <VerificationSettings />,
-    roles:        <RoleSettings />,
+    roles:        <RoleSelectSettings />,
     forms:        <FormsSettings />,
     tickets:      <TicketsSettings />,
     raid:         <RaidSettings />,
