@@ -680,8 +680,8 @@ const RoleSelectSettings = () => {
     setPanelSaveMsg('');
     try {
       const updates = { title: panelForm.title, description: panelForm.description, style: panelForm.style };
-      const chId = parseInt(panelForm.channel, 10);
-      if (panelForm.channel && !isNaN(chId)) updates.channel_id = chId;
+      const chTrimmed = panelForm.channel.trim();
+      if (chTrimmed) updates.channel_id = chTrimmed;
       await updateRolePanel(serverId, activePanelId, updates);
       setPanelSaveMsg('✓ Saved');
       await doFetch();
@@ -707,16 +707,16 @@ const RoleSelectSettings = () => {
 
   const handleSend = async () => {
     if (!serverId || !activePanelId || sendState === 'sending') return;
-    const chId = parseInt(panelForm.channel, 10);
-    if (!panelForm.channel || isNaN(chId)) {
-      setSendMsg('Please enter a valid channel ID in the Channel field above');
+    const chTrimmed = panelForm.channel.trim();
+    if (!chTrimmed) {
+      setSendMsg('Please enter a channel name or ID in the Channel field above');
       setSendState('error');
       setTimeout(() => { setSendMsg(''); setSendState('idle'); }, 4000);
       return;
     }
     setSendState('sending');
     try {
-      const res = await sendRolePanel(serverId, activePanelId, panelForm.channel);
+      const res = await sendRolePanel(serverId, activePanelId, chTrimmed);
       setSendMsg(`✓ Sent (message ${res.message_id})`);
       setSendState('sent');
       await doFetch();

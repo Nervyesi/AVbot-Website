@@ -108,7 +108,7 @@ export const deleteRoleButton = (serverId, panelId, buttonId) =>
 
 export const sendRolePanel = (serverId, panelId, channelId) =>
   apiFetch(`/api/servers/${serverId}/roleselect/panels/${panelId}/send`, {
-    method: 'POST', body: JSON.stringify({ channel_id: parseInt(channelId, 10) }),
+    method: 'POST', body: JSON.stringify({ channel_id: String(channelId).trim() }),
   });
 
 export const refreshRolePanel = (serverId, panelId) =>
