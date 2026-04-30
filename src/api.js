@@ -1,3 +1,11 @@
+// DISCORD ID HANDLING:
+// Discord Snowflakes (channel/role/guild/user/message IDs) are 17-19 digit
+// numbers that exceed JS Number.MAX_SAFE_INTEGER (9007199254740991). NEVER
+// call parseInt(), Number(), or +x on a Discord ID — last digits will be
+// silently corrupted. Always send IDs as strings: { channel_id: String(v) }
+// The backend accepts strings and resolves them via resolve_channel/resolve_role.
+// Internal DB IDs (panel_id, button_id, ticket_id) are small auto-increment
+// ints and are safe to use as numbers.
 import { API_BASE_URL } from './constants';
 
 // ── Token storage ──────────────────────────────────────────────────────────
