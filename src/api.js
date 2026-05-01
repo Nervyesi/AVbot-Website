@@ -69,6 +69,14 @@ export const fetchEngage = id => apiFetch(`/api/servers/${id}/engage`);
 export const fetchLeaderboard = (id, limit = 25) =>
   apiFetch(`/api/servers/${id}/leaderboard?limit=${limit}`);
 
+// ── Verify ─────────────────────────────────────────────────────────────────
+
+export const sendVerifyMessage = (serverId, channelId) =>
+  apiFetch(`/api/servers/${serverId}/verify/send-message`, {
+    method: 'POST',
+    body: JSON.stringify({ channel_id: String(channelId).trim() }),
+  });
+
 // ── Tickets ────────────────────────────────────────────────────────────────
 
 export const sendTicketsPanel = id =>

@@ -5,7 +5,8 @@ import { DashboardContext } from '../DashboardContext';
 import {
   loginWithDiscord, fetchMe, fetchServers, fetchServerStats,
   fetchServerAnalytics, fetchConfig, saveConfig,
-  sendProtectionMessage, sendTicketsPanel, fetchFlaggedUsers, fetchAuditLog,
+  sendProtectionMessage, sendTicketsPanel, sendVerifyMessage,
+  fetchFlaggedUsers, fetchAuditLog,
   clearToken, getToken, setToken,
   listRolePanels, createRolePanel, updateRolePanel, deleteRolePanel,
   createRoleButton, updateRoleButton, deleteRoleButton,
@@ -175,6 +176,42 @@ const PROTECT_CONFIG_MAP = {
   mainEmbedTitle:       'protection_main_embed_title',
   mainEmbedDesc:        'protection_main_embed_description',
   mainEmbedChannel:     'protection_main_embed_channel',
+};
+
+const VERIFY_CONFIG_MAP = {
+  enabled:             'verify_enabled',
+  channel:             'verify_channel',
+  successRole:         'verify_success_role',
+  maxAttempts:         'verify_max_attempts',
+  embedTitle:          'verify_embed_title',
+  embedDescription:    'verify_embed_description',
+  embedButtonLabel:    'verify_embed_button_label',
+  wrongAttemptMessage: 'verify_wrong_attempt_message',
+  lastChanceMessage:   'verify_last_chance_message',
+  kickedMessage:       'verify_kicked_message',
+  successMessage:      'verify_success_message',
+  dmOnSuccessEnabled:  'verify_dm_on_success_enabled',
+  dmOnSuccessMessage:  'verify_dm_on_success_message',
+  dmOnKickEnabled:     'verify_dm_on_kick_enabled',
+  dmOnKickMessage:     'verify_dm_on_kick_message',
+};
+
+const VERIFY_DEFAULTS = {
+  enabled:             true,
+  channel:             '',
+  successRole:         'Verified',
+  maxAttempts:         '3',
+  embedTitle:          '🔒 Verify to Enter',
+  embedDescription:    'Click the button below and solve the CAPTCHA to access the server.',
+  embedButtonLabel:    'Verify',
+  wrongAttemptMessage: '❌ Wrong! You have {remaining} attempts left.',
+  lastChanceMessage:   "⚠️ Last chance! Get this one wrong and you'll be kicked.",
+  kickedMessage:       "You've been kicked for failing verification. You can rejoin and try again.",
+  successMessage:      '✅ Verified! Welcome to the server.',
+  dmOnSuccessEnabled:  true,
+  dmOnSuccessMessage:  "Welcome! You've been verified in {server}.",
+  dmOnKickEnabled:     true,
+  dmOnKickMessage:     'You were kicked from {server} for failing CAPTCHA. Feel free to try again.',
 };
 
 const RAID_CONFIG_MAP = {
@@ -480,98 +517,143 @@ const Overview = () => {
 // ── Verification ──────────────────────────────────────────────────────────────
 
 const VerificationSettings = () => {
-  const [v, setV] = useState({
-    enabled: true,
-    channel: '#verify',
-    roles: 'Verified Member',
-    mainMessage: 'Welcome to AmeretaVerse! Verify your account to unlock all channels.\n\nClick the button below to start the captcha.',
-    // Advanced
-    maxAttempts: '3',
-    successMessage: '✅ You have been verified! Welcome to the server.',
-    wrongAttemptMsg: '❌ Incorrect captcha. You have {remaining} attempts remaining.',
-    lastChanceMsg: '⚠️ Last attempt! Solve this carefully or you will be removed.',
-    kickedMessage: '🔒 You have been removed for failing verification too many times. Rejoin to try again.',
-    // DM
-    dmEnabled: false,
-    dmOnSuccess: true,
-    dmSuccessMsg: "You've been successfully verified in AmeretaVerse! Check out the channels and introduce yourself.",
-    dmOnKick: true,
-    dmKickMsg: "You've been removed from AmeretaVerse for failing verification. You're welcome to rejoin and try again.",
-  });
+  const { server } = useContext(DashboardContext);
+  const [v, setV] = useState({ ...VERIFY_DEFAULTS });
   const set = k => val => setV(p => ({ ...p, [k]: val }));
-  const [saved, save] = useSave();
+  const { saveState, save } = useSaveConfig(server?.id, VERIFY_CONFIG_MAP, VERIFY_DEFAULTS, setV);
+
+  const [sendState, setSendState] = useState('idle');
+  const [sendMsg,   setSendMsg]   = useState('');
+
+  const handleSendEmbed = async () => {
+    if (!server?.id || sendState === 'sending') return;
+    const channelId = v.channel.trim();
+    if (!channelId) {
+      setSendMsg('Enter a channel name or ID first');
+      setSendState('error');
+      setTimeout(() => { setSendState('idle'); setSendMsg(''); }, 3000);
+      return;
+    }
+    setSendState('sending');
+    try {
+      await sendVerifyMessage(server.id, channelId);
+      setSendMsg('✓ Sent');
+      setSendState('sent');
+    } catch (e) {
+      setSendMsg(e.message || 'Failed to send');
+      setSendState('error');
+    }
+    setTimeout(() => { setSendState('idle'); setSendMsg(''); }, 4000);
+  };
+
+  const dmMaster = v.dmOnSuccessEnabled || v.dmOnKickEnabled;
+  const toggleDmMaster = (val) => {
+    if (!val) {
+      set('dmOnSuccessEnabled')(false);
+      set('dmOnKickEnabled')(false);
+    } else {
+      set('dmOnSuccessEnabled')(true);
+    }
+  };
 
   return (
     <div>
       <PageHeader icon="🔐" title="Verification" badge="MODULE" desc="Configure captcha verification for new members." />
+
       <SettingsCard title="Module">
         <Toggle value={v.enabled} onChange={set('enabled')} label="Enable Verification"
           desc="Require members to complete a captcha before accessing the server." />
       </SettingsCard>
 
       {v.enabled && (<>
-        <SettingsCard title="Channel & Roles">
+        <SettingsCard title="Channel & Role">
           <FieldRow>
-            <Field label="Verification Channel" hint="name or ID">
+            <Field label="Verification Channel" hint="name or ID — where the Verify embed is posted">
               <Input value={v.channel} onChange={set('channel')} placeholder="#verify or 123456789" />
             </Field>
-            <Field label="Role Reward" hint="multiple allowed — comma separated">
-              <Input value={v.roles} onChange={set('roles')} placeholder="Verified Member, Member" />
+            <Field label="Success Role" hint="assigned when member passes captcha">
+              <Input value={v.successRole} onChange={set('successRole')} placeholder="Verified" />
             </Field>
           </FieldRow>
         </SettingsCard>
 
-        <SettingsCard title="Main Message">
-          <Field label="Embed Message" hint="the embed members see with the Verify button">
-            <Textarea value={v.mainMessage} onChange={set('mainMessage')} rows={4}
-              placeholder="Welcome! Complete the captcha below to unlock all channels." />
+        <SettingsCard title="Embed">
+          <FieldRow>
+            <Field label="Embed Title">
+              <Input value={v.embedTitle} onChange={set('embedTitle')} placeholder="🔒 Verify to Enter" />
+            </Field>
+            <Field label="Button Label">
+              <Input value={v.embedButtonLabel} onChange={set('embedButtonLabel')} placeholder="Verify" />
+            </Field>
+          </FieldRow>
+          <Field label="Embed Description" hint="text shown above the Verify button">
+            <Textarea value={v.embedDescription} onChange={set('embedDescription')} rows={3}
+              placeholder="Click the button below and solve the CAPTCHA to access the server." />
           </Field>
+          <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+            <button
+              onClick={handleSendEmbed}
+              disabled={sendState === 'sending'}
+              style={{
+                background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.3)',
+                color: '#7289da', padding: '10px 22px', borderRadius: '8px',
+                cursor: sendState === 'sending' ? 'not-allowed' : 'pointer',
+                fontFamily: 'Sora, sans-serif', fontSize: '14px', fontWeight: 600,
+                opacity: sendState === 'sending' ? 0.6 : 1, transition: 'background 0.2s',
+              }}
+              onMouseOver={e => { if (sendState !== 'sending') e.currentTarget.style.background = 'rgba(88,101,242,0.25)'; }}
+              onMouseOut={e => e.currentTarget.style.background = 'rgba(88,101,242,0.12)'}>
+              {sendState === 'sending' ? '📨 Sending…' : '📨 Send Embed to Discord'}
+            </button>
+            {sendMsg && (
+              <span style={{ fontSize: '13px', color: sendState === 'error' ? C.red : C.green }}>{sendMsg}</span>
+            )}
+          </div>
         </SettingsCard>
 
         <AdvancedSection>
-          <Field label="Max Attempts" hint="before member is kicked">
+          <Field label="Max Attempts" hint="before member is kicked (default: 3)">
             <Input type="number" value={v.maxAttempts} onChange={set('maxAttempts')} placeholder="3" style={{ maxWidth: '120px' }} />
           </Field>
           <div style={{ marginTop: '18px' }}>
-            <Field label="Success Message" hint="shown after correct captcha">
+            <Field label="Success Message" hint="shown as embed title after correct captcha">
               <Textarea value={v.successMessage} onChange={set('successMessage')} rows={2} />
             </Field>
           </div>
           <div style={{ marginTop: '14px' }}>
             <Field label="Wrong Attempt Message" hint="use {remaining} for attempts left">
-              <Textarea value={v.wrongAttemptMsg} onChange={set('wrongAttemptMsg')} rows={2} />
+              <Textarea value={v.wrongAttemptMessage} onChange={set('wrongAttemptMessage')} rows={2} />
             </Field>
           </div>
           <div style={{ marginTop: '14px' }}>
             <Field label="Last Chance Message" hint="shown before the final attempt">
-              <Textarea value={v.lastChanceMsg} onChange={set('lastChanceMsg')} rows={2} />
+              <Textarea value={v.lastChanceMessage} onChange={set('lastChanceMessage')} rows={2} />
             </Field>
           </div>
           <div style={{ marginTop: '14px' }}>
-            <Field label="Kicked Message" hint="shown in the channel when member is removed">
+            <Field label="Kicked Message" hint="shown when member is removed for too many failures">
               <Textarea value={v.kickedMessage} onChange={set('kickedMessage')} rows={2} />
             </Field>
           </div>
         </AdvancedSection>
 
         <SettingsCard title="Direct Messages">
-          <Toggle value={v.dmEnabled} onChange={set('dmEnabled')} label="Send DM?"
+          <Toggle value={dmMaster} onChange={toggleDmMaster} label="Send DMs?"
             desc="Send direct messages to members during verification events." />
-          {v.dmEnabled && (<>
-            <SubToggle value={v.dmOnSuccess} onChange={set('dmOnSuccess')} label="DM on success">
-              <Textarea value={v.dmSuccessMsg} onChange={set('dmSuccessMsg')} rows={2}
-                placeholder="You've been verified! Welcome to the server." />
+          {dmMaster && (<>
+            <SubToggle value={v.dmOnSuccessEnabled} onChange={set('dmOnSuccessEnabled')} label="DM on success">
+              <Textarea value={v.dmOnSuccessMessage} onChange={set('dmOnSuccessMessage')} rows={2}
+                placeholder="Welcome! You've been verified in {server}." />
             </SubToggle>
-            <SubToggle value={v.dmOnKick} onChange={set('dmOnKick')} label="DM on kick">
-              <Textarea value={v.dmKickMsg} onChange={set('dmKickMsg')} rows={2}
-                placeholder="You've been removed for failing verification. Rejoin to try again." />
+            <SubToggle value={v.dmOnKickEnabled} onChange={set('dmOnKickEnabled')} label="DM on kick">
+              <Textarea value={v.dmOnKickMessage} onChange={set('dmOnKickMessage')} rows={2}
+                placeholder="You were kicked from {server} for failing CAPTCHA. Feel free to try again." />
             </SubToggle>
           </>)}
         </SettingsCard>
       </>)}
 
-      {/* TODO: wire in Phase 4-5 when config keys are added for verification */}
-      <ActionBar saved={saved} onSave={save} onSend={() => {}} sendLabel="Send Message" />
+      <ActionBar saveState={saveState} onSave={() => save(v)} />
     </div>
   );
 };
