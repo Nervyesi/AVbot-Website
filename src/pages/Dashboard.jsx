@@ -542,7 +542,7 @@ const Overview = () => {
 // ── Verification ──────────────────────────────────────────────────────────────
 
 const VerificationSettings = () => {
-  const { server } = useContext(DashboardContext);
+  const { server, isPremium } = useContext(DashboardContext);
   const [v, setV] = useState({ ...VERIFY_DEFAULTS });
   const set = k => val => setV(p => ({ ...p, [k]: val }));
   const { saveState, save } = useSaveConfig(server?.id, VERIFY_CONFIG_MAP, VERIFY_DEFAULTS, setV);
@@ -677,34 +677,33 @@ const VerificationSettings = () => {
           </>)}
         </SettingsCard>
 
-        <CollapsibleSection title="Visual Customization">
-          <div style={{ background: 'rgba(200,168,78,0.06)', border: '1px solid rgba(200,168,78,0.2)', borderRadius: '8px', padding: '12px 14px', marginBottom: '20px', fontSize: '12px', color: C.muted, lineHeight: '1.5' }}>
-            ⚠️ Visual customization is a premium feature. On free plans, your bot will use AVbot's default brand colors and assets. Custom values you save here will activate when you upgrade.
-          </div>
-          <FieldRow>
-            <Field label="Color" hint="hex color like #94730D — leave empty to use brand default">
-              <Input value={v.verifyColor} onChange={set('verifyColor')} placeholder="#94730D" />
-            </Field>
-            <Field label="Footer Text" hint="leave empty to use brand default">
-              <Input value={v.verifyFooterText} onChange={set('verifyFooterText')} placeholder="Powered by AVbot" />
-            </Field>
-          </FieldRow>
-          <div style={{ marginTop: '14px' }}>
-            <Field label="Thumbnail URL" hint="small image shown in the top-right of the embed">
-              <Input value={v.verifyThumbnailUrl} onChange={set('verifyThumbnailUrl')} placeholder="https://..." />
-            </Field>
-          </div>
-          <div style={{ marginTop: '14px' }}>
-            <Field label="Image URL" hint="large image or GIF shown at the bottom of the embed">
-              <Input value={v.verifyImageUrl} onChange={set('verifyImageUrl')} placeholder="https://..." />
-            </Field>
-          </div>
-          <div style={{ marginTop: '14px' }}>
-            <Field label="Footer Icon URL" hint="small icon shown next to footer text">
-              <Input value={v.verifyFooterIconUrl} onChange={set('verifyFooterIconUrl')} placeholder="https://..." />
-            </Field>
-          </div>
-        </CollapsibleSection>
+        {isPremium && (
+          <CollapsibleSection title="Visual Customization">
+            <FieldRow>
+              <Field label="Color" hint="hex color like #94730D — leave empty to use brand default">
+                <Input value={v.verifyColor} onChange={set('verifyColor')} placeholder="#94730D" />
+              </Field>
+              <Field label="Footer Text" hint="leave empty to use brand default">
+                <Input value={v.verifyFooterText} onChange={set('verifyFooterText')} placeholder="Powered by AVbot" />
+              </Field>
+            </FieldRow>
+            <div style={{ marginTop: '14px' }}>
+              <Field label="Thumbnail URL" hint="small image shown in the top-right of the embed">
+                <Input value={v.verifyThumbnailUrl} onChange={set('verifyThumbnailUrl')} placeholder="https://..." />
+              </Field>
+            </div>
+            <div style={{ marginTop: '14px' }}>
+              <Field label="Image URL" hint="large image or GIF shown at the bottom of the embed">
+                <Input value={v.verifyImageUrl} onChange={set('verifyImageUrl')} placeholder="https://..." />
+              </Field>
+            </div>
+            <div style={{ marginTop: '14px' }}>
+              <Field label="Footer Icon URL" hint="small icon shown next to footer text">
+                <Input value={v.verifyFooterIconUrl} onChange={set('verifyFooterIconUrl')} placeholder="https://..." />
+              </Field>
+            </div>
+          </CollapsibleSection>
+        )}
       </>)}
 
       <ActionBar saveState={saveState} onSave={() => save(v)} />
@@ -2344,7 +2343,7 @@ const Dashboard = () => {
   };
 
   return (
-    <DashboardContext.Provider value={{ server, user, servers, setServer }}>
+    <DashboardContext.Provider value={{ server, user, servers, setServer, isPremium: server?.is_premium === true }}>
       <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', fontFamily: 'Sora, sans-serif', color: '#fff' }}>
 
         {/* ── Sidebar ── */}
