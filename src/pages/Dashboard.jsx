@@ -194,6 +194,11 @@ const VERIFY_CONFIG_MAP = {
   dmOnSuccessMessage:  'verify_dm_on_success_message',
   dmOnKickEnabled:     'verify_dm_on_kick_enabled',
   dmOnKickMessage:     'verify_dm_on_kick_message',
+  verifyColor:         'verify_color',
+  verifyThumbnailUrl:  'verify_thumbnail_url',
+  verifyImageUrl:      'verify_image_url',
+  verifyFooterText:    'verify_footer_text',
+  verifyFooterIconUrl: 'verify_footer_icon_url',
 };
 
 const VERIFY_DEFAULTS = {
@@ -212,6 +217,11 @@ const VERIFY_DEFAULTS = {
   dmOnSuccessMessage:  "Welcome! You've been verified in {server}.",
   dmOnKickEnabled:     true,
   dmOnKickMessage:     'You were kicked from {server} for failing CAPTCHA. Feel free to try again.',
+  verifyColor:         '',
+  verifyThumbnailUrl:  '',
+  verifyImageUrl:      '',
+  verifyFooterText:    '',
+  verifyFooterIconUrl: '',
 };
 
 const RAID_CONFIG_MAP = {
@@ -368,6 +378,21 @@ const AdvancedSection = ({ children }) => {
     <Card style={{ marginBottom: '20px' }}>
       <div onClick={() => setOpen(!open)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', userSelect: 'none' }}>
         <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Advanced Customization</div>
+        <span style={{ color: C.muted, fontSize: '11px', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
+      </div>
+      {open && <div style={{ marginTop: '20px' }}>{children}</div>}
+    </Card>
+  );
+};
+
+
+// Generic collapsible card that accepts a title prop
+const CollapsibleSection = ({ title, children }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card style={{ marginBottom: '20px' }}>
+      <div onClick={() => setOpen(!open)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', userSelect: 'none' }}>
+        <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{title}</div>
         <span style={{ color: C.muted, fontSize: '11px', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
       </div>
       {open && <div style={{ marginTop: '20px' }}>{children}</div>}
@@ -651,6 +676,35 @@ const VerificationSettings = () => {
             </SubToggle>
           </>)}
         </SettingsCard>
+
+        <CollapsibleSection title="Visual Customization">
+          <div style={{ background: 'rgba(200,168,78,0.06)', border: '1px solid rgba(200,168,78,0.2)', borderRadius: '8px', padding: '12px 14px', marginBottom: '20px', fontSize: '12px', color: C.muted, lineHeight: '1.5' }}>
+            ⚠️ Visual customization is a premium feature. On free plans, your bot will use AVbot's default brand colors and assets. Custom values you save here will activate when you upgrade.
+          </div>
+          <FieldRow>
+            <Field label="Color" hint="hex color like #94730D — leave empty to use brand default">
+              <Input value={v.verifyColor} onChange={set('verifyColor')} placeholder="#94730D" />
+            </Field>
+            <Field label="Footer Text" hint="leave empty to use brand default">
+              <Input value={v.verifyFooterText} onChange={set('verifyFooterText')} placeholder="Powered by AVbot" />
+            </Field>
+          </FieldRow>
+          <div style={{ marginTop: '14px' }}>
+            <Field label="Thumbnail URL" hint="small image shown in the top-right of the embed">
+              <Input value={v.verifyThumbnailUrl} onChange={set('verifyThumbnailUrl')} placeholder="https://..." />
+            </Field>
+          </div>
+          <div style={{ marginTop: '14px' }}>
+            <Field label="Image URL" hint="large image or GIF shown at the bottom of the embed">
+              <Input value={v.verifyImageUrl} onChange={set('verifyImageUrl')} placeholder="https://..." />
+            </Field>
+          </div>
+          <div style={{ marginTop: '14px' }}>
+            <Field label="Footer Icon URL" hint="small icon shown next to footer text">
+              <Input value={v.verifyFooterIconUrl} onChange={set('verifyFooterIconUrl')} placeholder="https://..." />
+            </Field>
+          </div>
+        </CollapsibleSection>
       </>)}
 
       <ActionBar saveState={saveState} onSave={() => save(v)} />
