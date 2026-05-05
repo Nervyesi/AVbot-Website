@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { Link } from 'react-router-dom';
+import { HexColorPicker } from 'react-colorful';
 import Analytics from './Analytics';
 import { DashboardContext } from '../DashboardContext';
 import {
@@ -11,6 +12,7 @@ import {
   listRolePanels, createRolePanel, updateRolePanel, deleteRolePanel,
   createRoleButton, updateRoleButton, deleteRoleButton,
   sendRolePanel, refreshRolePanel,
+  listAssets, uploadAsset, deleteAsset,
 } from '../api';
 import { DISCORD_INVITE_URL } from '../constants';
 
@@ -249,6 +251,10 @@ const TICKETS_CONFIG_MAP = {
   dmOnOpenMessage:       'tickets_dm_on_open_message',
   dmOnCloseEnabled:      'tickets_dm_on_close_enabled',
   dmOnCloseMessage:      'tickets_dm_on_close_message',
+  panelColor:            'tickets_color',
+  panelThumbnailUrl:     'tickets_thumbnail_url',
+  panelImageUrl:         'tickets_image_url',
+  panelFooterText:       'tickets_footer_text',
 };
 
 const TICKETS_DEFAULTS = {
@@ -270,6 +276,10 @@ const TICKETS_DEFAULTS = {
   dmOnOpenMessage:       "Your support ticket has been opened in {server}. We'll be in touch soon.",
   dmOnCloseEnabled:      true,
   dmOnCloseMessage:      'Your support ticket in {server} has been closed. If you need further help, feel free to open a new one.',
+  panelColor:            '',
+  panelThumbnailUrl:     '',
+  panelImageUrl:         '',
+  panelFooterText:       '',
 };
 
 /**
@@ -386,17 +396,271 @@ const AdvancedSection = ({ children }) => {
 };
 
 
-// Generic collapsible card that accepts a title prop
-const CollapsibleSection = ({ title, children }) => {
-  const [open, setOpen] = useState(false);
+
+// ── Visual customization modals & embed preview ───────────────────────────────
+
+const ComingSoonModal = ({ onClose }) => (
+  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+    <div style={{ background: '#13131a', border: `1px solid ${C.border}`, borderRadius: '16px', padding: '32px', maxWidth: '380px', width: '100%', textAlign: 'center' }}>
+      <div style={{ fontSize: '36px', marginBottom: '12px' }}>🎨</div>
+      <div style={{ fontSize: '17px', fontWeight: 700, marginBottom: '10px' }}>Visual Customization</div>
+      <p style={{ color: C.muted, fontSize: '13px', lineHeight: '1.6', margin: '0 0 24px' }}>
+        Custom thumbnails, images, and colors are available on premium plans. Stay tuned!
+      </p>
+      <button onClick={onClose}
+        style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '10px 28px', color: '#0A0A0F', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '14px', fontWeight: 700 }}>
+        Got it
+      </button>
+    </div>
+  </div>
+);
+
+const AssetPickerModal = ({ serverId, onPick, onClose }) => {
+  const [tab, setTab]           = useState('library');
+  const [assets, setAssets]     = useState([]);
+  const [libLoading, setLibLoading] = useState(true);
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploading, setUploading]   = useState(false);
+  const [uploadErr, setUploadErr]   = useState('');
+  const [dragOver, setDragOver]     = useState(false);
+  const fileRef = useRef(null);
+
+  const loadAssets = async () => {
+    try { const { assets: a } = await listAssets(serverId); setAssets(a || []); }
+    catch { setAssets([]); }
+    setLibLoading(false);
+  };
+  useEffect(() => { loadAssets(); }, [serverId]); // eslint-disable-line
+
+  const pickFile = (f) => {
+    if (!f) return;
+    if (f.size > 10 * 1024 * 1024) { setUploadErr('File too large. Max 10 MB.'); return; }
+    if (!['image/png','image/jpeg','image/jpg','image/gif','image/webp'].includes(f.type)) {
+      setUploadErr('Unsupported type. Use PNG, JPG, GIF, or WebP.'); return;
+    }
+    setUploadErr('');
+    setUploadFile(f);
+  };
+
+  const handleUpload = async () => {
+    if (!uploadFile || uploading) return;
+    setUploading(true); setUploadErr('');
+    try {
+      const res = await uploadAsset(serverId, uploadFile);
+      await loadAssets();
+      setTab('library');
+      setUploadFile(null);
+      if (res.url) onPick(res.url);
+    } catch (e) { setUploadErr(e.message || 'Upload failed'); }
+    finally { setUploading(false); }
+  };
+
+  const handleDel = async (assetId, e) => {
+    e.stopPropagation();
+    try { await deleteAsset(serverId, assetId); await loadAssets(); } catch {}
+  };
+
+  const tabBtn = (active) => ({
+    padding: '8px 16px', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px',
+    fontWeight: 600, background: 'none', border: 'none',
+    borderBottom: `2px solid ${active ? C.gold : 'transparent'}`, color: active ? C.gold : C.muted,
+  });
+
   return (
-    <Card style={{ marginBottom: '20px' }}>
-      <div onClick={() => setOpen(!open)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', userSelect: 'none' }}>
-        <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{title}</div>
-        <span style={{ color: C.muted, fontSize: '11px', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <div style={{ background: '#13131a', border: `1px solid ${C.border}`, borderRadius: '16px', padding: '24px', maxWidth: '600px', width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <div style={{ fontSize: '15px', fontWeight: 700 }}>Asset Library</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: '22px', lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, marginBottom: '16px' }}>
+          <button style={tabBtn(tab === 'library')} onClick={() => setTab('library')}>My Library</button>
+          <button style={tabBtn(tab === 'upload')} onClick={() => setTab('upload')}>Upload New</button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {tab === 'library' && (
+            libLoading ? (
+              <div style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '32px 0' }}>Loading…</div>
+            ) : assets.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: C.muted }}>
+                <div style={{ fontSize: '32px', marginBottom: '8px' }}>🖼️</div>
+                <div style={{ fontSize: '13px' }}>No assets yet. Upload your first image.</div>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px,1fr))', gap: '10px' }}>
+                {assets.map(a => (
+                  <div key={a.asset_id} onClick={() => onPick(a.url)}
+                    style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, aspectRatio: '1' }}>
+                    <img src={a.url} alt={a.original_name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    <button onClick={(e) => handleDel(a.asset_id, e)}
+                      style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(0,0,0,0.75)', border: 'none', borderRadius: '50%', width: '20px', height: '20px', cursor: 'pointer', color: '#fff', fontSize: '13px', lineHeight: '20px', textAlign: 'center', padding: 0 }}>×</button>
+                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent,rgba(0,0,0,0.7))', padding: '4px 5px 5px', fontSize: '9px', color: 'rgba(255,255,255,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.original_name}</div>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+          {tab === 'upload' && (
+            <div>
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={e => { e.preventDefault(); setDragOver(false); pickFile(e.dataTransfer.files[0]); }}
+                onClick={() => fileRef.current?.click()}
+                style={{ border: `2px dashed ${dragOver ? C.gold : 'rgba(255,255,255,0.14)'}`, borderRadius: '10px', padding: '36px 20px', textAlign: 'center', cursor: 'pointer', transition: 'border-color 0.2s', background: dragOver ? 'rgba(200,168,78,0.05)' : 'transparent', marginBottom: '10px' }}>
+                {uploadFile ? (
+                  <div>
+                    <img src={URL.createObjectURL(uploadFile)} alt="preview" style={{ maxHeight: '160px', maxWidth: '100%', borderRadius: '6px', marginBottom: '8px' }} />
+                    <div style={{ fontSize: '12px', color: C.muted }}>{uploadFile.name} ({(uploadFile.size/1024).toFixed(0)} KB)</div>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: '32px', marginBottom: '8px' }}>📤</div>
+                    <div style={{ fontSize: '13px', color: C.muted }}>Drag & drop or click to select</div>
+                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.2)', marginTop: '4px' }}>PNG, JPG, GIF, WebP — max 10 MB</div>
+                  </>
+                )}
+                <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" style={{ display: 'none' }} onChange={e => pickFile(e.target.files?.[0])} />
+              </div>
+              {uploadErr && <div style={{ color: C.red, fontSize: '12px', marginBottom: '10px' }}>{uploadErr}</div>}
+              {uploadFile && (
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={handleUpload} disabled={uploading}
+                    style={{ flex: 1, background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '10px', color: '#0A0A0F', cursor: uploading ? 'not-allowed' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '14px', fontWeight: 700, opacity: uploading ? 0.7 : 1 }}>
+                    {uploading ? 'Uploading…' : 'Upload'}
+                  </button>
+                  <button onClick={() => { setUploadFile(null); setUploadErr(''); }}
+                    style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px 16px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '14px' }}>
+                    Clear
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-      {open && <div style={{ marginTop: '20px' }}>{children}</div>}
-    </Card>
+    </div>
+  );
+};
+
+const EmbedPreview = ({
+  serverId, isPremium,
+  title = '', description = '',
+  thumbnailUrl = '', imageUrl = '',
+  color = '#94730D', footerText = '',
+  onTitleChange, onDescriptionChange,
+  onThumbnailChange, onImageChange,
+  onColorChange, onFooterTextChange,
+  showImage = true,
+}) => {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [assetModal, setAssetModal] = useState(null);
+  const [comingSoon, setComingSoon] = useState(false);
+  const pickerRef  = useRef(null);
+  const barRef     = useRef(null);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const handler = (e) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target) &&
+          barRef.current    && !barRef.current.contains(e.target)) {
+        setPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [pickerOpen]);
+
+  const vizClick = (action) => {
+    if (!isPremium) { setComingSoon(true); return; }
+    action();
+  };
+
+  const safeColor = /^#[0-9a-fA-F]{3,6}$/.test(color) ? color : '#94730D';
+
+  const iStyle = {
+    width: '100%', background: 'transparent', border: 'none', outline: 'none',
+    fontFamily: 'Sora, sans-serif', color: '#fff', padding: '2px 0', boxSizing: 'border-box',
+  };
+
+  return (
+    <>
+      <div style={{ position: 'relative', background: '#2f3136', borderRadius: '4px', overflow: 'visible', marginTop: '12px', display: 'flex', fontFamily: 'Whitney, Sora, sans-serif' }}>
+        {/* Color bar */}
+        <div ref={barRef} onClick={() => vizClick(() => setPickerOpen(p => !p))}
+          title={isPremium ? 'Click to change color' : 'Color (premium)'}
+          style={{ width: '4px', background: safeColor, flexShrink: 0, cursor: 'pointer', borderRadius: '4px 0 0 4px', minHeight: '100%' }} />
+
+        {/* Color picker popover */}
+        {pickerOpen && (
+          <div ref={pickerRef} style={{ position: 'absolute', left: '14px', top: '8px', zIndex: 100, background: '#1a1a22', border: `1px solid ${C.border}`, borderRadius: '10px', padding: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.55)' }}>
+            <HexColorPicker color={safeColor} onChange={v => onColorChange?.(v)} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
+              <input value={safeColor} onChange={e => onColorChange?.(e.target.value)}
+                style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${C.border}`, borderRadius: '5px', padding: '4px 8px', color: '#fff', fontSize: '12px', fontFamily: 'monospace', width: '90px', outline: 'none' }} />
+              <button onClick={() => setPickerOpen(false)}
+                style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: '12px' }}>Done</button>
+            </div>
+          </div>
+        )}
+
+        {/* Body */}
+        <div style={{ flex: 1, padding: '12px 14px 10px', minWidth: 0 }}>
+          {/* Title + Thumbnail row */}
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <input value={title} onChange={e => onTitleChange?.(e.target.value)}
+                placeholder="Embed title…"
+                style={{ ...iStyle, fontSize: '15px', fontWeight: 700, borderBottom: '1px dashed rgba(255,255,255,0.12)', marginBottom: '8px' }} />
+              <textarea value={description} onChange={e => onDescriptionChange?.(e.target.value)}
+                placeholder="Embed description…" rows={3}
+                style={{ ...iStyle, resize: 'none', fontSize: '13px', color: 'rgba(255,255,255,0.82)', borderBottom: '1px dashed rgba(255,255,255,0.07)', lineHeight: '1.5' }} />
+            </div>
+            {/* Thumbnail zone */}
+            <div onClick={() => vizClick(() => setAssetModal('thumbnail'))}
+              title={isPremium ? 'Click to upload thumbnail' : 'Thumbnail (premium)'}
+              style={{ width: '80px', height: '80px', flexShrink: 0, borderRadius: '4px', overflow: 'hidden', cursor: 'pointer', background: thumbnailUrl ? 'transparent' : 'rgba(255,255,255,0.04)', border: thumbnailUrl ? 'none' : '1px dashed rgba(255,255,255,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {thumbnailUrl
+                ? <img src={thumbnailUrl} alt="thumb" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display='none'; }} />
+                : <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.28)', fontSize: '10px', lineHeight: '1.4' }}>
+                    <div style={{ fontSize: '22px' }}>🖼</div>
+                    {isPremium ? 'Upload' : '🔒'}
+                  </div>
+              }
+            </div>
+          </div>
+
+          {/* Image zone */}
+          {showImage && (
+            <div onClick={() => vizClick(() => setAssetModal('image'))}
+              title={isPremium ? 'Click to upload image/GIF' : 'Image (premium)'}
+              style={{ marginTop: '10px', height: '160px', borderRadius: '4px', overflow: 'hidden', cursor: 'pointer', background: imageUrl ? 'transparent' : 'rgba(255,255,255,0.03)', border: imageUrl ? 'none' : '1px dashed rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {imageUrl
+                ? <img src={imageUrl} alt="embed-img" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display='none'; }} />
+                : <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: '12px' }}>
+                    <div style={{ fontSize: '28px', marginBottom: '4px' }}>🖼️</div>
+                    <div>{isPremium ? '+ Upload image or GIF' : '🔒 Image (premium)'}</div>
+                  </div>
+              }
+            </div>
+          )}
+
+          {/* Footer */}
+          <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            <input value={footerText} onChange={e => onFooterTextChange?.(e.target.value)}
+              placeholder="Footer text (empty = brand default)"
+              style={{ ...iStyle, fontSize: '11px', color: 'rgba(255,255,255,0.38)' }} />
+          </div>
+        </div>
+      </div>
+
+      {assetModal && (
+        <AssetPickerModal serverId={serverId}
+          onPick={(url) => { assetModal === 'thumbnail' ? onThumbnailChange?.(url) : onImageChange?.(url); setAssetModal(null); }}
+          onClose={() => setAssetModal(null)} />
+      )}
+      {comingSoon && <ComingSoonModal onClose={() => setComingSoon(false)} />}
+    </>
   );
 };
 
@@ -603,18 +867,25 @@ const VerificationSettings = () => {
         </SettingsCard>
 
         <SettingsCard title="Embed">
-          <FieldRow>
-            <Field label="Embed Title">
-              <Input value={v.embedTitle} onChange={set('embedTitle')} placeholder="🔒 Verify to Enter" />
-            </Field>
-            <Field label="Button Label">
-              <Input value={v.embedButtonLabel} onChange={set('embedButtonLabel')} placeholder="Verify" />
-            </Field>
-          </FieldRow>
-          <Field label="Embed Description" hint="text shown above the Verify button">
-            <Textarea value={v.embedDescription} onChange={set('embedDescription')} rows={3}
-              placeholder="Click the button below and solve the CAPTCHA to access the server." />
+          <Field label="Button Label">
+            <Input value={v.embedButtonLabel} onChange={set('embedButtonLabel')} placeholder="Verify" />
           </Field>
+          <EmbedPreview
+            serverId={server?.id}
+            isPremium={isPremium}
+            title={v.embedTitle}
+            description={v.embedDescription}
+            thumbnailUrl={v.verifyThumbnailUrl}
+            imageUrl={v.verifyImageUrl}
+            color={v.verifyColor || '#94730D'}
+            footerText={v.verifyFooterText}
+            onTitleChange={set('embedTitle')}
+            onDescriptionChange={set('embedDescription')}
+            onThumbnailChange={set('verifyThumbnailUrl')}
+            onImageChange={set('verifyImageUrl')}
+            onColorChange={set('verifyColor')}
+            onFooterTextChange={set('verifyFooterText')}
+          />
           <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
             <button
               onClick={handleSendEmbed}
@@ -677,33 +948,6 @@ const VerificationSettings = () => {
           </>)}
         </SettingsCard>
 
-        {isPremium && (
-          <CollapsibleSection title="Visual Customization">
-            <FieldRow>
-              <Field label="Color" hint="hex color like #94730D — leave empty to use brand default">
-                <Input value={v.verifyColor} onChange={set('verifyColor')} placeholder="#94730D" />
-              </Field>
-              <Field label="Footer Text" hint="leave empty to use brand default">
-                <Input value={v.verifyFooterText} onChange={set('verifyFooterText')} placeholder="Powered by AVbot" />
-              </Field>
-            </FieldRow>
-            <div style={{ marginTop: '14px' }}>
-              <Field label="Thumbnail URL" hint="small image shown in the top-right of the embed">
-                <Input value={v.verifyThumbnailUrl} onChange={set('verifyThumbnailUrl')} placeholder="https://..." />
-              </Field>
-            </div>
-            <div style={{ marginTop: '14px' }}>
-              <Field label="Image URL" hint="large image or GIF shown at the bottom of the embed">
-                <Input value={v.verifyImageUrl} onChange={set('verifyImageUrl')} placeholder="https://..." />
-              </Field>
-            </div>
-            <div style={{ marginTop: '14px' }}>
-              <Field label="Footer Icon URL" hint="small icon shown next to footer text">
-                <Input value={v.verifyFooterIconUrl} onChange={set('verifyFooterIconUrl')} placeholder="https://..." />
-              </Field>
-            </div>
-          </CollapsibleSection>
-        )}
       </>)}
 
       <ActionBar saveState={saveState} onSave={() => save(v)} />
@@ -735,7 +979,7 @@ const MODE_BADGE_STYLES = {
 };
 
 const RoleSelectSettings = () => {
-  const { server } = useContext(DashboardContext);
+  const { server, isPremium } = useContext(DashboardContext);
   const serverId = server?.id;
 
   const [panels, setPanels]               = useState([]);
@@ -743,7 +987,7 @@ const RoleSelectSettings = () => {
   const [error, setError]                 = useState(null);
   const [activePanelId, setActivePanelId] = useState(null);
 
-  const [panelForm, setPanelForm]     = useState({ title: '', description: '', style: 'buttons', channel: '' });
+  const [panelForm, setPanelForm]     = useState({ title: '', description: '', style: 'buttons', channel: '', thumbnail_url: '', image_url: '', color: '', footer_text: '' });
   const setPF                         = k => v => setPanelForm(p => ({ ...p, [k]: v }));
   const [panelSaving, setPanelSaving] = useState(false);
   const [panelSaveMsg, setPanelSaveMsg] = useState('');
@@ -786,10 +1030,14 @@ const RoleSelectSettings = () => {
     const p = panels.find(x => x.panel_id === activePanelId);
     if (!p) return;
     setPanelForm({
-      title:       p.title       || '',
-      description: p.description || '',
-      style:       p.style       || 'buttons',
-      channel:     p.channel_id  ? String(p.channel_id) : '',
+      title:         p.title         || '',
+      description:   p.description   || '',
+      style:         p.style         || 'buttons',
+      channel:       p.channel_id    ? String(p.channel_id) : '',
+      thumbnail_url: p.thumbnail_url || '',
+      image_url:     p.image_url     || '',
+      color:         p.color         || '',
+      footer_text:   p.footer_text   || '',
     });
     setSendMsg('');
     setSendState('idle');
@@ -814,7 +1062,13 @@ const RoleSelectSettings = () => {
     setPanelSaving(true);
     setPanelSaveMsg('');
     try {
-      const updates = { title: panelForm.title, description: panelForm.description, style: panelForm.style };
+      const updates = {
+        title: panelForm.title, description: panelForm.description, style: panelForm.style,
+        thumbnail_url: panelForm.thumbnail_url || '',
+        image_url:     panelForm.image_url     || '',
+        color:         panelForm.color         || '',
+        footer_text:   panelForm.footer_text   || '',
+      };
       const chTrimmed = panelForm.channel.trim();
       if (chTrimmed) updates.channel_id = chTrimmed;
       await updateRolePanel(serverId, activePanelId, updates);
@@ -1016,26 +1270,33 @@ const RoleSelectSettings = () => {
       {/* ── Section B: Panel editor ── */}
       {activePanel && (<>
         <SettingsCard title="Embed Details">
-          <FieldRow>
-            <Field label="Title">
-              <Input value={panelForm.title} onChange={setPF('title')} placeholder="🎯 Role Selection" />
-            </Field>
+          <EmbedPreview
+            serverId={serverId}
+            isPremium={isPremium}
+            title={panelForm.title}
+            description={panelForm.description}
+            thumbnailUrl={panelForm.thumbnail_url}
+            imageUrl={panelForm.image_url}
+            color={panelForm.color || '#94730D'}
+            footerText={panelForm.footer_text}
+            onTitleChange={setPF('title')}
+            onDescriptionChange={setPF('description')}
+            onThumbnailChange={setPF('thumbnail_url')}
+            onImageChange={setPF('image_url')}
+            onColorChange={setPF('color')}
+            onFooterTextChange={setPF('footer_text')}
+          />
+          <FieldRow style={{ marginTop: '14px' }}>
             <Field label="Style">
               <Select value={panelForm.style} onChange={setPF('style')} options={[
                 { value: 'buttons',  label: 'Buttons' },
                 { value: 'dropdown', label: 'Dropdown menu' },
               ]} />
             </Field>
-          </FieldRow>
-          <Field label="Description" hint="shown in the embed body — optional">
-            <Textarea value={panelForm.description} onChange={setPF('description')} rows={2}
-              placeholder="Select a role below to gain access to the section." />
-          </Field>
-          <div style={{ marginTop: '14px' }}>
-            <Field label="Channel" hint="channel name or ID — e.g. role-select or 1234567890123456789">
+            <Field label="Channel" hint="channel name or ID">
               <Input value={panelForm.channel} onChange={setPF('channel')} placeholder="1234567890123456789" />
             </Field>
-          </div>
+          </FieldRow>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '18px', flexWrap: 'wrap' }}>
             <button onClick={handleSavePanel} disabled={panelSaving} className="btn-primary"
               style={{ padding: '10px 24px', fontSize: '14px', opacity: panelSaving ? 0.7 : 1 }}>
@@ -1343,7 +1604,7 @@ const FormsSettings = () => {
 // ── Tickets ───────────────────────────────────────────────────────────────────
 
 const TicketsSettings = () => {
-  const { server } = useContext(DashboardContext);
+  const { server, isPremium } = useContext(DashboardContext);
   const [v, setV] = useState({ ...TICKETS_DEFAULTS });
   const set = k => val => setV(p => ({ ...p, [k]: val }));
   const { saveState, save } = useSaveConfig(server?.id, TICKETS_CONFIG_MAP, TICKETS_DEFAULTS, setV);
@@ -1386,21 +1647,30 @@ const TicketsSettings = () => {
       {v.enabled && (<>
         {/* Panel Embed */}
         <SettingsCard title="Panel Embed">
-          <Field label="Panel Channel" hint="name or ID — where the Open Ticket button is posted">
-            <Input value={v.panelChannel} onChange={set('panelChannel')} placeholder="#support or 123456789" />
-          </Field>
-          <FieldRow style={{ marginTop: '14px' }}>
-            <Field label="Embed Title">
-              <Input value={v.panelTitle} onChange={set('panelTitle')} placeholder="Support Tickets" />
+          <FieldRow>
+            <Field label="Panel Channel" hint="name or ID — where the Open Ticket button is posted">
+              <Input value={v.panelChannel} onChange={set('panelChannel')} placeholder="#support or 123456789" />
             </Field>
             <Field label="Button Label">
               <Input value={v.panelButtonLabel} onChange={set('panelButtonLabel')} placeholder="Open Ticket" />
             </Field>
           </FieldRow>
-          <Field label="Embed Description">
-            <Textarea value={v.panelDesc} onChange={set('panelDesc')} rows={2}
-              placeholder="Need help? Click below to open a ticket." />
-          </Field>
+          <EmbedPreview
+            serverId={server?.id}
+            isPremium={isPremium}
+            title={v.panelTitle}
+            description={v.panelDesc}
+            thumbnailUrl={v.panelThumbnailUrl}
+            imageUrl={v.panelImageUrl}
+            color={v.panelColor || '#94730D'}
+            footerText={v.panelFooterText}
+            onTitleChange={set('panelTitle')}
+            onDescriptionChange={set('panelDesc')}
+            onThumbnailChange={set('panelThumbnailUrl')}
+            onImageChange={set('panelImageUrl')}
+            onColorChange={set('panelColor')}
+            onFooterTextChange={set('panelFooterText')}
+          />
           <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
             <button
               onClick={handleSendPanel}

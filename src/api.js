@@ -136,3 +136,29 @@ export const refreshRolePanel = (serverId, panelId) =>
 
 export const fetchHealth = () =>
   fetch(`${API_BASE_URL}/health`).then(r => r.json()).catch(() => null);
+
+// ── Asset library ──────────────────────────────────────────────────────────
+
+export const listAssets = (serverId) =>
+  apiFetch(`/api/servers/${serverId}/assets`);
+
+export const uploadAsset = async (serverId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const token = getToken();
+  const res = await fetch(`${API_BASE_URL}/api/servers/${serverId}/assets/upload`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (res.status === 401) { clearToken(); throw new Error('Unauthorized'); }
+  if (!res.ok) {
+    let detail = 'Upload failed';
+    try { const err = await res.json(); detail = err.detail || detail; } catch {}
+    throw new Error(detail);
+  }
+  return res.json();
+};
+
+export const deleteAsset = (serverId, assetId) =>
+  apiFetch(`/api/servers/${serverId}/assets/${assetId}`, { method: 'DELETE' });
