@@ -402,14 +402,10 @@ const AdvancedSection = ({ children }) => {
 const ComingSoonModal = ({ onClose }) => (
   <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
     <div style={{ background: '#13131a', border: `1px solid ${C.border}`, borderRadius: '16px', padding: '32px', maxWidth: '380px', width: '100%', textAlign: 'center' }}>
-      <div style={{ fontSize: '36px', marginBottom: '12px' }}>🎨</div>
-      <div style={{ fontSize: '17px', fontWeight: 700, marginBottom: '10px' }}>Visual Customization</div>
-      <p style={{ color: C.muted, fontSize: '13px', lineHeight: '1.6', margin: '0 0 24px' }}>
-        Custom thumbnails, images, and colors are available on premium plans. Stay tuned!
-      </p>
+      <h3 style={{ margin: '0 0 24px', fontSize: '17px', fontWeight: 700 }}>🎨 Visual Customization coming soon</h3>
       <button onClick={onClose}
         style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '10px 28px', color: '#0A0A0F', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '14px', fontWeight: 700 }}>
-        Got it
+        OK
       </button>
     </div>
   </div>
@@ -585,7 +581,7 @@ const EmbedPreview = ({
 
   return (
     <>
-      <div style={{ position: 'relative', background: '#2f3136', borderRadius: '4px', overflow: 'visible', marginTop: '12px', display: 'flex', fontFamily: 'Whitney, Sora, sans-serif' }}>
+      <div style={{ position: 'relative', background: 'transparent', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '4px', overflow: 'visible', marginTop: '12px', display: 'flex', fontFamily: 'Whitney, Sora, sans-serif' }}>
         {/* Color bar */}
         <div ref={barRef} onClick={() => vizClick(() => setPickerOpen(p => !p))}
           title={isPremium ? 'Click to change color' : 'Color (premium)'}
@@ -634,9 +630,9 @@ const EmbedPreview = ({
           {showImage && (
             <div onClick={() => vizClick(() => setAssetModal('image'))}
               title={isPremium ? 'Click to upload image/GIF' : 'Image (premium)'}
-              style={{ marginTop: '10px', height: '160px', borderRadius: '4px', overflow: 'hidden', cursor: 'pointer', background: imageUrl ? 'transparent' : 'rgba(255,255,255,0.03)', border: imageUrl ? 'none' : '1px dashed rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              style={{ marginTop: '10px', borderRadius: '4px', overflow: 'hidden', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', ...(imageUrl ? {} : { height: '130px', background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.1)' }) }}>
               {imageUrl
-                ? <img src={imageUrl} alt="embed-img" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display='none'; }} />
+                ? <img src={imageUrl} alt="embed-img" style={{ maxWidth: '100%', maxHeight: '300px', objectFit: 'contain', width: 'auto', height: 'auto', display: 'block' }} onError={e => { e.target.style.display='none'; }} />
                 : <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: '12px' }}>
                     <div style={{ fontSize: '28px', marginBottom: '4px' }}>🖼️</div>
                     <div>{isPremium ? '+ Upload image or GIF' : '🔒 Image (premium)'}</div>
@@ -647,9 +643,16 @@ const EmbedPreview = ({
 
           {/* Footer */}
           <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <input value={footerText} onChange={e => onFooterTextChange?.(e.target.value)}
-              placeholder="Footer text (empty = brand default)"
-              style={{ ...iStyle, fontSize: '11px', color: 'rgba(255,255,255,0.38)' }} />
+            {isPremium
+              ? <input value={footerText} onChange={e => onFooterTextChange?.(e.target.value)}
+                  placeholder="Footer text (empty = brand default)"
+                  style={{ ...iStyle, fontSize: '11px', color: 'rgba(255,255,255,0.38)' }} />
+              : <div onClick={() => setComingSoon(true)}
+                  title="Footer text (premium)"
+                  style={{ cursor: 'pointer', fontSize: '11px', color: 'rgba(255,255,255,0.28)', fontFamily: 'Sora, sans-serif', padding: '2px 0', userSelect: 'none' }}>
+                  {footerText || 'Powered by AVbot'} 🔒
+                </div>
+            }
           </div>
         </div>
       </div>
