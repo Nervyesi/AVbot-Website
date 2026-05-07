@@ -13,6 +13,8 @@ import {
   createRoleButton, updateRoleButton, deleteRoleButton,
   sendRolePanel, refreshRolePanel,
   listAssets, uploadAsset, deleteAsset,
+  listForms, createForm, updateForm, deleteForm,
+  createFormField, updateFormField, deleteFormField, sendForm,
 } from '../api';
 import { DISCORD_INVITE_URL } from '../constants';
 
@@ -119,12 +121,6 @@ const SettingsCard = ({ title, children, style }) => (
     {children}
   </Card>
 );
-
-function useSave() {
-  const [saved, setSaved] = useState(false);
-  const save = () => { setSaved(true); setTimeout(() => setSaved(false), 2200); };
-  return [saved, save];
-}
 
 // ── Config maps — maps form field key → config table key ─────────────────────
 // Only keys that exist in DEFAULT_CONFIG are included here.
@@ -1493,113 +1489,493 @@ const RoleSelectSettings = () => {
 
 // ── Forms ─────────────────────────────────────────────────────────────────────
 
+const FIELD_TYPE_OPTIONS = [
+  { value: 'short_text', label: 'Short Text' },
+  { value: 'long_text',  label: 'Long Text' },
+  { value: 'number',     label: 'Number' },
+  { value: 'dropdown',   label: 'Dropdown' },
+];
+
+const FORM_EDITOR_DEFAULTS = {
+  name: '', title: '', description: '', button_label: 'Apply',
+  thumbnail_url: '', image_url: '', color: '', footer_text: '',
+  channel_id: '', ticket_category: '', staff_roles: '', ping_role: '',
+  approve_role: '', approve_dm_enabled: false, approve_dm_message: '',
+  reject_dm_enabled: false, reject_dm_message: '',
+};
+
+const FIELD_MODAL_DEFAULTS = {
+  label: '', field_type: 'short_text', placeholder: '',
+  required: true, max_length: '', options: '',
+};
+
 const FormsSettings = () => {
-  const [v, setV] = useState({
-    enabled: true,
-    formName: 'Creator Application',
-    channel: '#apply',
-    category: 'Creator Applications',
-    reviewRoles: 'Admins',
-    mainMessage: 'Want to join the AmeretaVerse Creator program? Click the button below to start your application.\n\nOur team will review it within 48 hours.',
-    approveMsg: '✅ Your application has been approved! Welcome to the Creator program.',
-    rejectMsg: 'Thank you for applying. Unfortunately your application does not meet our current requirements. You may reapply in 30 days.',
-    dmEnabled: false,
-    dmOnApprove: true,
-    dmApproveMsg: "Congratulations! Your creator application was approved. You'll receive your roles shortly.",
-    dmOnReject: true,
-    dmRejectMsg: "Thank you for applying. Your application wasn't approved this time. You may reapply in 30 days.",
-    fields: [
-      { id: 1, name: 'Name / Display Name',  minLen: '2',  maxLen: '50',  required: true },
-      { id: 2, name: 'X (Twitter) Profile',  minLen: '5',  maxLen: '100', required: true },
-      { id: 3, name: 'Follower Count',        minLen: '1',  maxLen: '20',  required: true },
-      { id: 4, name: 'Niche & About',         minLen: '20', maxLen: '500', required: true },
-      { id: 5, name: 'Engagement Score',      minLen: '1',  maxLen: '20',  required: false },
-    ],
-  });
-  const set = k => val => setV(p => ({ ...p, [k]: val }));
-  const updF = (id, k, val) => setV(p => ({ ...p, fields: p.fields.map(f => f.id === id ? { ...f, [k]: val } : f) }));
-  const delF = id => setV(p => ({ ...p, fields: p.fields.filter(f => f.id !== id) }));
-  const addF = () => setV(p => ({ ...p, fields: [...p.fields, { id: Date.now(), name: 'New Field', minLen: '1', maxLen: '200', required: false }] }));
-  const [saved, save] = useSave();
+  const { server, isPremium } = useContext(DashboardContext);
+  const serverId = server?.id;
+
+  const [forms, setForms]               = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState(null);
+  const [activeFormId, setActiveFormId] = useState(null);
+
+  const [editor, setEditor]   = useState({ ...FORM_EDITOR_DEFAULTS });
+  const setEd                 = k => v => setEditor(p => ({ ...p, [k]: v }));
+  const [saving, setSaving]   = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+
+  const [sendState, setSendState] = useState('idle');
+  const [sendMsg, setSendMsg]     = useState('');
+
+  const [fieldModal, setFieldModal] = useState(null);
+  const [fmData, setFmData]         = useState({ ...FIELD_MODAL_DEFAULTS });
+  const setFm                       = k => v => setFmData(p => ({ ...p, [k]: v }));
+  const [fmSaving, setFmSaving]     = useState(false);
+  const [fmErr, setFmErr]           = useState('');
+
+  const [confirmFormId,  setConfirmFormId]  = useState(null);
+  const [confirmFieldId, setConfirmFieldId] = useState(null);
+
+  const doFetch = async () => {
+    if (!serverId) return;
+    try {
+      const { forms: f } = await listForms(serverId);
+      setForms(f);
+      setError(null);
+    } catch (e) { setError(e.message); }
+  };
+
+  useEffect(() => {
+    if (!serverId) { setLoading(false); return; }
+    setLoading(true);
+    setActiveFormId(null);
+    setForms([]);
+    listForms(serverId)
+      .then(({ forms: f }) => { setForms(f); setError(null); })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [serverId]); // eslint-disable-line
+
+  useEffect(() => {
+    const f = forms.find(x => x.form_id === activeFormId);
+    if (!f) return;
+    setEditor({
+      name:               f.name               || '',
+      title:              f.title              || '',
+      description:        f.description        || '',
+      button_label:       f.button_label       || 'Apply',
+      thumbnail_url:      f.thumbnail_url      || '',
+      image_url:          f.image_url          || '',
+      color:              f.color              || '',
+      footer_text:        f.footer_text        || '',
+      channel_id:         f.channel_id         || '',
+      ticket_category:    f.ticket_category    || '',
+      staff_roles:        f.staff_roles        || '',
+      ping_role:          f.ping_role          || '',
+      approve_role:       f.approve_role       || '',
+      approve_dm_enabled: f.approve_dm_enabled === 1 || f.approve_dm_enabled === true,
+      approve_dm_message: f.approve_dm_message || '',
+      reject_dm_enabled:  f.reject_dm_enabled  === 1 || f.reject_dm_enabled === true,
+      reject_dm_message:  f.reject_dm_message  || '',
+    });
+    setSaveMsg(''); setSendMsg(''); setSendState('idle');
+  }, [activeFormId]); // eslint-disable-line
+
+  const activeForm = forms.find(f => f.form_id === activeFormId) || null;
+
+  const handleCreateForm = async () => {
+    if (!serverId) return;
+    try {
+      const created = await createForm(serverId, 'New Form');
+      await doFetch();
+      setActiveFormId(created.form_id);
+    } catch (e) { setError(e.message); }
+  };
+
+  const handleSaveForm = async () => {
+    if (!serverId || !activeFormId || saving) return;
+    setSaving(true); setSaveMsg('');
+    try {
+      await updateForm(serverId, activeFormId, {
+        ...editor,
+        approve_dm_enabled: editor.approve_dm_enabled ? 1 : 0,
+        reject_dm_enabled:  editor.reject_dm_enabled  ? 1 : 0,
+      });
+      setSaveMsg('✓ Saved');
+      await doFetch();
+    } catch (e) { setSaveMsg('✗ ' + e.message); }
+    finally { setSaving(false); setTimeout(() => setSaveMsg(''), 3000); }
+  };
+
+  const handleDeleteForm = async (formId) => {
+    if (!serverId) return;
+    try {
+      await deleteForm(serverId, formId);
+      setConfirmFormId(null);
+      if (activeFormId === formId) setActiveFormId(null);
+      await doFetch();
+    } catch (e) { setError(e.message); }
+  };
+
+  const handleSend = async () => {
+    if (!serverId || !activeFormId || sendState === 'sending') return;
+    const ch = editor.channel_id.trim();
+    if (!ch) {
+      setSendMsg('Enter a channel name or ID first');
+      setSendState('error');
+      setTimeout(() => { setSendMsg(''); setSendState('idle'); }, 3500);
+      return;
+    }
+    setSendState('sending');
+    try {
+      const res = await sendForm(serverId, activeFormId, ch);
+      setSendMsg(`✓ Sent (msg ${res.message_id})`);
+      setSendState('sent');
+      await doFetch();
+    } catch (e) {
+      setSendMsg('✗ ' + e.message);
+      setSendState('error');
+    }
+    setTimeout(() => { setSendMsg(''); setSendState('idle'); }, 5000);
+  };
+
+  const openNewField = () => {
+    setFmData({ ...FIELD_MODAL_DEFAULTS });
+    setFmErr(''); setFieldModal({ mode: 'new' });
+  };
+  const openEditField = (f) => {
+    setFmData({
+      label:      f.label      || '',
+      field_type: f.field_type || 'short_text',
+      placeholder: f.placeholder || '',
+      required:   f.required === 1 || f.required === true,
+      max_length: f.max_length != null ? String(f.max_length) : '',
+      options:    (() => {
+        try { const a = JSON.parse(f.options || '[]'); return a.join('\n'); }
+        catch { return ''; }
+      })(),
+    });
+    setFmErr(''); setFieldModal({ mode: 'edit', fieldId: f.field_id });
+  };
+
+  const handleSaveField = async () => {
+    if (!serverId || !activeFormId || fmSaving) return;
+    if (!fmData.label.trim()) { setFmErr('Label is required'); return; }
+    if (fmData.label.length > 45) { setFmErr('Label must be ≤ 45 characters'); return; }
+    if (fmData.placeholder.length > 100) { setFmErr('Placeholder must be ≤ 100 characters'); return; }
+
+    let options = '';
+    if (fmData.field_type === 'dropdown') {
+      const lines = fmData.options.split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length === 0) { setFmErr('Dropdown requires at least 1 option'); return; }
+      if (lines.length > 25) { setFmErr('Dropdown can have at most 25 options'); return; }
+      options = JSON.stringify(lines);
+    }
+
+    const payload = {
+      label:      fmData.label.trim(),
+      field_type: fmData.field_type,
+      placeholder: fmData.placeholder,
+      required:   fmData.required ? 1 : 0,
+      options,
+      max_length: fmData.max_length ? parseInt(fmData.max_length, 10) || null : null,
+    };
+
+    setFmSaving(true); setFmErr('');
+    try {
+      if (fieldModal.mode === 'new') {
+        const currentFields = activeForm?.fields || [];
+        await createFormField(serverId, activeFormId, { ...payload, position: currentFields.length });
+      } else {
+        await updateFormField(serverId, activeFormId, fieldModal.fieldId, payload);
+      }
+      setFieldModal(null);
+      await doFetch();
+    } catch (e) { setFmErr('✗ ' + e.message); }
+    finally { setFmSaving(false); }
+  };
+
+  const handleDeleteField = async (fieldId) => {
+    if (!serverId || !activeFormId) return;
+    try {
+      await deleteFormField(serverId, activeFormId, fieldId);
+      setConfirmFieldId(null);
+      await doFetch();
+    } catch (e) { setError(e.message); }
+  };
 
   return (
     <div>
-      <PageHeader icon="📋" title="Forms" badge="MODULE" desc="Build custom application forms with configurable fields and review flow." />
-      <SettingsCard title="Module">
-        <Toggle value={v.enabled} onChange={set('enabled')} label="Enable Forms" />
+      <PageHeader icon="📋" title="Forms" badge="MODULE"
+        desc="Build custom application forms — each form posts a panel embed with an Apply button." />
+
+      {error && (
+        <div style={{ background: 'rgba(237,66,69,0.1)', border: '1px solid rgba(237,66,69,0.3)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', color: C.red, fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {error}
+          <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '18px' }}>×</button>
+        </div>
+      )}
+
+      {/* ── Section A: Form list ── */}
+      <SettingsCard>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px' }}>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Application Forms</div>
+            <div style={{ fontSize: '12px', color: C.muted, marginTop: '4px' }}>Each form has its own panel embed with custom fields and approve/reject workflow.</div>
+          </div>
+          <button onClick={handleCreateForm}
+            style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '9px 16px', color: '#0A0A0F', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, flexShrink: 0, marginLeft: '16px' }}>
+            + New Form
+          </button>
+        </div>
+        {loading ? (
+          <div style={{ color: C.muted, fontSize: '13px', padding: '16px 0' }}>Loading…</div>
+        ) : forms.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '32px 0', color: C.muted }}>
+            <div style={{ fontSize: '28px', marginBottom: '10px' }}>📋</div>
+            <div style={{ fontSize: '14px' }}>No forms yet. Click <strong style={{ color: C.gold }}>+ New Form</strong> to start.</div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {forms.map(form => {
+              const isActive = activeFormId === form.form_id;
+              const fieldCount = (form.fields || []).length;
+              return (
+                <div key={form.form_id}
+                  style={{ background: isActive ? 'rgba(200,168,78,0.07)' : 'rgba(0,0,0,0.2)', border: `1px solid ${isActive ? C.gold : 'rgba(255,255,255,0.07)'}`, borderRadius: '10px', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{form.name}</div>
+                    <div style={{ fontSize: '11px', color: C.muted, marginTop: '3px' }}>
+                      {fieldCount} field{fieldCount !== 1 ? 's' : ''}
+                      {form.channel_id ? ` · Sent` : ' · Not sent'}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0, alignItems: 'center' }}>
+                    <button onClick={() => setActiveFormId(isActive ? null : form.form_id)}
+                      style={{ background: isActive ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isActive ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '6px', padding: '5px 12px', color: isActive ? C.gold : '#fff', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
+                      {isActive ? '▲ Close' : '✏️ Edit'}
+                    </button>
+                    {confirmFormId === form.form_id ? (
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11px', color: C.red }}>Delete?</span>
+                        <button onClick={() => handleDeleteForm(form.form_id)}
+                          style={{ background: 'rgba(237,66,69,0.2)', border: '1px solid rgba(237,66,69,0.4)', borderRadius: '6px', padding: '4px 10px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>Yes</button>
+                        <button onClick={() => setConfirmFormId(null)}
+                          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '4px 10px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>No</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setConfirmFormId(form.form_id)}
+                        style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px', padding: '4px 6px', lineHeight: 1 }}>🗑</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </SettingsCard>
 
-      {v.enabled && (<>
-        <SettingsCard title="Form Setup">
-          <FieldRow>
-            <Field label="Form Name"><Input value={v.formName} onChange={set('formName')} placeholder="Creator Application" /></Field>
-            <Field label="Button Channel" hint="where the Apply button is posted"><Input value={v.channel} onChange={set('channel')} placeholder="#apply or 123456789" /></Field>
-          </FieldRow>
-          <FieldRow>
-            <Field label="Ticket Category" hint="Discord category for form threads"><Input value={v.category} onChange={set('category')} placeholder="Creator Applications" /></Field>
-            <Field label="Reviewer Roles" hint="multiple allowed — comma separated"><Input value={v.reviewRoles} onChange={set('reviewRoles')} placeholder="Admins, Mods" /></Field>
-          </FieldRow>
-        </SettingsCard>
+      {/* ── Section B: Form editor ── */}
+      {activeForm && (<>
 
-        <SettingsCard title="Main Message">
-          <Field label="Embed Message" hint="the embed users see with the Apply button">
-            <Textarea value={v.mainMessage} onChange={set('mainMessage')} rows={4} placeholder="Click the button below to start your application." />
+        <SettingsCard title="Form Info">
+          <Field label="Form Name">
+            <Input value={editor.name} onChange={setEd('name')} placeholder="Creator Application" />
           </Field>
         </SettingsCard>
 
-        <SettingsCard title="Form Fields">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 72px 72px 100px 28px', gap: '8px', marginBottom: '8px' }}>
-            {['Field Name', 'Min', 'Max', 'Required', ''].map((h, i) => (
-              <div key={i} style={{ fontSize: '10px', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</div>
-            ))}
-          </div>
-          {v.fields.map(f => (
-            <div key={f.id} style={{ display: 'grid', gridTemplateColumns: '1fr 72px 72px 100px 28px', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
-              <input value={f.name} onChange={e => updF(f.id, 'name', e.target.value)}
-                style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '8px 10px', color: '#fff', fontSize: '13px', fontFamily: 'Sora, sans-serif', outline: 'none' }} />
-              <input type="number" value={f.minLen} onChange={e => updF(f.id, 'minLen', e.target.value)}
-                style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '8px', color: '#fff', fontSize: '13px', fontFamily: 'Sora, sans-serif', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
-              <input type="number" value={f.maxLen} onChange={e => updF(f.id, 'maxLen', e.target.value)}
-                style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '8px', color: '#fff', fontSize: '13px', fontFamily: 'Sora, sans-serif', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <div onClick={() => updF(f.id, 'required', !f.required)} style={{ width: '36px', height: '20px', borderRadius: '100px', background: f.required ? `linear-gradient(135deg,${C.gold},${C.goldDark})` : 'rgba(255,255,255,0.1)', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
-                  <div style={{ position: 'absolute', top: '2px', left: f.required ? '18px' : '2px', width: '16px', height: '16px', borderRadius: '50%', background: 'white', transition: 'left 0.2s' }} />
-                </div>
-                <span style={{ fontSize: '11px', color: C.muted }}>{f.required ? 'Yes' : 'No'}</span>
-              </div>
-              <button onClick={() => delF(f.id)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px' }}>×</button>
-            </div>
-          ))}
-          <button onClick={addF} style={{ marginTop: '8px', background: 'rgba(200,168,78,0.08)', border: '1px dashed rgba(200,168,78,0.3)', color: C.gold, padding: '7px 14px', borderRadius: '7px', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>+ Add Field</button>
+        <SettingsCard title="Panel Embed">
+          <Field label="Button Label">
+            <Input value={editor.button_label} onChange={setEd('button_label')} placeholder="Apply" style={{ maxWidth: '200px' }} />
+          </Field>
+          <EmbedPreview
+            serverId={serverId}
+            isPremium={isPremium}
+            title={editor.title}
+            description={editor.description}
+            thumbnailUrl={editor.thumbnail_url}
+            imageUrl={editor.image_url}
+            color={editor.color || '#94730D'}
+            footerText={editor.footer_text}
+            onTitleChange={setEd('title')}
+            onDescriptionChange={setEd('description')}
+            onThumbnailChange={setEd('thumbnail_url')}
+            onImageChange={setEd('image_url')}
+            onColorChange={setEd('color')}
+            onFooterTextChange={setEd('footer_text')}
+          />
         </SettingsCard>
 
-        <SettingsCard title="Review Messages">
-          <Field label="Approve Message" hint="shown in the ticket channel on approve">
-            <Textarea value={v.approveMsg} onChange={set('approveMsg')} rows={2} />
+        <SettingsCard title="Submission Settings">
+          <FieldRow>
+            <Field label="Channel" hint="name or ID — where to post the panel embed">
+              <Input value={editor.channel_id} onChange={setEd('channel_id')} placeholder="#apply or 1234567890" />
+            </Field>
+            <Field label="Ticket Category" hint="Discord category for submission threads">
+              <Input value={editor.ticket_category} onChange={setEd('ticket_category')} placeholder="Applications" />
+            </Field>
+          </FieldRow>
+          <FieldRow>
+            <Field label="Staff Roles" hint="comma-separated — can see and decide on submissions">
+              <Input value={editor.staff_roles} onChange={setEd('staff_roles')} placeholder="Admins, Mods" />
+            </Field>
+            <Field label="Ping Role" hint="optional — mentioned when a submission arrives">
+              <Input value={editor.ping_role} onChange={setEd('ping_role')} placeholder="Staff" />
+            </Field>
+          </FieldRow>
+        </SettingsCard>
+
+        <SettingsCard title="Approve Action">
+          <Field label="Role to Give" hint="optional — granted to approved applicants">
+            <Input value={editor.approve_role} onChange={setEd('approve_role')} placeholder="Member" style={{ maxWidth: '300px' }} />
           </Field>
           <div style={{ marginTop: '14px' }}>
-            <Field label="Reject Message" hint="shown in the ticket channel on reject">
-              <Textarea value={v.rejectMsg} onChange={set('rejectMsg')} rows={2} />
-            </Field>
+            <SubToggle value={editor.approve_dm_enabled} onChange={setEd('approve_dm_enabled')} label="DM applicant on approve">
+              <Textarea value={editor.approve_dm_message} onChange={setEd('approve_dm_message')} rows={2}
+                placeholder="Congratulations! Your application was approved." />
+            </SubToggle>
           </div>
         </SettingsCard>
 
-        <SettingsCard title="Direct Messages">
-          <Toggle value={v.dmEnabled} onChange={set('dmEnabled')} label="Send DM?"
-            desc="Send direct messages to applicants when their form is reviewed." />
-          {v.dmEnabled && (<>
-            <SubToggle value={v.dmOnApprove} onChange={set('dmOnApprove')} label="DM on approve">
-              <Textarea value={v.dmApproveMsg} onChange={set('dmApproveMsg')} rows={2} placeholder="Congratulations! Your application was approved." />
-            </SubToggle>
-            <SubToggle value={v.dmOnReject} onChange={set('dmOnReject')} label="DM on reject">
-              <Textarea value={v.dmRejectMsg} onChange={set('dmRejectMsg')} rows={2} placeholder="Thank you for applying. Your application was not approved this time." />
-            </SubToggle>
-          </>)}
+        <SettingsCard title="Reject Action">
+          <SubToggle value={editor.reject_dm_enabled} onChange={setEd('reject_dm_enabled')} label="DM applicant on reject">
+            <Textarea value={editor.reject_dm_message} onChange={setEd('reject_dm_message')} rows={2}
+              placeholder="Thank you for applying. Your application was not approved this time." />
+          </SubToggle>
         </SettingsCard>
+
+        {/* ── Section C: Field editor ── */}
+        <SettingsCard title="Form Fields">
+          <p style={{ margin: '0 0 16px', color: C.muted, fontSize: '13px' }}>
+            Fields appear in Discord modals when users click Apply. Max 45-char labels, 5 fields per modal step.
+          </p>
+          {(activeForm.fields || []).length === 0 ? (
+            <div style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>
+              No fields yet. Click + Add Field to create your first one.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
+              {(activeForm.fields || []).map((f, idx) => (
+                <div key={f.field_id}
+                  style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'rgba(200,168,78,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', color: C.gold, fontWeight: 700, flexShrink: 0 }}>{idx + 1}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '14px', fontWeight: 600 }}>{f.label}</div>
+                    <div style={{ fontSize: '11px', color: C.muted, marginTop: '2px' }}>
+                      {FIELD_TYPE_OPTIONS.find(o => o.value === f.field_type)?.label || f.field_type}
+                      {f.required ? ' · required' : ' · optional'}
+                      {f.max_length ? ` · max ${f.max_length}` : ''}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center' }}>
+                    <button onClick={() => openEditField(f)}
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '5px', padding: '4px 10px', color: '#fff', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>Edit</button>
+                    {confirmFieldId === f.field_id ? (
+                      <>
+                        <button onClick={() => handleDeleteField(f.field_id)}
+                          style={{ background: 'rgba(237,66,69,0.2)', border: '1px solid rgba(237,66,69,0.4)', borderRadius: '5px', padding: '4px 10px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>Yes</button>
+                        <button onClick={() => setConfirmFieldId(null)}
+                          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '5px', padding: '4px 10px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>No</button>
+                      </>
+                    ) : (
+                      <button onClick={() => setConfirmFieldId(f.field_id)}
+                        style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px', padding: '2px 6px', lineHeight: 1 }}>×</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <button onClick={openNewField}
+            style={{ background: 'rgba(200,168,78,0.08)', border: '1px dashed rgba(200,168,78,0.3)', color: C.gold, padding: '8px 16px', borderRadius: '7px', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px' }}>
+            + Add Field
+          </button>
+        </SettingsCard>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '32px', flexWrap: 'wrap' }}>
+          <button onClick={handleSaveForm} disabled={saving} className="btn-primary"
+            style={{ padding: '11px 28px', fontSize: '14px', opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Saving…' : 'Save Form'}
+          </button>
+          <button onClick={handleSend} disabled={sendState === 'sending'}
+            style={{ background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.3)', color: '#7289da', padding: '11px 24px', borderRadius: '8px', cursor: sendState === 'sending' ? 'not-allowed' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '14px', fontWeight: 600, opacity: sendState === 'sending' ? 0.6 : 1 }}>
+            {sendState === 'sending' ? '📨 Sending…' : '📨 Send to Discord'}
+          </button>
+          {saveMsg && <span style={{ fontSize: '13px', color: saveMsg.startsWith('✓') ? C.green : C.red }}>{saveMsg}</span>}
+          {sendMsg && <span style={{ fontSize: '13px', color: sendState === 'error' ? C.red : C.green }}>{sendMsg}</span>}
+        </div>
       </>)}
 
-      {/* TODO: wire in Phase 4-5 when config keys are added for forms */}
-      <ActionBar saved={saved} onSave={save} onSend={() => {}} sendLabel="Send Message" />
+      {/* ── Field editor modal ── */}
+      {fieldModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#13131a', border: `1px solid ${C.border}`, borderRadius: '16px', padding: '28px', maxWidth: '480px', width: '100%', maxHeight: '85vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ fontSize: '15px', fontWeight: 700 }}>{fieldModal.mode === 'new' ? 'Add Field' : 'Edit Field'}</div>
+              <button onClick={() => setFieldModal(null)} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: '22px', lineHeight: 1 }}>×</button>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <Label>Label <span style={{ fontSize: '11px', color: C.muted }}>max 45 chars</span></Label>
+              <Input value={fmData.label} onChange={setFm('label')} placeholder="e.g. Your Name" />
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <Label>Field Type</Label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                {FIELD_TYPE_OPTIONS.map(opt => (
+                  <button key={opt.value} onClick={() => setFm('field_type')(opt.value)}
+                    style={{ background: fmData.field_type === opt.value ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${fmData.field_type === opt.value ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '7px', padding: '8px', color: fmData.field_type === opt.value ? C.gold : C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600, textAlign: 'center' }}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <Label>Placeholder <span style={{ fontSize: '11px', color: C.muted }}>optional, max 100 chars</span></Label>
+              <Input value={fmData.placeholder} onChange={setFm('placeholder')} placeholder="e.g. Enter your answer here" />
+            </div>
+
+            {(fmData.field_type === 'short_text' || fmData.field_type === 'number') && (
+              <div style={{ marginBottom: '16px' }}>
+                <Label>Max Length <span style={{ fontSize: '11px', color: C.muted }}>optional</span></Label>
+                <Input type="number" value={fmData.max_length} onChange={setFm('max_length')} placeholder="e.g. 100" style={{ maxWidth: '140px' }} />
+              </div>
+            )}
+
+            {fmData.field_type === 'long_text' && (
+              <div style={{ marginBottom: '16px' }}>
+                <Label>Max Length <span style={{ fontSize: '11px', color: C.muted }}>optional, max 4000</span></Label>
+                <Input type="number" value={fmData.max_length} onChange={setFm('max_length')} placeholder="e.g. 500" style={{ maxWidth: '140px' }} />
+              </div>
+            )}
+
+            {fmData.field_type === 'dropdown' && (
+              <div style={{ marginBottom: '16px' }}>
+                <Label>Options <span style={{ fontSize: '11px', color: C.muted }}>one per line, max 25</span></Label>
+                <Textarea value={fmData.options} onChange={setFm('options')} rows={5} placeholder={'Option A\nOption B\nOption C'} />
+              </div>
+            )}
+
+            <div style={{ marginBottom: '20px' }}>
+              <Toggle value={fmData.required} onChange={setFm('required')} label="Required" desc="User must fill this field to submit" />
+            </div>
+
+            {fmErr && <div style={{ color: C.red, fontSize: '13px', marginBottom: '12px' }}>{fmErr}</div>}
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={handleSaveField} disabled={fmSaving}
+                style={{ flex: 1, background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '11px', color: '#0A0A0F', cursor: fmSaving ? 'not-allowed' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '14px', fontWeight: 700, opacity: fmSaving ? 0.7 : 1 }}>
+                {fmSaving ? 'Saving…' : fieldModal.mode === 'new' ? 'Add Field' : 'Save Field'}
+              </button>
+              <button onClick={() => setFieldModal(null)}
+                style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '11px 18px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '14px' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

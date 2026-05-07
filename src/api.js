@@ -132,6 +132,47 @@ export const refreshRolePanel = (serverId, panelId) =>
     method: 'POST',
   });
 
+// ── Forms ──────────────────────────────────────────────────────────────────
+
+export const listForms = (sid) =>
+  apiFetch(`/api/servers/${sid}/forms`);
+
+export const createForm = (sid, name) =>
+  apiFetch(`/api/servers/${sid}/forms`, {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+
+export const updateForm = (sid, formId, updates) =>
+  apiFetch(`/api/servers/${sid}/forms/${formId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+
+export const deleteForm = (sid, formId) =>
+  apiFetch(`/api/servers/${sid}/forms/${formId}`, { method: 'DELETE' });
+
+export const createFormField = (sid, formId, field) =>
+  apiFetch(`/api/servers/${sid}/forms/${formId}/fields`, {
+    method: 'POST',
+    body: JSON.stringify(field),
+  });
+
+export const updateFormField = (sid, formId, fieldId, updates) =>
+  apiFetch(`/api/servers/${sid}/forms/${formId}/fields/${fieldId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+
+export const deleteFormField = (sid, formId, fieldId) =>
+  apiFetch(`/api/servers/${sid}/forms/${formId}/fields/${fieldId}`, { method: 'DELETE' });
+
+export const sendForm = (sid, formId, channelId) =>
+  apiFetch(`/api/servers/${sid}/forms/${formId}/send`, {
+    method: 'POST',
+    body: JSON.stringify({ channel_id: String(channelId).trim() }),
+  });
+
 // ── Health ─────────────────────────────────────────────────────────────────
 
 export const fetchHealth = () =>
