@@ -1492,8 +1492,6 @@ const RoleSelectSettings = () => {
 const FIELD_TYPE_OPTIONS = [
   { value: 'short_text', label: 'Short Text' },
   { value: 'long_text',  label: 'Long Text' },
-  { value: 'number',     label: 'Number' },
-  { value: 'dropdown',   label: 'Dropdown' },
 ];
 
 const FORM_EDITOR_DEFAULTS = {
@@ -1502,11 +1500,12 @@ const FORM_EDITOR_DEFAULTS = {
   channel_id: '', ticket_category: '', staff_roles: '', ping_role: '',
   approve_role: '', approve_dm_enabled: false, approve_dm_message: '',
   reject_dm_enabled: false, reject_dm_message: '',
+  auto_close_on_decision: 1,
 };
 
 const FIELD_MODAL_DEFAULTS = {
   label: '', field_type: 'short_text', placeholder: '',
-  required: true, max_length: '', options: '',
+  required: true, max_length: '',
 };
 
 const FormsSettings = () => {
@@ -1576,6 +1575,7 @@ const FormsSettings = () => {
       approve_dm_message: f.approve_dm_message || '',
       reject_dm_enabled:  f.reject_dm_enabled  === 1 || f.reject_dm_enabled === true,
       reject_dm_message:  f.reject_dm_message  || '',
+      auto_close_on_decision: f.auto_close_on_decision != null ? f.auto_close_on_decision : 1,
     });
     setSaveMsg(''); setSendMsg(''); setSendState('idle');
   }, [activeFormId]); // eslint-disable-line
@@ -1649,10 +1649,6 @@ const FormsSettings = () => {
       placeholder: f.placeholder || '',
       required:   f.required === 1 || f.required === true,
       max_length: f.max_length != null ? String(f.max_length) : '',
-      options:    (() => {
-        try { const a = JSON.parse(f.options || '[]'); return a.join('\n'); }
-        catch { return ''; }
-      })(),
     });
     setFmErr(''); setFieldModal({ mode: 'edit', fieldId: f.field_id });
   };
@@ -1663,20 +1659,12 @@ const FormsSettings = () => {
     if (fmData.label.length > 45) { setFmErr('Label must be ≤ 45 characters'); return; }
     if (fmData.placeholder.length > 100) { setFmErr('Placeholder must be ≤ 100 characters'); return; }
 
-    let options = '';
-    if (fmData.field_type === 'dropdown') {
-      const lines = fmData.options.split('\n').map(l => l.trim()).filter(Boolean);
-      if (lines.length === 0) { setFmErr('Dropdown requires at least 1 option'); return; }
-      if (lines.length > 25) { setFmErr('Dropdown can have at most 25 options'); return; }
-      options = JSON.stringify(lines);
-    }
-
     const payload = {
       label:      fmData.label.trim(),
       field_type: fmData.field_type,
       placeholder: fmData.placeholder,
       required:   fmData.required ? 1 : 0,
-      options,
+      options:    '',
       max_length: fmData.max_length ? parseInt(fmData.max_length, 10) || null : null,
     };
 
@@ -1825,6 +1813,13 @@ const FormsSettings = () => {
         </SettingsCard>
 
         <SettingsCard title="Approve Action">
+          <Toggle
+            value={editor.auto_close_on_decision === 1}
+            onChange={v => setEd('auto_close_on_decision')(v ? 1 : 0)}
+            label="Auto-close ticket on decision"
+            desc="When staff approves or rejects, close the ticket channel automatically. Disable to let staff close manually."
+          />
+          <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '4px 0 16px' }} />
           <Field label="Role to Give" hint="optional — granted to approved applicants">
             <Input value={editor.approve_role} onChange={setEd('approve_role')} placeholder="Member" style={{ maxWidth: '300px' }} />
           </Field>
@@ -1921,7 +1916,7 @@ const FormsSettings = () => {
 
             <div style={{ marginBottom: '16px' }}>
               <Label>Field Type</Label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
                 {FIELD_TYPE_OPTIONS.map(opt => (
                   <button key={opt.value} onClick={() => setFm('field_type')(opt.value)}
                     style={{ background: fmData.field_type === opt.value ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${fmData.field_type === opt.value ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '7px', padding: '8px', color: fmData.field_type === opt.value ? C.gold : C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600, textAlign: 'center' }}>
@@ -1936,7 +1931,7 @@ const FormsSettings = () => {
               <Input value={fmData.placeholder} onChange={setFm('placeholder')} placeholder="e.g. Enter your answer here" />
             </div>
 
-            {(fmData.field_type === 'short_text' || fmData.field_type === 'number') && (
+            {fmData.field_type === 'short_text' && (
               <div style={{ marginBottom: '16px' }}>
                 <Label>Max Length <span style={{ fontSize: '11px', color: C.muted }}>optional</span></Label>
                 <Input type="number" value={fmData.max_length} onChange={setFm('max_length')} placeholder="e.g. 100" style={{ maxWidth: '140px' }} />
@@ -1947,13 +1942,6 @@ const FormsSettings = () => {
               <div style={{ marginBottom: '16px' }}>
                 <Label>Max Length <span style={{ fontSize: '11px', color: C.muted }}>optional, max 4000</span></Label>
                 <Input type="number" value={fmData.max_length} onChange={setFm('max_length')} placeholder="e.g. 500" style={{ maxWidth: '140px' }} />
-              </div>
-            )}
-
-            {fmData.field_type === 'dropdown' && (
-              <div style={{ marginBottom: '16px' }}>
-                <Label>Options <span style={{ fontSize: '11px', color: C.muted }}>one per line, max 25</span></Label>
-                <Textarea value={fmData.options} onChange={setFm('options')} rows={5} placeholder={'Option A\nOption B\nOption C'} />
               </div>
             )}
 
