@@ -173,6 +173,46 @@ export const sendForm = (sid, formId, channelId) =>
     body: JSON.stringify({ channel_id: String(channelId).trim() }),
   });
 
+// ── Raid ───────────────────────────────────────────────────────────────────
+
+export const fetchRaidSettings = (sid) =>
+  apiFetch(`/api/servers/${sid}/raid/settings`);
+
+export const saveRaidSettings = (sid, updates) =>
+  apiFetch(`/api/servers/${sid}/raid/settings`, {
+    method: 'PATCH', body: JSON.stringify(updates),
+  });
+
+export const fetchRaidList = (sid, status = 'active', limit = 50) =>
+  apiFetch(`/api/servers/${sid}/raid/raids?status=${status}&limit=${limit}`);
+
+export const createRaid = (sid, body) =>
+  apiFetch(`/api/servers/${sid}/raid/raids`, {
+    method: 'POST', body: JSON.stringify(body),
+  });
+
+export const endRaid = (sid, raidId) =>
+  apiFetch(`/api/servers/${sid}/raid/raids/${raidId}/end`, { method: 'POST' });
+
+export const fetchRaidLeaderboard = (sid, limit = 10) =>
+  apiFetch(`/api/servers/${sid}/raid/leaderboard?limit=${limit}`);
+
+export const fetchRaidVerificationLog = (sid, { raidId, userId, limit = 50 } = {}) => {
+  const params = new URLSearchParams({ limit });
+  if (raidId)  params.set('raid_id', raidId);
+  if (userId)  params.set('user_id_filter', userId);
+  return apiFetch(`/api/servers/${sid}/raid/verification-log?${params}`);
+};
+
+export const runRaidManualCheck = (sid, raidId, userId) =>
+  apiFetch(`/api/servers/${sid}/raid/manual-check`, {
+    method: 'POST',
+    body: JSON.stringify({ raid_id: raidId, user_id: String(userId) }),
+  });
+
+export const sendRaidGuide = (sid) =>
+  apiFetch(`/api/servers/${sid}/raid/send-guide`, { method: 'POST' });
+
 // ── Health ─────────────────────────────────────────────────────────────────
 
 export const fetchHealth = () =>

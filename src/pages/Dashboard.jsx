@@ -15,6 +15,8 @@ import {
   listAssets, uploadAsset, deleteAsset,
   listForms, createForm, updateForm, deleteForm,
   createFormField, updateFormField, deleteFormField, sendForm,
+  fetchRaidSettings, saveRaidSettings, fetchRaidList, createRaid, endRaid,
+  fetchRaidLeaderboard, fetchRaidVerificationLog, runRaidManualCheck, sendRaidGuide,
 } from '../api';
 import { DISCORD_INVITE_URL } from '../constants';
 
@@ -222,11 +224,7 @@ const VERIFY_DEFAULTS = {
   verifyFooterIconUrl: '',
 };
 
-const RAID_CONFIG_MAP = {
-  likeWeight:    'engage_weight_like',
-  commentWeight: 'engage_weight_comment',
-  retweetWeight: 'engage_weight_retweet',
-};
+// RAID_CONFIG_MAP removed — RaidSettings now uses dedicated /raid/* API endpoints
 
 const TICKETS_CONFIG_MAP = {
   enabled:               'tickets_enabled',
@@ -2135,66 +2133,470 @@ const TicketsSettings = () => {
 
 // ── Raid ──────────────────────────────────────────────────────────────────────
 
-const RAID_DEFAULTS = {
-  enabled: true,
-  channel: '#raids',
-  category: 'Raids',
-  likeWeight:    '30',
-  commentWeight: '50',
-  retweetWeight: '20',
-  dmEnabled: false,
-  dmConfirmMsg: '✅ Your raid participation has been confirmed! Points have been added to your account.',
-};
+const RAID_TAB_LABELS = [
+  { id: 'settings',  label: '⚙️ Settings' },
+  { id: 'embed',     label: '🎨 Embed' },
+  { id: 'raids',     label: '⚔️ Raids' },
+  { id: 'leaderboard', label: '🏆 Leaderboard' },
+  { id: 'manual',    label: '🔍 Manual Check' },
+  { id: 'log',       label: '📋 Log' },
+];
 
 const RaidSettings = () => {
-  const { server } = useContext(DashboardContext);
-  const [v, setV] = useState({ ...RAID_DEFAULTS });
-  const set = k => val => setV(p => ({ ...p, [k]: val }));
-  const { saveState, save } = useSaveConfig(server?.id, RAID_CONFIG_MAP, RAID_DEFAULTS, setV);
+  const { server, isPremium } = useContext(DashboardContext);
+  const sid = server?.id;
+
+  const [tab, setTab]       = useState('settings');
+  const [settings, setSettings] = useState(null);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState(null);
+  const [saving, setSaving]     = useState(false);
+  const [saveMsg, setSaveMsg]   = useState('');
+
+  const [raids, setRaids]             = useState([]);
+  const [raidsLoading, setRaidsLoading] = useState(false);
+  const [lb, setLb]                   = useState([]);
+  const [lbLoading, setLbLoading]     = useState(false);
+  const [logRows, setLogRows]         = useState([]);
+  const [logLoading, setLogLoading]   = useState(false);
+
+  // Create raid form
+  const [newTweetUrl, setNewTweetUrl]     = useState('');
+  const [newPoints, setNewPoints]         = useState('100');
+  const [newMode, setNewMode]             = useState('partial');
+  const [newTaskLike, setNewTaskLike]     = useState(true);
+  const [newTaskComment, setNewTaskComment] = useState(true);
+  const [newTaskRetweet, setNewTaskRetweet] = useState(true);
+  const [newChannelId, setNewChannelId]   = useState('');
+  const [createState, setCreateState]     = useState('idle');
+  const [createMsg, setCreateMsg]         = useState('');
+
+  // Manual check
+  const [mcRaidId, setMcRaidId]   = useState('');
+  const [mcUserId, setMcUserId]   = useState('');
+  const [mcState, setMcState]     = useState('idle');
+  const [mcResult, setMcResult]   = useState(null);
+
+  // Guide send
+  const [guideState, setGuideState] = useState('idle');
+  const [guideMsg, setGuideMsg]     = useState('');
+
+  const set = k => v => setSettings(p => ({ ...p, [k]: v }));
+
+  const ratioSum = settings ? (
+    (parseInt(settings.point_ratio_like,    10) || 0) +
+    (parseInt(settings.point_ratio_comment, 10) || 0) +
+    (parseInt(settings.point_ratio_retweet, 10) || 0)
+  ) : 100;
+  const ratioOk = ratioSum === 100;
+
+  const loadSettings = async () => {
+    if (!sid) return;
+    try {
+      const s = await fetchRaidSettings(sid);
+      setSettings(s); setError(null);
+    } catch (e) { setError(e.message); }
+  };
+
+  useEffect(() => {
+    if (!sid) { setLoading(false); return; }
+    setLoading(true);
+    loadSettings().finally(() => setLoading(false));
+  }, [sid]); // eslint-disable-line
+
+  useEffect(() => {
+    if (tab === 'raids'       && sid) { setRaidsLoading(true); fetchRaidList(sid,'active').then(r => setRaids(r.raids||[])).catch(()=>{}).finally(()=>setRaidsLoading(false)); }
+    if (tab === 'leaderboard' && sid) { setLbLoading(true);    fetchRaidLeaderboard(sid,10).then(r => setLb(r.leaderboard||[])).catch(()=>{}).finally(()=>setLbLoading(false)); }
+    if (tab === 'log'         && sid) { setLogLoading(true);   fetchRaidVerificationLog(sid).then(r => setLogRows(r.log||[])).catch(()=>{}).finally(()=>setLogLoading(false)); }
+  }, [tab, sid]); // eslint-disable-line
+
+  const handleSave = async () => {
+    if (!sid || saving || !ratioOk) return;
+    setSaving(true); setSaveMsg('');
+    try {
+      await saveRaidSettings(sid, {
+        enabled:               settings.enabled ? 1 : 0,
+        point_ratio_like:      parseInt(settings.point_ratio_like, 10)    || 12,
+        point_ratio_comment:   parseInt(settings.point_ratio_comment, 10) || 40,
+        point_ratio_retweet:   parseInt(settings.point_ratio_retweet, 10) || 48,
+        adaptive_verification: settings.adaptive_verification ? 1 : 0,
+        max_manual_checks_per_day: parseInt(settings.max_manual_checks_per_day, 10) || 3,
+        guide_channel_id:      settings.guide_channel_id  || '',
+        guide_message:         settings.guide_message     || '',
+        raid_role_ids:         settings.raid_role_ids     || '',
+        ping_role_id:          settings.ping_role_id      || '',
+        embed_thumbnail_url:   settings.embed_thumbnail_url || '',
+        embed_footer_text:     settings.embed_footer_text   || '',
+        embed_color:           settings.embed_color          || '',
+      });
+      setSaveMsg('✓ Saved');
+      await loadSettings();
+    } catch (e) { setSaveMsg('✗ ' + e.message); }
+    finally { setSaving(false); setTimeout(() => setSaveMsg(''), 3500); }
+  };
+
+  const handleCreateRaid = async () => {
+    if (!sid || createState === 'sending') return;
+    if (!newTweetUrl.trim()) { setCreateMsg('Tweet URL required'); setCreateState('error'); return; }
+    const pts = parseInt(newPoints, 10);
+    if (!pts || pts < 1) { setCreateMsg('Points must be ≥ 1'); setCreateState('error'); return; }
+    if (!newTaskLike && !newTaskComment && !newTaskRetweet) { setCreateMsg('Select at least one task'); setCreateState('error'); return; }
+    setCreateState('sending'); setCreateMsg('');
+    try {
+      const res = await createRaid(sid, {
+        tweet_url:    newTweetUrl.trim(),
+        total_points: pts,
+        mode:         newMode,
+        tasks:        { like: newTaskLike, comment: newTaskComment, retweet: newTaskRetweet },
+        channel_id:   newChannelId.trim() || undefined,
+      });
+      setCreateMsg(`✓ Raid #${res.raid_id} posted`);
+      setCreateState('sent');
+      setNewTweetUrl(''); setNewPoints('100'); setNewChannelId('');
+      if (tab === 'raids') {
+        fetchRaidList(sid,'active').then(r => setRaids(r.raids||[])).catch(()=>{});
+      }
+    } catch (e) { setCreateMsg('✗ ' + e.message); setCreateState('error'); }
+    setTimeout(() => { setCreateMsg(''); setCreateState('idle'); }, 5000);
+  };
+
+  const handleEndRaid = async (raidId) => {
+    if (!sid) return;
+    try {
+      await endRaid(sid, raidId);
+      setRaids(prev => prev.filter(r => r.raid_id !== raidId));
+    } catch (e) { setError(e.message); }
+  };
+
+  const handleManualCheck = async () => {
+    if (!sid || mcState === 'loading') return;
+    if (!mcRaidId || !mcUserId) { setMcResult({ error: 'Enter both a raid ID and user ID' }); return; }
+    setMcState('loading'); setMcResult(null);
+    try {
+      const res = await runRaidManualCheck(sid, parseInt(mcRaidId, 10), mcUserId.trim());
+      setMcResult(res);
+    } catch (e) { setMcResult({ error: e.message }); }
+    setMcState('idle');
+  };
+
+  const handleSendGuide = async () => {
+    if (!sid || guideState === 'sending') return;
+    setGuideState('sending');
+    try {
+      await sendRaidGuide(sid);
+      setGuideMsg('✓ Guide sent');
+      setGuideState('sent');
+    } catch (e) { setGuideMsg('✗ ' + e.message); setGuideState('error'); }
+    setTimeout(() => { setGuideMsg(''); setGuideState('idle'); }, 4000);
+  };
+
+  if (loading) return <div style={{ color: C.muted, padding: '32px', fontSize: '14px' }}>Loading…</div>;
 
   return (
     <div>
-      <PageHeader icon="⚔️" title="Raid System" badge="MODULE" desc="Configure the raid channel and point weight ratios. Duration and proof settings are per-raid via /post." />
-      <SettingsCard title="Module">
-        <Toggle value={v.enabled} onChange={set('enabled')} label="Enable Raid System" />
-      </SettingsCard>
+      <PageHeader icon="⚔️" title="Raid System" badge="MODULE"
+        desc="Per-guild Twitter raid management with adaptive verification and per-guild leaderboard." />
 
-      {v.enabled && (<>
-        <SettingsCard title="Channels">
-          <FieldRow>
-            <Field label="Raid Channel" hint="name or ID — where raid posts appear">
-              <Input value={v.channel} onChange={set('channel')} placeholder="#raids or 123456789" />
-            </Field>
-            <Field label="Raid Category" hint="Discord category for raid threads">
-              <Input value={v.category} onChange={set('category')} placeholder="Raids" />
-            </Field>
-          </FieldRow>
+      {error && (
+        <div style={{ background: 'rgba(237,66,69,0.1)', border: '1px solid rgba(237,66,69,0.3)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', color: C.red, fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {error}
+          <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '18px' }}>×</button>
+        </div>
+      )}
+
+      {/* Tab strip */}
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '22px', flexWrap: 'wrap' }}>
+        {RAID_TAB_LABELS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ background: tab === t.id ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${tab === t.id ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px', padding: '7px 14px', color: tab === t.id ? C.gold : C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: tab === t.id ? 700 : 400 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── SETTINGS TAB ── */}
+      {tab === 'settings' && settings && (<>
+        <SettingsCard title="Module">
+          <Toggle value={!!settings.enabled} onChange={v => set('enabled')(v ? 1 : 0)} label="Enable Raid System" />
         </SettingsCard>
 
-        <SettingsCard title="Point Weight Ratios">
-          <p style={{ margin: '0 0 16px', color: C.muted, fontSize: '13px' }}>
-            How many points each action type contributes. Higher = worth more points.
+        <SettingsCard title="Point Ratios">
+          <p style={{ margin: '0 0 14px', color: C.muted, fontSize: '13px' }}>
+            Percentages must sum to exactly 100. Points earned = total × ratio.
           </p>
           <FieldRow cols={3}>
-            <Field label="❤️ Like points"><Input type="number" value={v.likeWeight} onChange={set('likeWeight')} placeholder="30" /></Field>
-            <Field label="💬 Comment points"><Input type="number" value={v.commentWeight} onChange={set('commentWeight')} placeholder="50" /></Field>
-            <Field label="🔁 Retweet points"><Input type="number" value={v.retweetWeight} onChange={set('retweetWeight')} placeholder="20" /></Field>
+            <Field label="👍 Like %">
+              <Input type="number" value={String(settings.point_ratio_like ?? 12)} onChange={v => set('point_ratio_like')(parseInt(v,10)||0)} placeholder="12" />
+            </Field>
+            <Field label="💬 Comment %">
+              <Input type="number" value={String(settings.point_ratio_comment ?? 40)} onChange={v => set('point_ratio_comment')(parseInt(v,10)||0)} placeholder="40" />
+            </Field>
+            <Field label="🔁 Retweet %">
+              <Input type="number" value={String(settings.point_ratio_retweet ?? 48)} onChange={v => set('point_ratio_retweet')(parseInt(v,10)||0)} placeholder="48" />
+            </Field>
           </FieldRow>
+          <div style={{ fontSize: '13px', fontWeight: 600, color: ratioOk ? C.green : C.red, marginTop: '4px' }}>
+            Sum: {ratioSum} / 100 {ratioOk ? '✓' : '— must equal 100'}
+          </div>
         </SettingsCard>
 
-        <SettingsCard title="Direct Messages">
-          <Toggle value={v.dmEnabled} onChange={set('dmEnabled')} label="Send DM on raid confirmation?"
-            desc="Send a DM when a member's raid participation is confirmed and points are awarded." />
-          {v.dmEnabled && (
-            <div style={{ marginTop: '12px' }}>
-              <Textarea value={v.dmConfirmMsg} onChange={set('dmConfirmMsg')} rows={2}
-                placeholder="Your raid participation has been confirmed! Points added." />
+        <SettingsCard title="Verification">
+          <Toggle value={!!settings.adaptive_verification} onChange={v => set('adaptive_verification')(v ? 1 : 0)}
+            label="Adaptive verification" desc="Adjusts daily sampling rate based on total volume (25→5%)." />
+          <div style={{ marginTop: '14px' }}>
+            <Field label="Max manual checks / day" hint="Limit per guild per day (1–50)">
+              <Input type="number" value={String(settings.max_manual_checks_per_day ?? 3)} onChange={set('max_manual_checks_per_day')} placeholder="3" style={{ maxWidth: '100px' }} />
+            </Field>
+          </div>
+        </SettingsCard>
+
+        <SettingsCard title="Channels & Roles">
+          <FieldRow>
+            <Field label="Guide Channel" hint="name or ID — where the guide message is posted">
+              <Input value={settings.guide_channel_id || ''} onChange={set('guide_channel_id')} placeholder="#raid-info or 1234567890" />
+            </Field>
+            <Field label="Ping Role" hint="optional — mentioned on new raids">
+              <Input value={settings.ping_role_id || ''} onChange={set('ping_role_id')} placeholder="Raiders" />
+            </Field>
+          </FieldRow>
+          <Field label="Raid Poster Roles" hint="comma-separated — who can run /raid post (admins always can)">
+            <Input value={settings.raid_role_ids || ''} onChange={set('raid_role_ids')} placeholder="Raid Admin, Mods" />
+          </Field>
+        </SettingsCard>
+
+        <SettingsCard title="Guide Message">
+          <p style={{ margin: '0 0 12px', color: C.muted, fontSize: '13px' }}>
+            Sent to the guide channel when you click "Send Guide". Leave blank to use the default.
+          </p>
+          <Textarea value={settings.guide_message || ''} onChange={set('guide_message')} rows={8}
+            placeholder="🎯 AmeretaVerse Raid System Guide…" />
+          <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button onClick={handleSendGuide} disabled={guideState === 'sending'}
+              style={{ background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.3)', color: '#7289da', padding: '9px 18px', borderRadius: '8px', cursor: guideState === 'sending' ? 'not-allowed' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 600, opacity: guideState === 'sending' ? 0.6 : 1 }}>
+              {guideState === 'sending' ? '📨 Sending…' : '📨 Send Guide'}
+            </button>
+            {guideMsg && <span style={{ fontSize: '13px', color: guideState === 'error' ? C.red : C.green }}>{guideMsg}</span>}
+          </div>
+        </SettingsCard>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '32px' }}>
+          <button onClick={handleSave} disabled={saving || !ratioOk} className="btn-primary"
+            style={{ padding: '11px 28px', fontSize: '14px', opacity: (saving || !ratioOk) ? 0.6 : 1 }}>
+            {saving ? 'Saving…' : 'Save Settings'}
+          </button>
+          {saveMsg && <span style={{ fontSize: '13px', color: saveMsg.startsWith('✓') ? C.green : C.red }}>{saveMsg}</span>}
+        </div>
+      </>)}
+
+      {/* ── EMBED TAB ── */}
+      {tab === 'embed' && settings && (<>
+        <SettingsCard title="Raid Embed Visual">
+          <p style={{ margin: '0 0 12px', color: C.muted, fontSize: '13px' }}>
+            Thumbnail and color for raid embeds. Image is always the tweet's own media.
+          </p>
+          <EmbedPreview
+            serverId={sid}
+            isPremium={isPremium}
+            title="⚔️ New Raid — #0001"
+            description="Preview of your raid embed styling."
+            thumbnailUrl={settings.embed_thumbnail_url || ''}
+            imageUrl=""
+            color={settings.embed_color || '#94730D'}
+            footerText={settings.embed_footer_text || ''}
+            onTitleChange={() => {}}
+            onDescriptionChange={() => {}}
+            onThumbnailChange={set('embed_thumbnail_url')}
+            onImageChange={() => {}}
+            onColorChange={set('embed_color')}
+            onFooterTextChange={set('embed_footer_text')}
+            showImage={false}
+          />
+        </SettingsCard>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '32px' }}>
+          <button onClick={handleSave} disabled={saving} className="btn-primary"
+            style={{ padding: '11px 28px', fontSize: '14px', opacity: saving ? 0.6 : 1 }}>
+            {saving ? 'Saving…' : 'Save Embed'}
+          </button>
+          {saveMsg && <span style={{ fontSize: '13px', color: saveMsg.startsWith('✓') ? C.green : C.red }}>{saveMsg}</span>}
+        </div>
+      </>)}
+
+      {/* ── RAIDS TAB ── */}
+      {tab === 'raids' && (<>
+        <SettingsCard title="Create New Raid">
+          <FieldRow>
+            <Field label="Tweet URL" hint="x.com or twitter.com /status/ link">
+              <Input value={newTweetUrl} onChange={setNewTweetUrl} placeholder="https://x.com/user/status/123" />
+            </Field>
+            <Field label="Total Points">
+              <Input type="number" value={newPoints} onChange={setNewPoints} placeholder="100" style={{ maxWidth: '120px' }} />
+            </Field>
+          </FieldRow>
+          <FieldRow>
+            <Field label="Channel" hint="optional — overrides guide_channel_id">
+              <Input value={newChannelId} onChange={setNewChannelId} placeholder="#raid-drops or 1234567890" />
+            </Field>
+            <Field label="Mode">
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {['partial', 'all'].map(m => (
+                  <button key={m} onClick={() => setNewMode(m)}
+                    style={{ background: newMode === m ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${newMode === m ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '7px', padding: '7px 14px', color: newMode === m ? C.gold : C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
+                    {m === 'partial' ? 'Partial Credit' : 'All Required'}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          </FieldRow>
+          <div style={{ marginBottom: '14px' }}>
+            <Label>Tasks</Label>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              {[['like','👍 Like',newTaskLike,setNewTaskLike],['comment','💬 Comment',newTaskComment,setNewTaskComment],['retweet','🔁 Retweet',newTaskRetweet,setNewTaskRetweet]].map(([k,lbl,val,setter]) => (
+                <button key={k} onClick={() => setter(!val)}
+                  style={{ background: val ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${val ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '7px', padding: '8px 14px', color: val ? C.gold : C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <button onClick={handleCreateRaid} disabled={createState === 'sending'}
+              style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '10px 22px', color: '#0A0A0F', cursor: createState === 'sending' ? 'not-allowed' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, opacity: createState === 'sending' ? 0.7 : 1 }}>
+              {createState === 'sending' ? '📨 Posting…' : '📨 Post Raid'}
+            </button>
+            {createMsg && <span style={{ fontSize: '13px', color: createState === 'error' ? C.red : C.green }}>{createMsg}</span>}
+          </div>
+        </SettingsCard>
+
+        <SettingsCard title="Active Raids">
+          {raidsLoading ? (
+            <div style={{ color: C.muted, fontSize: '13px' }}>Loading…</div>
+          ) : raids.length === 0 ? (
+            <div style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>No active raids.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {raids.map(r => (
+                <div key={r.raid_id} style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '13px', fontWeight: 600 }}>Raid #{(r.display_number || r.raid_id).toString().padStart(4,'0')}</div>
+                    <div style={{ fontSize: '11px', color: C.muted, marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {r.tweet_url} · {r.total_points} pts · {r.mode} · {r.participant_count || 0} participants
+                    </div>
+                  </div>
+                  <button onClick={() => handleEndRaid(r.raid_id)}
+                    style={{ background: 'rgba(237,66,69,0.12)', border: '1px solid rgba(237,66,69,0.3)', borderRadius: '6px', padding: '5px 12px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600, flexShrink: 0 }}>
+                    End
+                  </button>
+                </div>
+              ))}
             </div>
           )}
         </SettingsCard>
       </>)}
 
-      <ActionBar saveState={saveState} onSave={() => save(v)} />
+      {/* ── LEADERBOARD TAB ── */}
+      {tab === 'leaderboard' && (
+        <SettingsCard title="Guild Leaderboard">
+          {lbLoading ? (
+            <div style={{ color: C.muted, fontSize: '13px' }}>Loading…</div>
+          ) : lb.length === 0 ? (
+            <div style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>No raid participants yet.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {lb.map((row, i) => (
+                <div key={row.user_id} style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: i < 3 ? `linear-gradient(135deg,${C.gold},${C.goldDark})` : 'rgba(200,168,78,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: i < 3 ? '14px' : '11px', color: i < 3 ? '#0A0A0F' : C.gold, fontWeight: 700, flexShrink: 0 }}>
+                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '13px', fontWeight: 600 }}>{row.username || `<@${row.user_id}>`}</div>
+                    <div style={{ fontSize: '11px', color: C.muted }}>{row.raids_completed} raids</div>
+                  </div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold }}>{row.total_points} pts</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </SettingsCard>
+      )}
+
+      {/* ── MANUAL CHECK TAB ── */}
+      {tab === 'manual' && settings && (
+        <SettingsCard title="Manual Verification Check">
+          <p style={{ margin: '0 0 16px', color: C.muted, fontSize: '13px' }}>
+            Verify a specific user's participation in a raid. Uses today's quota.
+          </p>
+          <div style={{ background: 'rgba(200,168,78,0.08)', border: '1px solid rgba(200,168,78,0.2)', borderRadius: '8px', padding: '10px 14px', marginBottom: '18px', fontSize: '13px', color: C.gold }}>
+            Today's usage: {settings.manual_check_count_today ?? 0} / {settings.max_manual_checks_per_day ?? 3} checks
+          </div>
+          <FieldRow>
+            <Field label="Raid ID">
+              <Input type="number" value={mcRaidId} onChange={setMcRaidId} placeholder="1" style={{ maxWidth: '120px' }} />
+            </Field>
+            <Field label="User ID (Discord Snowflake)">
+              <Input value={mcUserId} onChange={setMcUserId} placeholder="123456789012345678" />
+            </Field>
+          </FieldRow>
+          <button onClick={handleManualCheck} disabled={mcState === 'loading'}
+            style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '10px 22px', color: '#0A0A0F', cursor: mcState === 'loading' ? 'not-allowed' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, opacity: mcState === 'loading' ? 0.7 : 1 }}>
+            {mcState === 'loading' ? 'Checking…' : '🔍 Run Check'}
+          </button>
+
+          {mcResult && (
+            <div style={{ marginTop: '18px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '14px' }}>
+              {mcResult.error ? (
+                <div style={{ color: C.red, fontSize: '13px' }}>{mcResult.error}</div>
+              ) : (<>
+                <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px', color: C.gold }}>
+                  @{mcResult.x_username} — {mcResult.flagged?.length > 0 ? `⚠️ Flagged: ${mcResult.flagged.join(', ')}` : '✅ Clean'}
+                  {mcResult.deducted > 0 && <span style={{ color: C.red }}> (deducted {mcResult.deducted} pts)</span>}
+                </div>
+                {Object.entries(mcResult.tasks || {}).map(([task, res]) => (
+                  <div key={task} style={{ fontSize: '12px', color: C.muted, marginBottom: '4px' }}>
+                    {res.verified === true ? '✅' : res.verified === false ? '❌' : '❓'} <strong style={{ color: '#fff' }}>{task}</strong>: {res.reason}
+                  </div>
+                ))}
+              </>)}
+            </div>
+          )}
+        </SettingsCard>
+      )}
+
+      {/* ── LOG TAB ── */}
+      {tab === 'log' && (
+        <SettingsCard title="Verification Log">
+          {logLoading ? (
+            <div style={{ color: C.muted, fontSize: '13px' }}>Loading…</div>
+          ) : logRows.length === 0 ? (
+            <div style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>No verification log entries.</div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                    {['Raid','User','Task','Claimed','Verified','Source','When','Error'].map(h => (
+                      <th key={h} style={{ textAlign: 'left', padding: '6px 10px', color: C.muted, fontWeight: 600 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {logRows.map(row => (
+                    <tr key={row.log_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <td style={{ padding: '6px 10px' }}>#{row.raid_id}</td>
+                      <td style={{ padding: '6px 10px', color: C.muted }}>{row.user_id}</td>
+                      <td style={{ padding: '6px 10px' }}>{row.task}</td>
+                      <td style={{ padding: '6px 10px' }}>{row.claimed ? '✓' : '—'}</td>
+                      <td style={{ padding: '6px 10px', color: row.verified ? C.green : C.red }}>{row.verified ? '✅' : '❌'}</td>
+                      <td style={{ padding: '6px 10px', color: C.muted }}>{row.source}</td>
+                      <td style={{ padding: '6px 10px', color: C.muted, whiteSpace: 'nowrap' }}>{(row.checked_at||'').slice(0,16)}</td>
+                      <td style={{ padding: '6px 10px', color: C.red, fontSize: '11px' }}>{row.error_text||''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </SettingsCard>
+      )}
     </div>
   );
 };
