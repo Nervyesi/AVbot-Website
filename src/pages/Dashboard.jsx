@@ -2134,48 +2134,50 @@ const TicketsSettings = () => {
 // ── Raid ──────────────────────────────────────────────────────────────────────
 
 const RAID_TAB_LABELS = [
-  { id: 'settings',  label: '⚙️ Settings' },
-  { id: 'embed',     label: '🎨 Embed' },
-  { id: 'raids',     label: '⚔️ Raids' },
+  { id: 'settings',    label: '⚙️ Settings' },
+  { id: 'embed',       label: '🎨 Embed' },
+  { id: 'raids',       label: '⚔️ Raids' },
   { id: 'leaderboard', label: '🏆 Leaderboard' },
-  { id: 'manual',    label: '🔍 Manual Check' },
-  { id: 'log',       label: '📋 Log' },
+  { id: 'manual',      label: '🔍 Manual Check' },
+  { id: 'log',         label: '📋 Log' },
 ];
+
+const MANUAL_CHECK_LIMIT = 10;
 
 const RaidSettings = () => {
   const { server, isPremium } = useContext(DashboardContext);
   const sid = server?.id;
 
-  const [tab, setTab]       = useState('settings');
+  const [tab, setTab]           = useState('settings');
   const [settings, setSettings] = useState(null);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [saving, setSaving]     = useState(false);
   const [saveMsg, setSaveMsg]   = useState('');
 
-  const [raids, setRaids]             = useState([]);
+  const [raids, setRaids]               = useState([]);
   const [raidsLoading, setRaidsLoading] = useState(false);
-  const [lb, setLb]                   = useState([]);
-  const [lbLoading, setLbLoading]     = useState(false);
-  const [logRows, setLogRows]         = useState([]);
-  const [logLoading, setLogLoading]   = useState(false);
+  const [lb, setLb]                     = useState([]);
+  const [lbLoading, setLbLoading]       = useState(false);
+  const [logRows, setLogRows]           = useState([]);
+  const [logLoading, setLogLoading]     = useState(false);
+  const [expandedRows, setExpandedRows] = useState(new Set());
 
-  // Create raid form
-  const [newTweetUrl, setNewTweetUrl]     = useState('');
-  const [newPoints, setNewPoints]         = useState('100');
-  const [newMode, setNewMode]             = useState('partial');
-  const [newTaskLike, setNewTaskLike]     = useState(true);
+  // Create raid form (no channel override — channel is from Settings)
+  const [newTweetUrl, setNewTweetUrl]       = useState('');
+  const [newPoints, setNewPoints]           = useState('100');
+  const [newMode, setNewMode]               = useState('partial');
+  const [newTaskLike, setNewTaskLike]       = useState(true);
   const [newTaskComment, setNewTaskComment] = useState(true);
   const [newTaskRetweet, setNewTaskRetweet] = useState(true);
-  const [newChannelId, setNewChannelId]   = useState('');
-  const [createState, setCreateState]     = useState('idle');
-  const [createMsg, setCreateMsg]         = useState('');
+  const [createState, setCreateState]       = useState('idle');
+  const [createMsg, setCreateMsg]           = useState('');
 
-  // Manual check
-  const [mcRaidId, setMcRaidId]   = useState('');
-  const [mcUserId, setMcUserId]   = useState('');
-  const [mcState, setMcState]     = useState('idle');
-  const [mcResult, setMcResult]   = useState(null);
+  // Manual check — single flexible identifier field
+  const [mcRaidId, setMcRaidId]         = useState('');
+  const [mcIdentifier, setMcIdentifier] = useState('');
+  const [mcState, setMcState]           = useState('idle');
+  const [mcResult, setMcResult]         = useState(null);
 
   // Guide send
   const [guideState, setGuideState] = useState('idle');
@@ -2207,7 +2209,7 @@ const RaidSettings = () => {
   useEffect(() => {
     if (tab === 'raids'       && sid) { setRaidsLoading(true); fetchRaidList(sid,'active').then(r => setRaids(r.raids||[])).catch(()=>{}).finally(()=>setRaidsLoading(false)); }
     if (tab === 'leaderboard' && sid) { setLbLoading(true);    fetchRaidLeaderboard(sid,10).then(r => setLb(r.leaderboard||[])).catch(()=>{}).finally(()=>setLbLoading(false)); }
-    if (tab === 'log'         && sid) { setLogLoading(true);   fetchRaidVerificationLog(sid).then(r => setLogRows(r.log||[])).catch(()=>{}).finally(()=>setLogLoading(false)); }
+    if (tab === 'log'         && sid) { setLogLoading(true);   fetchRaidVerificationLog(sid).then(r => setLogRows(r.flags||[])).catch(()=>{}).finally(()=>setLogLoading(false)); }
   }, [tab, sid]); // eslint-disable-line
 
   const handleSave = async () => {
@@ -2215,19 +2217,18 @@ const RaidSettings = () => {
     setSaving(true); setSaveMsg('');
     try {
       await saveRaidSettings(sid, {
-        enabled:               settings.enabled ? 1 : 0,
-        point_ratio_like:      parseInt(settings.point_ratio_like, 10)    || 12,
-        point_ratio_comment:   parseInt(settings.point_ratio_comment, 10) || 40,
-        point_ratio_retweet:   parseInt(settings.point_ratio_retweet, 10) || 48,
-        adaptive_verification: settings.adaptive_verification ? 1 : 0,
-        max_manual_checks_per_day: parseInt(settings.max_manual_checks_per_day, 10) || 3,
-        guide_channel_id:      settings.guide_channel_id  || '',
-        guide_message:         settings.guide_message     || '',
-        raid_role_ids:         settings.raid_role_ids     || '',
-        ping_role_id:          settings.ping_role_id      || '',
-        embed_thumbnail_url:   settings.embed_thumbnail_url || '',
-        embed_footer_text:     settings.embed_footer_text   || '',
-        embed_color:           settings.embed_color          || '',
+        enabled:             settings.enabled ? 1 : 0,
+        point_ratio_like:    parseInt(settings.point_ratio_like, 10)    || 12,
+        point_ratio_comment: parseInt(settings.point_ratio_comment, 10) || 40,
+        point_ratio_retweet: parseInt(settings.point_ratio_retweet, 10) || 48,
+        raid_channel_id:     settings.raid_channel_id  || '',
+        guide_channel_id:    settings.guide_channel_id || '',
+        guide_message:       settings.guide_message    || '',
+        raid_role_ids:       settings.raid_role_ids    || '',
+        raid_ping_role_id:   settings.raid_ping_role_id || '',
+        embed_thumbnail_url: settings.embed_thumbnail_url || '',
+        embed_footer_text:   settings.embed_footer_text   || '',
+        embed_color:         settings.embed_color          || '',
       });
       setSaveMsg('✓ Saved');
       await loadSettings();
@@ -2237,6 +2238,9 @@ const RaidSettings = () => {
 
   const handleCreateRaid = async () => {
     if (!sid || createState === 'sending') return;
+    if (!settings?.raid_channel_id?.trim()) {
+      setCreateMsg('Configure a Raid Channel in Settings first'); setCreateState('error'); return;
+    }
     if (!newTweetUrl.trim()) { setCreateMsg('Tweet URL required'); setCreateState('error'); return; }
     const pts = parseInt(newPoints, 10);
     if (!pts || pts < 1) { setCreateMsg('Points must be ≥ 1'); setCreateState('error'); return; }
@@ -2248,14 +2252,11 @@ const RaidSettings = () => {
         total_points: pts,
         mode:         newMode,
         tasks:        { like: newTaskLike, comment: newTaskComment, retweet: newTaskRetweet },
-        channel_id:   newChannelId.trim() || undefined,
       });
       setCreateMsg(`✓ Raid #${res.raid_id} posted`);
       setCreateState('sent');
-      setNewTweetUrl(''); setNewPoints('100'); setNewChannelId('');
-      if (tab === 'raids') {
-        fetchRaidList(sid,'active').then(r => setRaids(r.raids||[])).catch(()=>{});
-      }
+      setNewTweetUrl(''); setNewPoints('100');
+      if (tab === 'raids') fetchRaidList(sid,'active').then(r => setRaids(r.raids||[])).catch(()=>{});
     } catch (e) { setCreateMsg('✗ ' + e.message); setCreateState('error'); }
     setTimeout(() => { setCreateMsg(''); setCreateState('idle'); }, 5000);
   };
@@ -2270,10 +2271,12 @@ const RaidSettings = () => {
 
   const handleManualCheck = async () => {
     if (!sid || mcState === 'loading') return;
-    if (!mcRaidId || !mcUserId) { setMcResult({ error: 'Enter both a raid ID and user ID' }); return; }
+    if (!mcRaidId || !mcIdentifier.trim()) {
+      setMcResult({ error: 'Enter a Raid ID and a user identifier' }); return;
+    }
     setMcState('loading'); setMcResult(null);
     try {
-      const res = await runRaidManualCheck(sid, parseInt(mcRaidId, 10), mcUserId.trim());
+      const res = await runRaidManualCheck(sid, parseInt(mcRaidId, 10), mcIdentifier.trim());
       setMcResult(res);
     } catch (e) { setMcResult({ error: e.message }); }
     setMcState('idle');
@@ -2284,11 +2287,16 @@ const RaidSettings = () => {
     setGuideState('sending');
     try {
       await sendRaidGuide(sid);
-      setGuideMsg('✓ Guide sent');
-      setGuideState('sent');
+      setGuideMsg('✓ Guide sent'); setGuideState('sent');
     } catch (e) { setGuideMsg('✗ ' + e.message); setGuideState('error'); }
     setTimeout(() => { setGuideMsg(''); setGuideState('idle'); }, 4000);
   };
+
+  const toggleExpand = (key) => setExpandedRows(prev => {
+    const next = new Set(prev);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
 
   if (loading) return <div style={{ color: C.muted, padding: '32px', fontSize: '14px' }}>Loading…</div>;
 
@@ -2322,7 +2330,7 @@ const RaidSettings = () => {
 
         <SettingsCard title="Point Ratios">
           <p style={{ margin: '0 0 14px', color: C.muted, fontSize: '13px' }}>
-            Percentages must sum to exactly 100. Points earned = total × ratio.
+            Percentages must sum to exactly 100. Points earned = total_points × ratio.
           </p>
           <FieldRow cols={3}>
             <Field label="👍 Like %">
@@ -2340,28 +2348,28 @@ const RaidSettings = () => {
           </div>
         </SettingsCard>
 
-        <SettingsCard title="Verification">
-          <Toggle value={!!settings.adaptive_verification} onChange={v => set('adaptive_verification')(v ? 1 : 0)}
-            label="Adaptive verification" desc="Adjusts daily sampling rate based on total volume (25→5%)." />
-          <div style={{ marginTop: '14px' }}>
-            <Field label="Max manual checks / day" hint="Limit per guild per day (1–50)">
-              <Input type="number" value={String(settings.max_manual_checks_per_day ?? 3)} onChange={set('max_manual_checks_per_day')} placeholder="3" style={{ maxWidth: '100px' }} />
-            </Field>
-          </div>
-        </SettingsCard>
-
         <SettingsCard title="Channels & Roles">
           <FieldRow>
-            <Field label="Guide Channel" hint="name or ID — where the guide message is posted">
-              <Input value={settings.guide_channel_id || ''} onChange={set('guide_channel_id')} placeholder="#raid-info or 1234567890" />
+            <Field label="Raid Channel ★" hint="required — all raids post here">
+              <Input value={settings.raid_channel_id || ''} onChange={set('raid_channel_id')} placeholder="#raid-drops or 1234567890" />
             </Field>
-            <Field label="Ping Role" hint="optional — mentioned on new raids">
-              <Input value={settings.ping_role_id || ''} onChange={set('ping_role_id')} placeholder="Raiders" />
+            <Field label="Raid Ping Role" hint="optional — mentioned when a new raid drops">
+              <Input value={settings.raid_ping_role_id || ''} onChange={set('raid_ping_role_id')} placeholder="Raiders" />
             </Field>
           </FieldRow>
-          <Field label="Raid Poster Roles" hint="comma-separated — who can run /raid post (admins always can)">
-            <Input value={settings.raid_role_ids || ''} onChange={set('raid_role_ids')} placeholder="Raid Admin, Mods" />
-          </Field>
+          <FieldRow>
+            <Field label="Guide Channel" hint="name or ID — where the guide message is sent">
+              <Input value={settings.guide_channel_id || ''} onChange={set('guide_channel_id')} placeholder="#raid-info or 1234567890" />
+            </Field>
+            <Field label="Raid Poster Roles" hint="comma-separated — who can run /raid post">
+              <Input value={settings.raid_role_ids || ''} onChange={set('raid_role_ids')} placeholder="Raid Admin, Mods" />
+            </Field>
+          </FieldRow>
+          {!settings.raid_channel_id?.trim() && (
+            <div style={{ background: 'rgba(237,66,69,0.08)', border: '1px solid rgba(237,66,69,0.25)', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', color: C.red, marginTop: '4px' }}>
+              ⚠️ Raid Channel is required before raids can be posted.
+            </div>
+          )}
         </SettingsCard>
 
         <SettingsCard title="Guide Message">
@@ -2392,7 +2400,7 @@ const RaidSettings = () => {
       {tab === 'embed' && settings && (<>
         <SettingsCard title="Raid Embed Visual">
           <p style={{ margin: '0 0 12px', color: C.muted, fontSize: '13px' }}>
-            Thumbnail and color for raid embeds. Image is always the tweet's own media.
+            Thumbnail and color for raid embeds. The image is always the tweet's own media.
           </p>
           <EmbedPreview
             serverId={sid}
@@ -2424,6 +2432,11 @@ const RaidSettings = () => {
       {/* ── RAIDS TAB ── */}
       {tab === 'raids' && (<>
         <SettingsCard title="Create New Raid">
+          {settings && !settings.raid_channel_id?.trim() && (
+            <div style={{ background: 'rgba(237,66,69,0.08)', border: '1px solid rgba(237,66,69,0.25)', borderRadius: '8px', padding: '10px 14px', fontSize: '12px', color: C.red, marginBottom: '16px' }}>
+              ⚠️ No Raid Channel configured. Go to Settings tab and set one first.
+            </div>
+          )}
           <FieldRow>
             <Field label="Tweet URL" hint="x.com or twitter.com /status/ link">
               <Input value={newTweetUrl} onChange={setNewTweetUrl} placeholder="https://x.com/user/status/123" />
@@ -2432,21 +2445,16 @@ const RaidSettings = () => {
               <Input type="number" value={newPoints} onChange={setNewPoints} placeholder="100" style={{ maxWidth: '120px' }} />
             </Field>
           </FieldRow>
-          <FieldRow>
-            <Field label="Channel" hint="optional — overrides guide_channel_id">
-              <Input value={newChannelId} onChange={setNewChannelId} placeholder="#raid-drops or 1234567890" />
-            </Field>
-            <Field label="Mode">
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {['partial', 'all'].map(m => (
-                  <button key={m} onClick={() => setNewMode(m)}
-                    style={{ background: newMode === m ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${newMode === m ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '7px', padding: '7px 14px', color: newMode === m ? C.gold : C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
-                    {m === 'partial' ? 'Partial Credit' : 'All Required'}
-                  </button>
-                ))}
-              </div>
-            </Field>
-          </FieldRow>
+          <Field label="Mode" style={{ marginBottom: '14px' }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {['partial', 'all'].map(m => (
+                <button key={m} onClick={() => setNewMode(m)}
+                  style={{ background: newMode === m ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${newMode === m ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '7px', padding: '7px 14px', color: newMode === m ? C.gold : C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
+                  {m === 'partial' ? 'Partial Credit' : 'All Required'}
+                </button>
+              ))}
+            </div>
+          </Field>
           <div style={{ marginBottom: '14px' }}>
             <Label>Tasks</Label>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -2477,7 +2485,7 @@ const RaidSettings = () => {
               {raids.map(r => (
                 <div key={r.raid_id} style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '13px', fontWeight: 600 }}>Raid #{(r.display_number || r.raid_id).toString().padStart(4,'0')}</div>
+                    <div style={{ fontSize: '13px', fontWeight: 600 }}>Raid #{String(r.display_number || r.raid_id).padStart(4,'0')}</div>
                     <div style={{ fontSize: '11px', color: C.muted, marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {r.tweet_url} · {r.total_points} pts · {r.mode} · {r.participant_count || 0} participants
                     </div>
@@ -2508,7 +2516,7 @@ const RaidSettings = () => {
                     {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '13px', fontWeight: 600 }}>{row.username || `<@${row.user_id}>`}</div>
+                    <div style={{ fontSize: '13px', fontWeight: 600 }}>{row.username || '(unknown)'}</div>
                     <div style={{ fontSize: '11px', color: C.muted }}>{row.raids_completed} raids</div>
                   </div>
                   <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold }}>{row.total_points} pts</div>
@@ -2523,17 +2531,18 @@ const RaidSettings = () => {
       {tab === 'manual' && settings && (
         <SettingsCard title="Manual Verification Check">
           <p style={{ margin: '0 0 16px', color: C.muted, fontSize: '13px' }}>
-            Verify a specific user's participation in a raid. Uses today's quota.
+            Verify a user's participation in a specific raid. Accepts Discord username, Discord ID,
+            @twitter_handle, Twitter username, or numeric Twitter user ID.
           </p>
           <div style={{ background: 'rgba(200,168,78,0.08)', border: '1px solid rgba(200,168,78,0.2)', borderRadius: '8px', padding: '10px 14px', marginBottom: '18px', fontSize: '13px', color: C.gold }}>
-            Today's usage: {settings.manual_check_count_today ?? 0} / {settings.max_manual_checks_per_day ?? 3} checks
+            Today's usage: {settings.manual_check_count_today ?? 0} / {MANUAL_CHECK_LIMIT} checks
           </div>
           <FieldRow>
             <Field label="Raid ID">
               <Input type="number" value={mcRaidId} onChange={setMcRaidId} placeholder="1" style={{ maxWidth: '120px' }} />
             </Field>
-            <Field label="User ID (Discord Snowflake)">
-              <Input value={mcUserId} onChange={setMcUserId} placeholder="123456789012345678" />
+            <Field label="User identifier" hint="Discord username / ID · @twitter_handle · Twitter user ID">
+              <Input value={mcIdentifier} onChange={setMcIdentifier} placeholder="@twitter_handle or DiscordUser#0 or 12345…" />
             </Field>
           </FieldRow>
           <button onClick={handleManualCheck} disabled={mcState === 'loading'}
@@ -2547,12 +2556,18 @@ const RaidSettings = () => {
                 <div style={{ color: C.red, fontSize: '13px' }}>{mcResult.error}</div>
               ) : (<>
                 <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px', color: C.gold }}>
-                  @{mcResult.x_username} — {mcResult.flagged?.length > 0 ? `⚠️ Flagged: ${mcResult.flagged.join(', ')}` : '✅ Clean'}
-                  {mcResult.deducted > 0 && <span style={{ color: C.red }}> (deducted {mcResult.deducted} pts)</span>}
+                  <strong style={{ color: '#fff' }}>{mcResult.discord_username}</strong>
+                  {mcResult.twitter_username && mcResult.twitter_username !== '(not linked)' && (
+                    <span style={{ color: C.muted, fontWeight: 400 }}> (@{mcResult.twitter_username})</span>
+                  )}
+                  {' — '}
+                  {mcResult.flagged?.length > 0 ? `⚠️ Flagged: ${mcResult.flagged.join(', ')}` : '✅ Clean'}
+                  {mcResult.deducted > 0 && <span style={{ color: C.red }}> (−{mcResult.deducted} pts)</span>}
                 </div>
                 {Object.entries(mcResult.tasks || {}).map(([task, res]) => (
                   <div key={task} style={{ fontSize: '12px', color: C.muted, marginBottom: '4px' }}>
-                    {res.verified === true ? '✅' : res.verified === false ? '❌' : '❓'} <strong style={{ color: '#fff' }}>{task}</strong>: {res.reason}
+                    {res.verified === true ? '✅' : res.verified === false ? '❌' : '❓'}
+                    {' '}<strong style={{ color: '#fff' }}>{task}</strong>: {res.reason}
                   </div>
                 ))}
               </>)}
@@ -2563,36 +2578,58 @@ const RaidSettings = () => {
 
       {/* ── LOG TAB ── */}
       {tab === 'log' && (
-        <SettingsCard title="Verification Log">
+        <SettingsCard title="Verification Flags">
           {logLoading ? (
             <div style={{ color: C.muted, fontSize: '13px' }}>Loading…</div>
           ) : logRows.length === 0 ? (
-            <div style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>No verification log entries.</div>
+            <div style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>No flag entries.</div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                    {['Raid','User','Task','Claimed','Verified','Source','When','Error'].map(h => (
-                      <th key={h} style={{ textAlign: 'left', padding: '6px 10px', color: C.muted, fontWeight: 600 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {logRows.map(row => (
-                    <tr key={row.log_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                      <td style={{ padding: '6px 10px' }}>#{row.raid_id}</td>
-                      <td style={{ padding: '6px 10px', color: C.muted }}>{row.user_id}</td>
-                      <td style={{ padding: '6px 10px' }}>{row.task}</td>
-                      <td style={{ padding: '6px 10px' }}>{row.claimed ? '✓' : '—'}</td>
-                      <td style={{ padding: '6px 10px', color: row.verified ? C.green : C.red }}>{row.verified ? '✅' : '❌'}</td>
-                      <td style={{ padding: '6px 10px', color: C.muted }}>{row.source}</td>
-                      <td style={{ padding: '6px 10px', color: C.muted, whiteSpace: 'nowrap' }}>{(row.checked_at||'').slice(0,16)}</td>
-                      <td style={{ padding: '6px 10px', color: C.red, fontSize: '11px' }}>{row.error_text||''}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {logRows.map(row => {
+                const key      = `${row.user_id}_${row.raid_id}`;
+                const expanded = expandedRows.has(key);
+                return (
+                  <div key={key} style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', overflow: 'hidden' }}>
+                    <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '13px', fontWeight: 600 }}>
+                          {row.discord_username}
+                          {row.twitter_username && row.twitter_username !== '(not linked)' && (
+                            <span style={{ color: C.muted, fontWeight: 400, fontSize: '12px' }}> @{row.twitter_username}</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '11px', color: C.muted, marginTop: '2px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                          <span>Raid #{String(row.raid_id).padStart(4,'0')}</span>
+                          <span style={{ color: C.red }}>⚠ {row.failed_count}/{row.task_count} failed</span>
+                          <span>{row.source}</span>
+                          <span>{(row.last_checked || '').slice(0,16)}</span>
+                          {row.tweet_url && (
+                            <a href={row.tweet_url} target="_blank" rel="noreferrer"
+                              style={{ color: '#7289da', textDecoration: 'none', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {row.tweet_url.replace('https://', '')}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                      <button onClick={() => toggleExpand(key)}
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '5px', padding: '4px 10px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '11px', flexShrink: 0 }}>
+                        {expanded ? '▲ Hide' : '▼ Tasks'}
+                      </button>
+                    </div>
+                    {expanded && (
+                      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '10px 14px', background: 'rgba(0,0,0,0.15)' }}>
+                        {(row.tasks || []).map(t => (
+                          <div key={t.task} style={{ fontSize: '12px', marginBottom: '4px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <span>{t.verified ? '✅' : '❌'}</span>
+                            <strong style={{ color: '#fff', minWidth: '64px' }}>{t.task}</strong>
+                            <span style={{ color: C.muted }}>{t.error_text || (t.verified ? 'verified' : 'failed')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </SettingsCard>

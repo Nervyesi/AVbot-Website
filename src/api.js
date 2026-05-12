@@ -204,10 +204,10 @@ export const fetchRaidVerificationLog = (sid, { raidId, userId, limit = 50 } = {
   return apiFetch(`/api/servers/${sid}/raid/verification-log?${params}`);
 };
 
-export const runRaidManualCheck = (sid, raidId, userId) =>
+export const runRaidManualCheck = (sid, raidId, identifier) =>
   apiFetch(`/api/servers/${sid}/raid/manual-check`, {
     method: 'POST',
-    body: JSON.stringify({ raid_id: raidId, user_id: String(userId) }),
+    body: JSON.stringify({ raid_id: raidId, identifier: String(identifier) }),
   });
 
 export const sendRaidGuide = (sid) =>
