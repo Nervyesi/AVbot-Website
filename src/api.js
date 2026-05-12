@@ -213,6 +213,9 @@ export const runRaidManualCheck = (sid, raidId, identifier) =>
 export const sendRaidGuide = (sid) =>
   apiFetch(`/api/servers/${sid}/raid/send-guide`, { method: 'POST' });
 
+export const fetchRaidGuideDefaults = () =>
+  apiFetch('/api/raid/guide-defaults');
+
 // ── Health ─────────────────────────────────────────────────────────────────
 
 export const fetchHealth = () =>

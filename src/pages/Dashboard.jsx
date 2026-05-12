@@ -17,6 +17,7 @@ import {
   createFormField, updateFormField, deleteFormField, sendForm,
   fetchRaidSettings, saveRaidSettings, fetchRaidList, createRaid, endRaid,
   fetchRaidLeaderboard, fetchRaidVerificationLog, runRaidManualCheck, sendRaidGuide,
+  fetchRaidGuideDefaults,
 } from '../api';
 import { DISCORD_INVITE_URL } from '../constants';
 
@@ -2139,7 +2140,7 @@ const RAID_TAB_LABELS = [
   { id: 'raids',       label: '⚔️ Raids' },
   { id: 'leaderboard', label: '🏆 Leaderboard' },
   { id: 'manual',      label: '🔍 Manual Check' },
-  { id: 'log',         label: '📋 Log' },
+  { id: 'log',         label: '🚩 Verification Flags' },
 ];
 
 const MANUAL_CHECK_LIMIT = 10;
@@ -2180,10 +2181,13 @@ const RaidSettings = () => {
   const [mcResult, setMcResult]         = useState(null);
 
   // Guide send
-  const [guideState, setGuideState] = useState('idle');
-  const [guideMsg, setGuideMsg]     = useState('');
+  const [guideState, setGuideState]     = useState('idle');
+  const [guideMsg, setGuideMsg]         = useState('');
+  const [guideDefaults, setGuideDefaults] = useState(null);
 
   const set = k => v => setSettings(p => ({ ...p, [k]: v }));
+
+  const isEnabled = settings?.enabled === 1 || settings?.enabled === true;
 
   const ratioSum = settings ? (
     (parseInt(settings.point_ratio_like,    10) || 0) +
@@ -2204,13 +2208,32 @@ const RaidSettings = () => {
     if (!sid) { setLoading(false); return; }
     setLoading(true);
     loadSettings().finally(() => setLoading(false));
+    // FIX 3: load guide defaults once
+    fetchRaidGuideDefaults().then(d => setGuideDefaults(d)).catch(() => {});
   }, [sid]); // eslint-disable-line
+
+  // FIX 7: when disabled, force tab back to settings
+  useEffect(() => {
+    if (!isEnabled && tab !== 'settings') setTab('settings');
+  }, [isEnabled]); // eslint-disable-line
 
   useEffect(() => {
     if (tab === 'raids'       && sid) { setRaidsLoading(true); fetchRaidList(sid,'active').then(r => setRaids(r.raids||[])).catch(()=>{}).finally(()=>setRaidsLoading(false)); }
     if (tab === 'leaderboard' && sid) { setLbLoading(true);    fetchRaidLeaderboard(sid,10).then(r => setLb(r.leaderboard||[])).catch(()=>{}).finally(()=>setLbLoading(false)); }
     if (tab === 'log'         && sid) { setLogLoading(true);   fetchRaidVerificationLog(sid).then(r => setLogRows(r.flags||[])).catch(()=>{}).finally(()=>setLogLoading(false)); }
   }, [tab, sid]); // eslint-disable-line
+
+  // FIX 7: enable toggle saves immediately (single-action)
+  const handleToggleEnabled = async (newVal) => {
+    const newInt = newVal ? 1 : 0;
+    setSettings(p => ({ ...p, enabled: newInt }));
+    try {
+      await saveRaidSettings(sid, { enabled: newInt });
+    } catch (e) {
+      setSettings(p => ({ ...p, enabled: newInt ? 0 : 1 })); // revert
+      setError(e.message);
+    }
+  };
 
   const handleSave = async () => {
     if (!sid || saving || !ratioOk) return;
@@ -2227,7 +2250,6 @@ const RaidSettings = () => {
         embed_thumbnail_url:  settings.embed_thumbnail_url || '',
         embed_footer_text:    settings.embed_footer_text   || '',
         embed_color:          settings.embed_color          || '',
-        // guide fields saved separately via handleSaveGuide, but included here for completeness
         raid_guide_channel_id:    settings.raid_guide_channel_id    || '',
         raid_guide_title:         settings.raid_guide_title         || '',
         raid_guide_description:   settings.raid_guide_description   || '',
@@ -2318,9 +2340,9 @@ const RaidSettings = () => {
         </div>
       )}
 
-      {/* Tab strip */}
+      {/* Tab strip — non-settings tabs hidden when disabled */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '22px', flexWrap: 'wrap' }}>
-        {RAID_TAB_LABELS.map(t => (
+        {RAID_TAB_LABELS.filter(t => t.id === 'settings' || isEnabled).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ background: tab === t.id ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${tab === t.id ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px', padding: '7px 14px', color: tab === t.id ? C.gold : C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: tab === t.id ? 700 : 400 }}>
             {t.label}
@@ -2331,8 +2353,17 @@ const RaidSettings = () => {
       {/* ── SETTINGS TAB ── */}
       {tab === 'settings' && settings && (<>
         <SettingsCard title="Module">
-          <Toggle value={!!settings.enabled} onChange={v => set('enabled')(v ? 1 : 0)} label="Enable Raid System" />
+          <Toggle value={!!settings.enabled} onChange={handleToggleEnabled} label="Enable Raid System"
+            desc="Enable or disable the raid system for this server. Changes apply immediately." />
+          {!isEnabled && (
+            <div style={{ background: 'rgba(200,168,78,0.07)', border: '1px solid rgba(200,168,78,0.2)', borderRadius: '8px', padding: '10px 14px', marginTop: '10px', fontSize: '13px', color: C.muted }}>
+              Enable the Raid System to access all features.
+            </div>
+          )}
         </SettingsCard>
+
+        {/* Only show rest of settings when enabled */}
+        {isEnabled && (<>
 
         <SettingsCard title="Point Ratios">
           <p style={{ margin: '0 0 14px', color: C.muted, fontSize: '13px' }}>
@@ -2403,6 +2434,7 @@ const RaidSettings = () => {
           </button>
           {saveMsg && <span style={{ fontSize: '13px', color: saveMsg.startsWith('✓') ? C.green : C.red }}>{saveMsg}</span>}
         </div>
+        </>)}  {/* end isEnabled block */}
       </>)}
 
       {/* ── GUIDE TAB ── */}
@@ -2421,14 +2453,14 @@ const RaidSettings = () => {
           <EmbedPreview
             serverId={sid}
             isPremium={isPremium}
-            title={settings.raid_guide_title || ''}
-            description={settings.raid_guide_description || ''}
+            title={settings.raid_guide_title || guideDefaults?.title || ''}
+            description={settings.raid_guide_description || guideDefaults?.description || ''}
             thumbnailUrl={settings.raid_guide_thumbnail_url || ''}
             imageUrl={settings.raid_guide_image_url || ''}
             color={settings.raid_guide_color || '#94730D'}
             footerText={settings.raid_guide_footer_text || ''}
-            onTitleChange={set('raid_guide_title')}
-            onDescriptionChange={set('raid_guide_description')}
+            onTitleChange={v => set('raid_guide_title')(v || guideDefaults?.title || '')}
+            onDescriptionChange={v => set('raid_guide_description')(v || guideDefaults?.description || '')}
             onThumbnailChange={set('raid_guide_thumbnail_url')}
             onImageChange={set('raid_guide_image_url')}
             onColorChange={set('raid_guide_color')}
@@ -2554,7 +2586,7 @@ const RaidSettings = () => {
         <SettingsCard title="Manual Verification Check">
           <p style={{ margin: '0 0 16px', color: C.muted, fontSize: '13px' }}>
             Verify a user's participation in a specific raid. Accepts Discord username, Discord ID,
-            @twitter_handle, Twitter username, or numeric Twitter user ID.
+            or @twitter_handle.
           </p>
           <div style={{ background: 'rgba(200,168,78,0.08)', border: '1px solid rgba(200,168,78,0.2)', borderRadius: '8px', padding: '10px 14px', marginBottom: '18px', fontSize: '13px', color: C.gold }}>
             Today's usage: {settings.manual_check_count_today ?? 0} / {MANUAL_CHECK_LIMIT} checks
@@ -2563,8 +2595,8 @@ const RaidSettings = () => {
             <Field label="Raid ID">
               <Input type="number" value={mcRaidId} onChange={setMcRaidId} placeholder="1" style={{ maxWidth: '120px' }} />
             </Field>
-            <Field label="User identifier" hint="Discord username / ID · @twitter_handle · Twitter user ID">
-              <Input value={mcIdentifier} onChange={setMcIdentifier} placeholder="@twitter_handle or DiscordUser#0 or 12345…" />
+            <Field label="User identifier" hint="Discord username / ID · @twitter_handle">
+              <Input value={mcIdentifier} onChange={setMcIdentifier} placeholder="@twitter_handle or Discord username or ID" />
             </Field>
           </FieldRow>
           <button onClick={handleManualCheck} disabled={mcState === 'loading'}
@@ -2604,7 +2636,7 @@ const RaidSettings = () => {
           {logLoading ? (
             <div style={{ color: C.muted, fontSize: '13px' }}>Loading…</div>
           ) : logRows.length === 0 ? (
-            <div style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>No flag entries.</div>
+            <div style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>No flagged submissions yet.</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {logRows.map(row => {
