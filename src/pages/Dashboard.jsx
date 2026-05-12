@@ -2135,7 +2135,7 @@ const TicketsSettings = () => {
 
 const RAID_TAB_LABELS = [
   { id: 'settings',    label: '⚙️ Settings' },
-  { id: 'embed',       label: '🎨 Embed' },
+  { id: 'guide',       label: '📖 Guide' },
   { id: 'raids',       label: '⚔️ Raids' },
   { id: 'leaderboard', label: '🏆 Leaderboard' },
   { id: 'manual',      label: '🔍 Manual Check' },
@@ -2217,18 +2217,24 @@ const RaidSettings = () => {
     setSaving(true); setSaveMsg('');
     try {
       await saveRaidSettings(sid, {
-        enabled:             settings.enabled ? 1 : 0,
-        point_ratio_like:    parseInt(settings.point_ratio_like, 10)    || 12,
-        point_ratio_comment: parseInt(settings.point_ratio_comment, 10) || 40,
-        point_ratio_retweet: parseInt(settings.point_ratio_retweet, 10) || 48,
-        raid_channel_id:     settings.raid_channel_id  || '',
-        guide_channel_id:    settings.guide_channel_id || '',
-        guide_message:       settings.guide_message    || '',
-        raid_role_ids:       settings.raid_role_ids    || '',
-        raid_ping_role_id:   settings.raid_ping_role_id || '',
-        embed_thumbnail_url: settings.embed_thumbnail_url || '',
-        embed_footer_text:   settings.embed_footer_text   || '',
-        embed_color:         settings.embed_color          || '',
+        enabled:              settings.enabled ? 1 : 0,
+        point_ratio_like:     parseInt(settings.point_ratio_like, 10)    || 12,
+        point_ratio_comment:  parseInt(settings.point_ratio_comment, 10) || 40,
+        point_ratio_retweet:  parseInt(settings.point_ratio_retweet, 10) || 48,
+        raid_channel_id:      settings.raid_channel_id    || '',
+        raid_role_ids:        settings.raid_role_ids      || '',
+        raid_ping_role_id:    settings.raid_ping_role_id  || '',
+        embed_thumbnail_url:  settings.embed_thumbnail_url || '',
+        embed_footer_text:    settings.embed_footer_text   || '',
+        embed_color:          settings.embed_color          || '',
+        // guide fields saved separately via handleSaveGuide, but included here for completeness
+        raid_guide_channel_id:    settings.raid_guide_channel_id    || '',
+        raid_guide_title:         settings.raid_guide_title         || '',
+        raid_guide_description:   settings.raid_guide_description   || '',
+        raid_guide_thumbnail_url: settings.raid_guide_thumbnail_url || '',
+        raid_guide_image_url:     settings.raid_guide_image_url     || '',
+        raid_guide_color:         settings.raid_guide_color         || '',
+        raid_guide_footer_text:   settings.raid_guide_footer_text   || '',
       });
       setSaveMsg('✓ Saved');
       await loadSettings();
@@ -2357,50 +2363,19 @@ const RaidSettings = () => {
               <Input value={settings.raid_ping_role_id || ''} onChange={set('raid_ping_role_id')} placeholder="Raiders" />
             </Field>
           </FieldRow>
-          <FieldRow>
-            <Field label="Guide Channel" hint="name or ID — where the guide message is sent">
-              <Input value={settings.guide_channel_id || ''} onChange={set('guide_channel_id')} placeholder="#raid-info or 1234567890" />
-            </Field>
-            <Field label="Raid Poster Roles" hint="comma-separated — who can run /raid post">
-              <Input value={settings.raid_role_ids || ''} onChange={set('raid_role_ids')} placeholder="Raid Admin, Mods" />
-            </Field>
-          </FieldRow>
+          <Field label="Raid Poster Roles" hint="comma-separated — who can run /raid post (admins always can)">
+            <Input value={settings.raid_role_ids || ''} onChange={set('raid_role_ids')} placeholder="Raid Admin, Mods" />
+          </Field>
           {!settings.raid_channel_id?.trim() && (
-            <div style={{ background: 'rgba(237,66,69,0.08)', border: '1px solid rgba(237,66,69,0.25)', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', color: C.red, marginTop: '4px' }}>
+            <div style={{ background: 'rgba(237,66,69,0.08)', border: '1px solid rgba(237,66,69,0.25)', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', color: C.red, marginTop: '8px' }}>
               ⚠️ Raid Channel is required before raids can be posted.
             </div>
           )}
         </SettingsCard>
 
-        <SettingsCard title="Guide Message">
+        <SettingsCard title="Raid Embed Appearance">
           <p style={{ margin: '0 0 12px', color: C.muted, fontSize: '13px' }}>
-            Sent to the guide channel when you click "Send Guide". Leave blank to use the default.
-          </p>
-          <Textarea value={settings.guide_message || ''} onChange={set('guide_message')} rows={8}
-            placeholder="🎯 AmeretaVerse Raid System Guide…" />
-          <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button onClick={handleSendGuide} disabled={guideState === 'sending'}
-              style={{ background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.3)', color: '#7289da', padding: '9px 18px', borderRadius: '8px', cursor: guideState === 'sending' ? 'not-allowed' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 600, opacity: guideState === 'sending' ? 0.6 : 1 }}>
-              {guideState === 'sending' ? '📨 Sending…' : '📨 Send Guide'}
-            </button>
-            {guideMsg && <span style={{ fontSize: '13px', color: guideState === 'error' ? C.red : C.green }}>{guideMsg}</span>}
-          </div>
-        </SettingsCard>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '32px' }}>
-          <button onClick={handleSave} disabled={saving || !ratioOk} className="btn-primary"
-            style={{ padding: '11px 28px', fontSize: '14px', opacity: (saving || !ratioOk) ? 0.6 : 1 }}>
-            {saving ? 'Saving…' : 'Save Settings'}
-          </button>
-          {saveMsg && <span style={{ fontSize: '13px', color: saveMsg.startsWith('✓') ? C.green : C.red }}>{saveMsg}</span>}
-        </div>
-      </>)}
-
-      {/* ── EMBED TAB ── */}
-      {tab === 'embed' && settings && (<>
-        <SettingsCard title="Raid Embed Visual">
-          <p style={{ margin: '0 0 12px', color: C.muted, fontSize: '13px' }}>
-            Thumbnail and color for raid embeds. The image is always the tweet's own media.
+            Visual styling for raid embeds. The image is always the tweet's own media — image upload is disabled here.
           </p>
           <EmbedPreview
             serverId={sid}
@@ -2420,12 +2395,59 @@ const RaidSettings = () => {
             showImage={false}
           />
         </SettingsCard>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '32px' }}>
-          <button onClick={handleSave} disabled={saving} className="btn-primary"
-            style={{ padding: '11px 28px', fontSize: '14px', opacity: saving ? 0.6 : 1 }}>
-            {saving ? 'Saving…' : 'Save Embed'}
+          <button onClick={handleSave} disabled={saving || !ratioOk} className="btn-primary"
+            style={{ padding: '11px 28px', fontSize: '14px', opacity: (saving || !ratioOk) ? 0.6 : 1 }}>
+            {saving ? 'Saving…' : 'Save Settings'}
           </button>
           {saveMsg && <span style={{ fontSize: '13px', color: saveMsg.startsWith('✓') ? C.green : C.red }}>{saveMsg}</span>}
+        </div>
+      </>)}
+
+      {/* ── GUIDE TAB ── */}
+      {tab === 'guide' && settings && (<>
+        <SettingsCard title="Guide Channel">
+          <Field label="Channel" hint="name or ID — where the guide embed is sent">
+            <Input value={settings.raid_guide_channel_id || ''} onChange={set('raid_guide_channel_id')} placeholder="#raid-guide or 1234567890" />
+          </Field>
+        </SettingsCard>
+
+        <SettingsCard title="Guide Embed">
+          <p style={{ margin: '0 0 12px', color: C.muted, fontSize: '13px' }}>
+            The guide embed sent to members explaining how to raid. Edit the title and body below.
+            Image upload is allowed here — use a hero banner if you like.
+          </p>
+          <EmbedPreview
+            serverId={sid}
+            isPremium={isPremium}
+            title={settings.raid_guide_title || ''}
+            description={settings.raid_guide_description || ''}
+            thumbnailUrl={settings.raid_guide_thumbnail_url || ''}
+            imageUrl={settings.raid_guide_image_url || ''}
+            color={settings.raid_guide_color || '#94730D'}
+            footerText={settings.raid_guide_footer_text || ''}
+            onTitleChange={set('raid_guide_title')}
+            onDescriptionChange={set('raid_guide_description')}
+            onThumbnailChange={set('raid_guide_thumbnail_url')}
+            onImageChange={set('raid_guide_image_url')}
+            onColorChange={set('raid_guide_color')}
+            onFooterTextChange={set('raid_guide_footer_text')}
+            showImage={true}
+          />
+        </SettingsCard>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '32px', flexWrap: 'wrap' }}>
+          <button onClick={handleSave} disabled={saving} className="btn-primary"
+            style={{ padding: '11px 28px', fontSize: '14px', opacity: saving ? 0.6 : 1 }}>
+            {saving ? 'Saving…' : 'Save Guide'}
+          </button>
+          <button onClick={handleSendGuide} disabled={guideState === 'sending'}
+            style={{ background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.3)', color: '#7289da', padding: '11px 22px', borderRadius: '8px', cursor: guideState === 'sending' ? 'not-allowed' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '14px', fontWeight: 600, opacity: guideState === 'sending' ? 0.6 : 1 }}>
+            {guideState === 'sending' ? '📨 Sending…' : '📨 Send Guide to Channel'}
+          </button>
+          {saveMsg && <span style={{ fontSize: '13px', color: saveMsg.startsWith('✓') ? C.green : C.red }}>{saveMsg}</span>}
+          {guideMsg && <span style={{ fontSize: '13px', color: guideState === 'error' ? C.red : C.green }}>{guideMsg}</span>}
         </div>
       </>)}
 
