@@ -17,7 +17,7 @@ import {
   createFormField, updateFormField, deleteFormField, sendForm,
   fetchRaidSettings, saveRaidSettings, fetchRaidList, createRaid, endRaid,
   fetchRaidLeaderboard, fetchRaidVerificationLog, runRaidManualCheck, sendRaidGuide,
-  fetchRaidGuideDefaults,
+  fetchRaidGuideDefaults, fetchRaidScrapingHealth,
 } from '../api';
 import { DISCORD_INVITE_URL } from '../constants';
 
@@ -2180,6 +2180,9 @@ const RaidSettings = () => {
   const [mcState, setMcState]           = useState('idle');
   const [mcResult, setMcResult]         = useState(null);
 
+  // Scraping health — poll every 60s when on a raid tab
+  const [scrapingHealth, setScrapingHealth] = useState(null);
+
   // Guide send
   const [guideState, setGuideState]     = useState('idle');
   const [guideMsg, setGuideMsg]         = useState('');
@@ -2222,6 +2225,16 @@ const RaidSettings = () => {
     if (tab === 'leaderboard' && sid) { setLbLoading(true);    fetchRaidLeaderboard(sid,10).then(r => setLb(r.leaderboard||[])).catch(()=>{}).finally(()=>setLbLoading(false)); }
     if (tab === 'log'         && sid) { setLogLoading(true);   fetchRaidVerificationLog(sid).then(r => setLogRows(r.flags||[])).catch(()=>{}).finally(()=>setLogLoading(false)); }
   }, [tab, sid]); // eslint-disable-line
+
+  // Poll scraping health every 60s while on any Raid tab
+  useEffect(() => {
+    if (!sid) return;
+    let cancelled = false;
+    const poll = () => fetchRaidScrapingHealth(sid).then(h => { if (!cancelled) setScrapingHealth(h); }).catch(() => {});
+    poll();
+    const id = setInterval(poll, 60000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [sid]); // eslint-disable-line
 
   // FIX 7: enable toggle saves immediately (single-action)
   const handleToggleEnabled = async (newVal) => {
@@ -2349,6 +2362,14 @@ const RaidSettings = () => {
           </button>
         ))}
       </div>
+
+      {/* ── Scraping health banner — shown across all tabs when unhealthy ── */}
+      {scrapingHealth && scrapingHealth.healthy === false && (
+        <div style={{ background: 'rgba(237,66,69,0.12)', border: '1px solid rgba(237,66,69,0.4)', borderRadius: '8px', padding: '10px 14px', marginBottom: '14px', fontSize: '13px', color: C.red }}>
+          🚨 <strong>Twitter verification is currently offline.</strong> Submissions will be accepted but cannot be automatically verified. Admins can review later when scraping recovers.
+          {scrapingHealth.consecutive_failures > 0 && <span style={{ color: C.muted }}> ({scrapingHealth.consecutive_failures} consecutive failures)</span>}
+        </div>
+      )}
 
       {/* ── SETTINGS TAB ── */}
       {tab === 'settings' && settings && (<>
@@ -2609,13 +2630,18 @@ const RaidSettings = () => {
               {mcResult.error ? (
                 <div style={{ color: C.red, fontSize: '13px' }}>{mcResult.error}</div>
               ) : (<>
+                {mcResult.inconclusive && (
+                  <div style={{ background: 'rgba(200,168,78,0.1)', border: '1px solid rgba(200,168,78,0.35)', borderRadius: '6px', padding: '8px 12px', marginBottom: '10px', fontSize: '12px', color: C.gold }}>
+                    ⚠️ Some tasks could not be verified. The user was <strong>NOT flagged</strong>. Try again later when scraping is healthy.
+                  </div>
+                )}
                 <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px', color: C.gold }}>
                   <strong style={{ color: '#fff' }}>{mcResult.discord_username}</strong>
                   {mcResult.twitter_username && mcResult.twitter_username !== '(not linked)' && (
                     <span style={{ color: C.muted, fontWeight: 400 }}> (@{mcResult.twitter_username})</span>
                   )}
                   {' — '}
-                  {mcResult.flagged?.length > 0 ? `⚠️ Flagged: ${mcResult.flagged.join(', ')}` : '✅ Clean'}
+                  {mcResult.flagged?.length > 0 ? `⚠️ Flagged: ${mcResult.flagged.join(', ')}` : (mcResult.inconclusive ? '❓ Inconclusive' : '✅ Clean')}
                   {mcResult.deducted > 0 && <span style={{ color: C.red }}> (−{mcResult.deducted} pts)</span>}
                 </div>
                 {Object.entries(mcResult.tasks || {}).map(([task, res]) => (
