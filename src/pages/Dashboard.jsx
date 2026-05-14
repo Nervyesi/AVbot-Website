@@ -2630,9 +2630,11 @@ const RaidSettings = () => {
               {mcResult.error ? (
                 <div style={{ color: C.red, fontSize: '13px' }}>{mcResult.error}</div>
               ) : (<>
-                {mcResult.inconclusive && (
+                {Object.values(mcResult.tasks || {}).some(r =>
+                  ['api_error','scrape_failed','scrape_error','auth_error','missing_input','verification_disabled'].includes(r.reason)
+                ) && (
                   <div style={{ background: 'rgba(200,168,78,0.1)', border: '1px solid rgba(200,168,78,0.35)', borderRadius: '6px', padding: '8px 12px', marginBottom: '10px', fontSize: '12px', color: C.gold }}>
-                    ⚠️ Some tasks could not be verified. The user was <strong>NOT flagged</strong>. Try again later when scraping is healthy.
+                    ⚠️ Some tasks could not be verified (API error). The user was <strong>NOT flagged</strong>. Try again later.
                   </div>
                 )}
                 <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px', color: C.gold }}>
@@ -2641,7 +2643,11 @@ const RaidSettings = () => {
                     <span style={{ color: C.muted, fontWeight: 400 }}> (@{mcResult.twitter_username})</span>
                   )}
                   {' — '}
-                  {mcResult.flagged?.length > 0 ? `⚠️ Flagged: ${mcResult.flagged.join(', ')}` : (mcResult.inconclusive ? '❓ Inconclusive' : '✅ Clean')}
+                  {mcResult.flagged?.length > 0
+                    ? `⚠️ Flagged: ${mcResult.flagged.join(', ')}`
+                    : Object.values(mcResult.tasks || {}).some(r =>
+                        ['api_error','scrape_failed','scrape_error','auth_error','missing_input','verification_disabled'].includes(r.reason)
+                      ) ? '❓ Inconclusive' : '✅ Clean'}
                   {mcResult.deducted > 0 && <span style={{ color: C.red }}> (−{mcResult.deducted} pts)</span>}
                 </div>
                 {Object.entries(mcResult.tasks || {}).map(([task, res]) => (
@@ -2650,7 +2656,7 @@ const RaidSettings = () => {
                     {' '}<strong style={{ color: '#fff' }}>{task}</strong>: {res.reason}
                   </div>
                 ))}
-              </>)}
+              </>)
             </div>
           )}
         </SettingsCard>
