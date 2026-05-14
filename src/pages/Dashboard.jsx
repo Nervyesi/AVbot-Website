@@ -2610,7 +2610,7 @@ const RaidSettings = () => {
             or @twitter_handle.
           </p>
           <div style={{ background: 'rgba(200,168,78,0.08)', border: '1px solid rgba(200,168,78,0.2)', borderRadius: '8px', padding: '10px 14px', marginBottom: '18px', fontSize: '13px', color: C.gold }}>
-            Today's usage: {settings.manual_check_count_today ?? 0} / {MANUAL_CHECK_LIMIT} checks
+            Today's usage: {settings.manual_check_count_today ?? 0} / {settings.unlimited_manual_check ? 'Unlimited' : MANUAL_CHECK_LIMIT} checks
           </div>
           <FieldRow>
             <Field label="Raid ID">
