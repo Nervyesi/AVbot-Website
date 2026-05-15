@@ -891,6 +891,7 @@ const VerificationSettings = () => {
             onImageChange={set('verifyImageUrl')}
             onColorChange={set('verifyColor')}
             onFooterTextChange={set('verifyFooterText')}
+            bodySize="base"
           />
           <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
             <button
@@ -1291,6 +1292,7 @@ const RoleSelectSettings = () => {
             onImageChange={setPF('image_url')}
             onColorChange={setPF('color')}
             onFooterTextChange={setPF('footer_text')}
+            bodySize="base"
           />
           <FieldRow style={{ marginTop: '14px' }}>
             <Field label="Style">
@@ -1797,6 +1799,7 @@ const FormsSettings = () => {
             onImageChange={setEd('image_url')}
             onColorChange={setEd('color')}
             onFooterTextChange={setEd('footer_text')}
+            bodySize="base"
           />
         </SettingsCard>
 
@@ -2044,6 +2047,7 @@ const TicketsSettings = () => {
             onImageChange={set('panelImageUrl')}
             onColorChange={set('panelColor')}
             onFooterTextChange={set('panelFooterText')}
+            bodySize="base"
           />
           <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
             <button
@@ -2452,6 +2456,7 @@ const RaidSettings = () => {
             onImageChange={() => {}}
             onColorChange={set('embed_color')}
             onFooterTextChange={set('embed_footer_text')}
+            bodySize="base"
             showImage={false}
           />
         </SettingsCard>
