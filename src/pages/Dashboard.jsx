@@ -2393,6 +2393,12 @@ const RaidSettings = () => {
               Enable the Raid System to access all features.
             </div>
           )}
+          {settings.live_verification_mode && (
+            <div style={{ background: 'rgba(200,168,78,0.1)', border: '1px solid rgba(200,168,78,0.35)', borderRadius: '8px', padding: '10px 14px', marginTop: '10px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ color: C.gold, fontWeight: 700 }}>⚡ Live Verification</span>
+              <span style={{ color: C.muted }}>Tasks are verified on X instantly when users confirm. No daily sampling needed for this guild.</span>
+            </div>
+          )}
         </SettingsCard>
 
         {/* Only show rest of settings when enabled */}
