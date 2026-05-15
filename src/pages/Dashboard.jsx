@@ -543,6 +543,7 @@ const EmbedPreview = ({
   onThumbnailChange, onImageChange,
   onColorChange, onFooterTextChange,
   showImage = true,
+  bodySize = 'sm',
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [assetModal, setAssetModal] = useState(null);
@@ -604,8 +605,15 @@ const EmbedPreview = ({
                 placeholder="Embed title…"
                 style={{ ...iStyle, fontSize: '15px', fontWeight: 700, borderBottom: '1px dashed rgba(255,255,255,0.12)', marginBottom: '8px' }} />
               <textarea value={description} onChange={e => onDescriptionChange?.(e.target.value)}
-                placeholder="Embed description…" rows={3}
-                style={{ ...iStyle, resize: 'none', fontSize: '13px', color: 'rgba(255,255,255,0.82)', borderBottom: '1px dashed rgba(255,255,255,0.07)', lineHeight: '1.5' }} />
+                placeholder="Embed description…"
+                rows={bodySize === 'base' ? 8 : 3}
+                style={{
+                  ...iStyle, resize: 'vertical', color: 'rgba(255,255,255,0.82)',
+                  borderBottom: '1px dashed rgba(255,255,255,0.07)',
+                  fontSize:   bodySize === 'base' ? '15px' : '13px',
+                  lineHeight: bodySize === 'base' ? '1.6'  : '1.5',
+                  minHeight:  bodySize === 'base' ? '220px': undefined,
+                }} />
             </div>
             {/* Thumbnail zone */}
             <div onClick={() => vizClick(() => setAssetModal('thumbnail'))}
@@ -2294,7 +2302,7 @@ const RaidSettings = () => {
         mode:         newMode,
         tasks:        { like: newTaskLike, comment: newTaskComment, retweet: newTaskRetweet },
       });
-      setCreateMsg(`✓ Raid #${res.raid_id} posted`);
+      setCreateMsg(`✓ Raid #${String(res.display_number ?? res.raid_id).padStart(4, '0')} posted`);
       setCreateState('sent');
       setNewTweetUrl(''); setNewPoints('100');
       if (tab === 'raids') fetchRaidList(sid,'active').then(r => setRaids(r.raids||[])).catch(()=>{});
@@ -2487,6 +2495,7 @@ const RaidSettings = () => {
             onColorChange={set('raid_guide_color')}
             onFooterTextChange={set('raid_guide_footer_text')}
             showImage={true}
+            bodySize="base"
           />
         </SettingsCard>
 
@@ -2656,7 +2665,7 @@ const RaidSettings = () => {
                     {' '}<strong style={{ color: '#fff' }}>{task}</strong>: {res.reason}
                   </div>
                 ))}
-              </>)
+              </>)}
             </div>
           )}
         </SettingsCard>
