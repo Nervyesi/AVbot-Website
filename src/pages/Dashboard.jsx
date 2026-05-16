@@ -129,15 +129,6 @@ const SettingsCard = ({ title, children, style }) => (
 // ── Config maps — maps form field key → config table key ─────────────────────
 // Only keys that exist in DEFAULT_CONFIG are included here.
 
-const ENGAGE_CONFIG_MAP = {
-  linkLifetime:  'engage_link_lifetime_hours',
-  pointsPerLink: 'engage_points_per_link',
-  likeWeight:    'engage_weight_like',
-  commentWeight: 'engage_weight_comment',
-  retweetWeight: 'engage_weight_retweet',
-  dailyLimit:    'engage_daily_limit',
-  submitCost:    'engage_submit_cost',
-};
 
 const PROTECT_CONFIG_MAP = {
   // Feature toggles
