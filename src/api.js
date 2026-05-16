@@ -24,10 +24,20 @@ async function apiFetch(path, options = {}) {
     ...options.headers,
   };
   const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
-  if (res.status === 401) { clearToken(); throw new Error('Unauthorized'); }
+  if (res.status === 401) {
+    clearToken();
+    window.location.href = '/login';
+    throw new Error('Not authenticated');
+  }
+  if (res.status === 403) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.detail || 'Access denied — you need Administrator permission in this guild.');
+    err.code = 403;
+    throw err;
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `API error ${res.status}`);
+    throw new Error(body.detail || `HTTP ${res.status}`);
   }
   return res.json();
 }

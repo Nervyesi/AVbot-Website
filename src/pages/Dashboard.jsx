@@ -279,6 +279,7 @@ const TICKETS_DEFAULTS = {
 function useSaveConfig(serverId, configMap, formDefaults, setForm) {
   const [saveState, setSaveState] = useState('idle'); // idle | saving | saved | error
   const configRef = useRef({});
+  const { setAccessError } = useContext(DashboardContext);
 
   useEffect(() => {
     if (!serverId) return;
@@ -297,7 +298,7 @@ function useSaveConfig(serverId, configMap, formDefaults, setForm) {
           return updates;
         });
       })
-      .catch(() => {}); // keep defaults on failure
+      .catch(err => { if (err.code === 403) setAccessError(err.message); }); // keep defaults on failure
   }, [serverId]); // eslint-disable-line
 
   const save = (currentValues) => {
@@ -713,7 +714,7 @@ const ServerIcon = ({ server, size = 48 }) => {
 };
 
 const Overview = () => {
-  const { server, servers, setServer } = useContext(DashboardContext);
+  const { server, servers, setServer, setAccessError } = useContext(DashboardContext);
   const [stats, setStats]         = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading]     = useState(false);
@@ -723,10 +724,10 @@ const Overview = () => {
     setLoading(true);
     setStats(null); setAnalytics(null);
     Promise.all([
-      fetchServerStats(server.id).catch(() => null),
+      fetchServerStats(server.id).catch(err => { if (err.code === 403) setAccessError(err.message); return null; }),
       fetchServerAnalytics(server.id).catch(() => null),
     ]).then(([s, a]) => { setStats(s); setAnalytics(a); setLoading(false); });
-  }, [server?.id]);
+  }, [server?.id]); // eslint-disable-line
 
   const sc         = analytics?.stat_cards ?? null;
   const hasData    = analytics?.has_any_data ?? null;
@@ -775,6 +776,18 @@ const Overview = () => {
       </div>
 
       {/* ── Server cards ── */}
+      {servers.length === 0 && !loading && (
+        <div style={{ textAlign: 'center', padding: '64px 24px', color: C.muted }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔒</div>
+          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#fff', marginBottom: '8px' }}>
+            No accessible servers
+          </h2>
+          <p style={{ fontSize: '14px', maxWidth: '400px', margin: '0 auto' }}>
+            The AVbot Dashboard is only accessible to server owners and members with the
+            Administrator permission in that server.
+          </p>
+        </div>
+      )}
       {servers.length > 0 && (
         <>
           <div style={{ fontSize: '11px', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '12px' }}>Your Servers</div>
@@ -3570,6 +3583,12 @@ const Dashboard = () => {
   const [server, setServer]   = useState(null);
   const [active, setActive]   = useState('overview');
   const [authLoading, setAuthLoading] = useState(true);
+  const [accessError, setAccessError] = useState(null);
+
+  // Clear access error whenever the selected server changes
+  useEffect(() => {
+    setAccessError(null);
+  }, [server?.id]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -3640,7 +3659,7 @@ const Dashboard = () => {
   };
 
   return (
-    <DashboardContext.Provider value={{ server, user, servers, setServer, isPremium: server?.is_premium === true }}>
+    <DashboardContext.Provider value={{ server, user, servers, setServer, isPremium: server?.is_premium === true, accessError, setAccessError }}>
       <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', fontFamily: 'Sora, sans-serif', color: '#fff' }}>
 
         {/* ── Sidebar ── */}
@@ -3691,6 +3710,13 @@ const Dashboard = () => {
           </div>
 
           <div style={{ flex: 1, padding: '36px 40px', overflowY: 'auto', maxWidth: '960px' }}>
+            {accessError && (
+              <div style={{ background: 'rgba(237,66,69,0.1)', border: '1px solid rgba(237,66,69,0.3)', borderRadius: '8px', padding: '20px', margin: '0 0 20px' }}>
+                <div style={{ fontSize: '16px', fontWeight: 600, color: '#ed4245', marginBottom: '8px' }}>🔒 Access Denied</div>
+                <p style={{ fontSize: '14px', color: '#c9cdd0', margin: '0 0 8px' }}>{accessError}</p>
+                <p style={{ fontSize: '13px', color: C.muted, margin: 0 }}>Switch to a server where you have Administrator permission.</p>
+              </div>
+            )}
             {PAGES[active]}
           </div>
         </main>
