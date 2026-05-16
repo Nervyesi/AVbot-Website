@@ -66,6 +66,15 @@ export const fetchAuditLog = (id, limit = 50) =>
 export const fetchRaids = (id, activeOnly = false) =>
   apiFetch(`/api/servers/${id}/raids${activeOnly ? '?active_only=true' : ''}`);
 export const fetchEngage = id => apiFetch(`/api/servers/${id}/engage`);
+
+export const fetchEngagePools = (id) =>
+  apiFetch(`/api/servers/${id}/engage/pools`);
+
+export const updateEngagePool = (serverId, poolId, body) =>
+  apiFetch(`/api/servers/${serverId}/engage/pools/${poolId}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
 export const fetchLeaderboard = (id, limit = 25) =>
   apiFetch(`/api/servers/${id}/leaderboard?limit=${limit}`);
 

@@ -18,6 +18,7 @@ import {
   fetchRaidSettings, saveRaidSettings, fetchRaidList, createRaid, endRaid,
   fetchRaidLeaderboard, fetchRaidVerificationLog, runRaidManualCheck, sendRaidGuide,
   fetchRaidGuideDefaults, fetchRaidScrapingHealth,
+  fetchEngagePools, updateEngagePool,
 } from '../api';
 import { DISCORD_INVITE_URL } from '../constants';
 
@@ -2746,71 +2747,194 @@ const RaidSettings = () => {
 
 // ── Engage ────────────────────────────────────────────────────────────────────
 
-const ENGAGE_DEFAULTS = {
-  enabled: true,
-  channel: '#engage',
-  creatorChannel: '#creator-engage',
-  linkLifetime: '24',
-  pointsPerLink: '30',
-  likeWeight: '1.0', commentWeight: '1.5', retweetWeight: '1.2',
-  dailyLimit: '5',
-  submitCost: '0',
-  minFollowers: '500',
-  autoReset: true,
-};
-
 const EngageSettings = () => {
   const { server } = useContext(DashboardContext);
-  const [v, setV] = useState({ ...ENGAGE_DEFAULTS });
-  const set = k => val => setV(p => ({ ...p, [k]: val }));
-  const { saveState, save } = useSaveConfig(server?.id, ENGAGE_CONFIG_MAP, ENGAGE_DEFAULTS, setV);
+  const sid = server?.id;
+
+  const [data, setData]               = useState(null);   // {guild_id, is_multi_pool, pools}
+  const [loading, setLoading]         = useState(true);
+  const [activePoolIdx, setActivePoolIdx] = useState(0);
+  const [saving, setSaving]           = useState(false);
+  const [toast, setToast]             = useState('');
+
+  useEffect(() => {
+    if (!sid) return;
+    setLoading(true);
+    fetchEngagePools(sid)
+      .then(res => { setData(res); setActivePoolIdx(0); })
+      .catch(err => setToast('Failed to load: ' + err.message))
+      .finally(() => setLoading(false));
+  }, [sid]); // eslint-disable-line
+
+  const pool = data?.pools?.[activePoolIdx] ?? null;
+
+  const setPoolField = (key) => (val) => {
+    setData(prev => {
+      const pools = [...prev.pools];
+      pools[activePoolIdx] = { ...pools[activePoolIdx], [key]: val };
+      return { ...prev, pools };
+    });
+  };
+
+  const handleSave = async () => {
+    if (!pool) return;
+    setSaving(true);
+    try {
+      const body = {
+        enabled:               pool.enabled ? 1 : 0,
+        channel_id:            pool.channel_id || '',
+        allowed_role_ids:      Array.isArray(pool.allowed_role_ids) ? pool.allowed_role_ids : [],
+        submit_cost:           parseInt(pool.submit_cost, 10) || 0,
+        ttl_hours:             pool.ttl_hours || '',
+        auto_reset_daily:      pool.auto_reset_daily ? 1 : 0,
+        min_followers:         parseInt(pool.min_followers, 10) || 0,
+        daily_submission_limit: parseInt(pool.daily_submission_limit, 10) || 3,
+        point_ratio_like:      parseInt(pool.point_ratio_like, 10) || 0,
+        point_ratio_comment:   parseInt(pool.point_ratio_comment, 10) || 0,
+        point_ratio_retweet:   parseInt(pool.point_ratio_retweet, 10) || 0,
+        total_points_per_engage: parseInt(pool.total_points_per_engage, 10) || 10,
+        allow_like:            pool.allow_like ? 1 : 0,
+        allow_comment:         pool.allow_comment ? 1 : 0,
+        allow_retweet:         pool.allow_retweet ? 1 : 0,
+      };
+      const updated = await updateEngagePool(sid, pool.pool_id, body);
+      setData(prev => {
+        const pools = [...prev.pools];
+        try { updated.allowed_role_ids = JSON.parse(updated.allowed_role_ids || '[]'); } catch (_) { updated.allowed_role_ids = []; }
+        pools[activePoolIdx] = updated;
+        return { ...prev, pools };
+      });
+      setToast('✓ Saved');
+      setTimeout(() => setToast(''), 2500);
+    } catch (err) {
+      setToast('Save failed: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return (
+    <div>
+      <PageHeader icon="🔄" title="Engage Pool" badge="MODULE" desc="Configure the Engage-for-Engage pool." />
+      <div style={{ color: C.muted, padding: '24px 0' }}>Loading…</div>
+    </div>
+  );
+
+  if (!data || !data.pools?.length) return (
+    <div>
+      <PageHeader icon="🔄" title="Engage Pool" badge="MODULE" desc="Configure the Engage-for-Engage pool." />
+      <div style={{ color: C.muted, padding: '24px 0' }}>No engage pools found.</div>
+    </div>
+  );
+
+  const isMulti = data.is_multi_pool;
+  const poolName = pool?.display_name || pool?.name || 'Engage';
 
   return (
     <div>
-      <PageHeader icon="🔄" title="Engage Pool" badge="MODULE" desc="Configure the Engage-for-Engage pool. Members use /engage and /submit commands." />
-      <SettingsCard title="Module">
-        <Toggle value={v.enabled} onChange={set('enabled')} label="Enable Engage Pool" />
-        {v.enabled && <Toggle value={v.autoReset} onChange={set('autoReset')} label="Auto-Reset Pool Daily"
-          desc="Clears stale links every 24 hours and resets daily limits." />}
-      </SettingsCard>
+      <PageHeader
+        icon="🔄"
+        title="Engage Pool"
+        badge="MODULE"
+        desc={isMulti
+          ? 'Two Engage-for-Engage pools: one for the community, one for creators.'
+          : 'Configure the Engage-for-Engage pool. Members use /engage and /submit commands.'}
+      />
 
-      {v.enabled && (<>
-        <SettingsCard title="Channels">
-          <FieldRow>
-            <Field label="Engage Channel" hint="name or ID — general engage pool">
-              <Input value={v.channel} onChange={set('channel')} placeholder="#engage or 123456789" />
-            </Field>
-            <Field label="Creator Engage Channel" hint="name or ID — creator-only pool">
-              <Input value={v.creatorChannel} onChange={set('creatorChannel')} placeholder="#creator-engage or 123456789" />
-            </Field>
-          </FieldRow>
+      {/* Pool tabs — ONLY for multi-pool guilds (AmeretaVerse) */}
+      {isMulti && (
+        <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${C.border}`, marginBottom: '20px' }}>
+          {data.pools.map((p, i) => (
+            <button key={p.pool_id} onClick={() => setActivePoolIdx(i)}
+              style={{
+                padding: '8px 18px', fontSize: '13px', fontWeight: 600,
+                fontFamily: 'Sora, sans-serif', cursor: 'pointer',
+                background: 'none', border: 'none',
+                borderBottom: i === activePoolIdx ? `2px solid ${C.gold}` : '2px solid transparent',
+                color: i === activePoolIdx ? C.gold : C.muted,
+              }}>
+              {p.display_name || p.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {pool && (<>
+        <SettingsCard title="Module">
+          <Toggle value={!!pool.enabled} onChange={setPoolField('enabled')} label={`Enable ${poolName}`} />
+          <Toggle value={!!pool.auto_reset_daily} onChange={setPoolField('auto_reset_daily')} label="Auto-Reset Pool Daily"
+            desc="Clears all active submissions at midnight UTC." />
+        </SettingsCard>
+
+        <SettingsCard title="Channel">
+          <Field label={isMulti ? `${poolName} Channel` : 'Engage Channel'} hint="Channel name or ID">
+            <Input value={pool.channel_id || ''} onChange={setPoolField('channel_id')}
+              placeholder="#engage or channel ID" />
+          </Field>
+          <Field label="Allowed Roles (optional)" hint="Comma-separated role IDs. Leave empty = open to all.">
+            <Input
+              value={(Array.isArray(pool.allowed_role_ids) ? pool.allowed_role_ids : []).join(', ')}
+              onChange={v => setPoolField('allowed_role_ids')(v.split(',').map(x => x.trim()).filter(Boolean))}
+              placeholder="Role ID, Role ID... (blank = everyone)"
+            />
+          </Field>
         </SettingsCard>
 
         <SettingsCard title="Limits">
           <FieldRow>
-            <Field label="Link Lifetime (hours)" hint="before expiry"><Input type="number" value={v.linkLifetime} onChange={set('linkLifetime')} placeholder="24" /></Field>
-            <Field label="Daily Engage Limit" hint="per user"><Input type="number" value={v.dailyLimit} onChange={set('dailyLimit')} placeholder="5" /></Field>
+            <Field label="Link Lifetime (hours)" hint="Leave empty = never expires">
+              <Input type="number" value={pool.ttl_hours || ''} onChange={setPoolField('ttl_hours')} placeholder="— never —" />
+            </Field>
+            <Field label="Daily Submission Limit" hint="Submissions per user per day">
+              <Input type="number" value={pool.daily_submission_limit} onChange={setPoolField('daily_submission_limit')} placeholder="3" />
+            </Field>
           </FieldRow>
           <FieldRow>
-            <Field label="Points Per Link" hint="base reward"><Input type="number" value={v.pointsPerLink} onChange={set('pointsPerLink')} placeholder="30" /></Field>
-            <Field label="Submit Cost (points)" hint="cost to post a link"><Input type="number" value={v.submitCost} onChange={set('submitCost')} placeholder="0" /></Field>
+            <Field label="Points Per Engage" hint="Total points per engagement action">
+              <Input type="number" value={pool.total_points_per_engage} onChange={setPoolField('total_points_per_engage')} placeholder="10" />
+            </Field>
+            <Field label="Submit Cost (pts)" hint="Engage points charged per submission">
+              <Input type="number" value={pool.submit_cost} onChange={setPoolField('submit_cost')} placeholder="50" />
+            </Field>
           </FieldRow>
           <FieldRow>
-            <Field label="Min. Followers to Submit" hint="quality gate"><Input type="number" value={v.minFollowers} onChange={set('minFollowers')} placeholder="500" /></Field>
+            <Field label="Min. Followers to Submit" hint="X follower count required">
+              <Input type="number" value={pool.min_followers} onChange={setPoolField('min_followers')} placeholder="100" />
+            </Field>
           </FieldRow>
         </SettingsCard>
 
         <SettingsCard title="Engagement Weights">
-          <p style={{ margin: '0 0 14px', color: C.muted, fontSize: '13px' }}>Points earned = base × weight for each action type.</p>
+          <p style={{ margin: '0 0 14px', color: C.muted, fontSize: '13px' }}>
+            Share of "Points Per Engage" for each task. Ratios are normalized at runtime for enabled tasks only.
+          </p>
           <FieldRow cols={3}>
-            <Field label="❤️ Like Weight"><Input type="number" value={v.likeWeight} onChange={set('likeWeight')} placeholder="1.0" /></Field>
-            <Field label="💬 Comment Weight"><Input type="number" value={v.commentWeight} onChange={set('commentWeight')} placeholder="1.5" /></Field>
-            <Field label="🔁 Retweet Weight"><Input type="number" value={v.retweetWeight} onChange={set('retweetWeight')} placeholder="1.2" /></Field>
+            <div>
+              <Toggle value={!!pool.allow_like} onChange={setPoolField('allow_like')} label="❤️ Like" />
+              <Field label="Like %">
+                <Input type="number" value={pool.point_ratio_like} onChange={setPoolField('point_ratio_like')} placeholder="12" style={{ opacity: pool.allow_like ? 1 : 0.4 }} />
+              </Field>
+            </div>
+            <div>
+              <Toggle value={!!pool.allow_comment} onChange={setPoolField('allow_comment')} label="💬 Comment" />
+              <Field label="Comment %">
+                <Input type="number" value={pool.point_ratio_comment} onChange={setPoolField('point_ratio_comment')} placeholder="40" style={{ opacity: pool.allow_comment ? 1 : 0.4 }} />
+              </Field>
+            </div>
+            <div>
+              <Toggle value={!!pool.allow_retweet} onChange={setPoolField('allow_retweet')} label="🔁 Retweet" />
+              <Field label="Retweet %">
+                <Input type="number" value={pool.point_ratio_retweet} onChange={setPoolField('point_ratio_retweet')} placeholder="48" style={{ opacity: pool.allow_retweet ? 1 : 0.4 }} />
+              </Field>
+            </div>
           </FieldRow>
         </SettingsCard>
       </>)}
 
-      <ActionBar saveState={saveState} onSave={() => save(v)} />
+      <ActionBar saveState={saving ? 'saving' : (toast.startsWith('✓') ? 'saved' : 'idle')} onSave={handleSave} />
+      {toast && !toast.startsWith('✓') && (
+        <div style={{ marginTop: '8px', fontSize: '13px', color: C.red }}>{toast}</div>
+      )}
     </div>
   );
 };
