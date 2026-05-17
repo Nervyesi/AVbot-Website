@@ -268,3 +268,20 @@ export const uploadAsset = async (serverId, file) => {
 
 export const deleteAsset = (serverId, assetId) =>
   apiFetch(`/api/servers/${serverId}/assets/${assetId}`, { method: 'DELETE' });
+
+// ── Settings ───────────────────────────────────────────────────────────────
+
+export const fetchSettings = (sid) =>
+  apiFetch(`/api/servers/${sid}/settings`);
+
+export const updateBrand = (sid, brand) =>
+  apiFetch(`/api/servers/${sid}/settings/brand`, {
+    method: 'PUT',
+    body: JSON.stringify(brand),
+  });
+
+export const updateAccess = (sid, roleId, module, granted) =>
+  apiFetch(`/api/servers/${sid}/settings/access`, {
+    method: 'PUT',
+    body: JSON.stringify({ role_id: String(roleId), module, granted }),
+  });

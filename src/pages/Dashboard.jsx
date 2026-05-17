@@ -19,6 +19,7 @@ import {
   fetchRaidLeaderboard, fetchRaidVerificationLog, runRaidManualCheck, sendRaidGuide,
   fetchRaidGuideDefaults, fetchRaidScrapingHealth,
   fetchEngagePools, updateEngagePool,
+  fetchSettings, updateBrand, updateAccess,
 } from '../api';
 import { DISCORD_INVITE_URL } from '../constants';
 
@@ -3546,6 +3547,165 @@ const AIHelpButton = () => {
   );
 };
 
+// ── Settings module ───────────────────────────────────────────────────────────
+
+const SettingsModule = () => {
+  const { server } = useContext(DashboardContext);
+  const sid = server?.id;
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [subTab, setSubTab] = useState('brand');
+  const [brand, setBrand] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+
+  useEffect(() => {
+    if (!sid) return;
+    setLoading(true);
+    fetchSettings(sid)
+      .then(d => { setData(d); setBrand(d.brand || {}); })
+      .catch(e => setSaveMsg('Load error: ' + e.message))
+      .finally(() => setLoading(false));
+  }, [sid]); // eslint-disable-line
+
+  const handleSaveBrand = async () => {
+    setSaving(true);
+    try {
+      const updated = await updateBrand(sid, brand);
+      setBrand(updated);
+      setSaveMsg('✓ Saved');
+    } catch (e) {
+      setSaveMsg('✗ ' + e.message);
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSaveMsg(''), 3000);
+    }
+  };
+
+  const handleToggleAccess = async (roleId, module, granted) => {
+    setData(prev => ({
+      ...prev,
+      roles: prev.roles.map(r =>
+        r.id !== roleId ? r : {
+          ...r,
+          modules: granted
+            ? [...new Set([...r.modules, module])]
+            : r.modules.filter(m => m !== module),
+        }
+      ),
+    }));
+    try {
+      await updateAccess(sid, roleId, module, granted);
+    } catch (e) {
+      setSaveMsg('Access update failed: ' + e.message);
+      setData(prev => ({
+        ...prev,
+        roles: prev.roles.map(r =>
+          r.id !== roleId ? r : {
+            ...r,
+            modules: granted
+              ? r.modules.filter(m => m !== module)
+              : [...new Set([...r.modules, module])],
+          }
+        ),
+      }));
+    }
+  };
+
+  if (loading) return <div style={{ color: C.muted, padding: '24px 0' }}>Loading…</div>;
+
+  return (
+    <div>
+      <PageHeader icon="⚙️" title="Server Settings" badge="SERVER" desc="Bot-wide brand defaults and per-module access control." />
+
+      <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${C.border}`, marginBottom: '20px' }}>
+        {[['brand', '🎨 Brand'], ['access', '🔒 Access Control']].map(([id, label]) => (
+          <button key={id} onClick={() => setSubTab(id)} style={{
+            padding: '8px 16px', fontSize: '13px', fontWeight: 600,
+            fontFamily: 'Sora, sans-serif', cursor: 'pointer', background: 'none', border: 'none',
+            borderBottom: subTab === id ? `2px solid ${C.gold}` : '2px solid transparent',
+            color: subTab === id ? C.gold : C.muted,
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {subTab === 'brand' && (
+        <SettingsCard title="Default Brand Embed">
+          <p style={{ margin: '0 0 14px', color: C.muted, fontSize: '13px' }}>
+            Fallback color and footer used when a module does not set its own. Module-specific settings always take priority.
+          </p>
+          <FieldRow>
+            <Field label="Default Embed Color" hint="Hex color, e.g. #94730D">
+              <Input value={brand.default_embed_color || '#94730D'} onChange={v => setBrand(b => ({ ...b, default_embed_color: v }))} placeholder="#94730D" />
+            </Field>
+            <Field label="Default Thumbnail URL" hint="Top-right image in embeds">
+              <Input value={brand.default_thumbnail_url || ''} onChange={v => setBrand(b => ({ ...b, default_thumbnail_url: v }))} placeholder="https://..." />
+            </Field>
+          </FieldRow>
+          <FieldRow>
+            <Field label="Default Footer Text">
+              <Input value={brand.default_footer_text || ''} onChange={v => setBrand(b => ({ ...b, default_footer_text: v }))} placeholder="AmeretaVerse" />
+            </Field>
+            <Field label="Default Footer Icon URL">
+              <Input value={brand.default_footer_icon_url || ''} onChange={v => setBrand(b => ({ ...b, default_footer_icon_url: v }))} placeholder="https://..." />
+            </Field>
+          </FieldRow>
+          <ActionBar saveState={saving ? 'saving' : (saveMsg.startsWith('✓') ? 'saved' : 'idle')} onSave={handleSaveBrand} />
+          {saveMsg && !saveMsg.startsWith('✓') && <div style={{ color: C.red, fontSize: '13px', marginTop: '8px' }}>{saveMsg}</div>}
+        </SettingsCard>
+      )}
+
+      {subTab === 'access' && data && (
+        <SettingsCard title="Module Access by Role">
+          <p style={{ margin: '0 0 14px', color: C.muted, fontSize: '13px' }}>
+            Restrict which admin roles can access each module. Server owner always has full access.
+            If NO roles are checked for a module, ALL admins have access (default).
+          </p>
+          {(!data.roles || data.roles.length === 0) ? (
+            <div style={{ color: C.muted }}>No roles found in this server.</div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                    <th style={{ textAlign: 'left', padding: '8px 6px', color: C.muted, fontWeight: 600, minWidth: '120px' }}>Role</th>
+                    {(data.modules || []).map(m => (
+                      <th key={m} style={{ padding: '8px 6px', color: C.muted, fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                        {m.replace('_', ' ')}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.roles.map(r => (
+                    <tr key={r.id} style={{ borderBottom: `1px solid rgba(255,255,255,0.04)` }}>
+                      <td style={{ padding: '7px 6px', fontWeight: 500, color: r.color || '#fff' }}>{r.name}</td>
+                      {(data.modules || []).map(m => {
+                        const granted = (r.modules || []).includes(m);
+                        return (
+                          <td key={m} style={{ textAlign: 'center', padding: '7px 6px' }}>
+                            <input
+                              type="checkbox"
+                              checked={granted}
+                              onChange={e => handleToggleAccess(r.id, m, e.target.checked)}
+                              style={{ cursor: 'pointer', accentColor: C.gold, width: '15px', height: '15px' }}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {saveMsg && <div style={{ color: C.red, fontSize: '13px', marginTop: '8px' }}>{saveMsg}</div>}
+        </SettingsCard>
+      )}
+    </div>
+  );
+};
+
 // ── Nav config ────────────────────────────────────────────────────────────────
 
 const NAV = [
@@ -3558,6 +3718,7 @@ const NAV = [
   { id: 'raid',         icon: '⚔️', label: 'Raid',           group: 'Settings' },
   { id: 'engage',       icon: '🔄', label: 'Engage',         group: 'Settings' },
   { id: 'protection',   icon: '🛡️', label: 'Protection',     group: 'Settings' },
+  { id: 'settings',    icon: '⚙️', label: 'Server Settings', group: 'Settings' },
   { id: 'flagged',      icon: '🚩', label: 'Flagged Users',  group: 'Admin Panel' },
   { id: 'modlog',       icon: '📝', label: 'Mod Log',        group: 'Admin Panel' },
   { id: 'auditlog',     icon: '📋', label: 'Audit Log',      group: 'Admin Panel' },
@@ -3653,6 +3814,7 @@ const Dashboard = () => {
     raid:         <RaidSettings />,
     engage:       <EngageSettings />,
     protection:   <ProtectionSettings />,
+    settings:     <SettingsModule />,
     flagged:      <FlaggedUsers />,
     modlog:       <ModLog />,
     auditlog:     <AuditLog />,
