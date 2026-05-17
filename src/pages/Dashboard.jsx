@@ -21,7 +21,7 @@ import {
   fetchEngagePools, updateEngagePool,
   fetchSettings, updateBrand, updateAccess,
 } from '../api';
-import { DISCORD_INVITE_URL } from '../constants';
+import { DISCORD_INVITE_URL, API_BASE_URL } from '../constants';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -126,6 +126,44 @@ const SettingsCard = ({ title, children, style }) => (
     {children}
   </Card>
 );
+
+// Standalone color swatch + popover picker (used in Brand settings)
+const BrandColorPicker = ({ color, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const pickerRef = useRef(null);
+  const swatchRef = useRef(null);
+  const safeColor = /^#[0-9a-fA-F]{3,6}$/.test(color) ? color : '#94730D';
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target) &&
+          swatchRef.current && !swatchRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div ref={swatchRef} onClick={() => setOpen(p => !p)}
+          style={{ width: '36px', height: '36px', borderRadius: '6px', background: safeColor, cursor: 'pointer', border: '2px solid rgba(255,255,255,0.15)', flexShrink: 0 }} />
+        <input value={safeColor} onChange={e => onChange(e.target.value)}
+          style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '8px 10px', color: '#fff', fontSize: '13px', fontFamily: 'monospace', width: '110px', outline: 'none' }} />
+      </div>
+      {open && (
+        <div ref={pickerRef} style={{ position: 'absolute', left: 0, top: '44px', zIndex: 100, background: '#1a1a22', border: `1px solid ${C.border}`, borderRadius: '10px', padding: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.55)' }}>
+          <HexColorPicker color={safeColor} onChange={onChange} />
+          <button onClick={() => setOpen(false)}
+            style={{ marginTop: '8px', background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: '12px', width: '100%', textAlign: 'right' }}>Done</button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ── Config maps — maps form field key → config table key ─────────────────────
 // Only keys that exist in DEFAULT_CONFIG are included here.
@@ -719,6 +757,7 @@ const Overview = () => {
   const [stats, setStats]         = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading]     = useState(false);
+  const [publicStats, setPublicStats] = useState(null);
 
   useEffect(() => {
     if (!server?.id) return;
@@ -729,6 +768,14 @@ const Overview = () => {
       fetchServerAnalytics(server.id).catch(() => null),
     ]).then(([s, a]) => { setStats(s); setAnalytics(a); setLoading(false); });
   }, [server?.id]); // eslint-disable-line
+
+  useEffect(() => {
+    // Fetch public AmeretaVerse stats (no auth needed)
+    fetch(`${API_BASE_URL}/api/public/ameretaverse-overview`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setPublicStats(data); })
+      .catch(() => {});
+  }, []); // eslint-disable-line
 
   const sc         = analytics?.stat_cards ?? null;
   const hasData    = analytics?.has_any_data ?? null;
@@ -778,15 +825,44 @@ const Overview = () => {
 
       {/* ── Server cards ── */}
       {servers.length === 0 && !loading && (
-        <div style={{ textAlign: 'center', padding: '64px 24px', color: C.muted }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔒</div>
-          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#fff', marginBottom: '8px' }}>
-            No accessible servers
-          </h2>
-          <p style={{ fontSize: '14px', maxWidth: '400px', margin: '0 auto' }}>
-            The AVbot Dashboard is only accessible to server owners and members with the
-            Administrator permission in that server.
-          </p>
+        <div style={{ maxWidth: '800px', margin: '0 auto', padding: '48px 24px' }}>
+          {publicStats && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '48px' }}>
+              {[
+                { label: 'Total Members', value: publicStats.total_members.toLocaleString() },
+                { label: 'Active (30d)', value: publicStats.active_members.toLocaleString() },
+                { label: 'Growth (30d)', value: `+${publicStats.member_growth_30d}` },
+                { label: 'Total Messages', value: publicStats.total_messages.toLocaleString() },
+              ].map(s => (
+                <div key={s.label} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '24px', fontWeight: 700, color: C.gold }}>{s.value}</div>
+                  <div style={{ fontSize: '12px', color: C.muted, marginTop: '4px' }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ textAlign: 'center', background: 'rgba(0,0,0,0.3)', border: `1px solid ${C.border}`, borderRadius: '16px', padding: '48px 32px' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔓</div>
+            <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#fff', marginBottom: '10px' }}>
+              Add AVbot to unlock the dashboard
+            </h2>
+            <p style={{ fontSize: '14px', color: C.muted, maxWidth: '420px', margin: '0 auto 28px', lineHeight: '1.6' }}>
+              Once invited, manage raids, engages, forms, tickets, and more from this control panel.
+            </p>
+            <a
+              href={DISCORD_INVITE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '8px',
+                padding: '12px 28px', background: C.gold, color: '#0A0A0F',
+                borderRadius: '8px', fontWeight: 700, fontSize: '15px',
+                textDecoration: 'none', fontFamily: 'Sora, sans-serif',
+              }}
+            >
+              ➕ Add AVbot to Discord
+            </a>
+          </div>
         </div>
       )}
       {servers.length > 0 && (
@@ -3629,31 +3705,98 @@ const SettingsModule = () => {
         ))}
       </div>
 
-      {subTab === 'brand' && (
-        <SettingsCard title="Default Brand Embed">
-          <p style={{ margin: '0 0 14px', color: C.muted, fontSize: '13px' }}>
-            Fallback color and footer used when a module does not set its own. Module-specific settings always take priority.
-          </p>
-          <FieldRow>
-            <Field label="Default Embed Color" hint="Hex color, e.g. #94730D">
-              <Input value={brand.default_embed_color || '#94730D'} onChange={v => setBrand(b => ({ ...b, default_embed_color: v }))} placeholder="#94730D" />
-            </Field>
-            <Field label="Default Thumbnail URL" hint="Top-right image in embeds">
-              <Input value={brand.default_thumbnail_url || ''} onChange={v => setBrand(b => ({ ...b, default_thumbnail_url: v }))} placeholder="https://..." />
-            </Field>
-          </FieldRow>
-          <FieldRow>
-            <Field label="Default Footer Text">
-              <Input value={brand.default_footer_text || ''} onChange={v => setBrand(b => ({ ...b, default_footer_text: v }))} placeholder="AmeretaVerse" />
-            </Field>
-            <Field label="Default Footer Icon URL">
-              <Input value={brand.default_footer_icon_url || ''} onChange={v => setBrand(b => ({ ...b, default_footer_icon_url: v }))} placeholder="https://..." />
-            </Field>
-          </FieldRow>
-          <ActionBar saveState={saving ? 'saving' : (saveMsg.startsWith('✓') ? 'saved' : 'idle')} onSave={handleSaveBrand} />
-          {saveMsg && !saveMsg.startsWith('✓') && <div style={{ color: C.red, fontSize: '13px', marginTop: '8px' }}>{saveMsg}</div>}
-        </SettingsCard>
-      )}
+      {subTab === 'brand' && (() => {
+        const isBotOwnerGuild = sid === '1199707792706117642';
+        return (
+          <>
+            <SettingsCard title="Default Brand Embed">
+              <p style={{ margin: '0 0 18px', color: C.muted, fontSize: '13px' }}>
+                Fallback color and footer used when a module does not set its own. Module-specific settings always take priority.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', alignItems: 'start' }}>
+                {/* Left: controls */}
+                <div>
+                  <Field label="Default Embed Color">
+                    <BrandColorPicker
+                      color={brand.default_embed_color || '#94730D'}
+                      onChange={v => setBrand(b => ({ ...b, default_embed_color: v }))}
+                    />
+                  </Field>
+                  <div style={{ marginTop: '14px' }}>
+                    <Field label="Default Thumbnail URL" hint="Top-right image in embeds">
+                      <Input value={brand.default_thumbnail_url || ''} onChange={v => setBrand(b => ({ ...b, default_thumbnail_url: v }))} placeholder="https://..." />
+                    </Field>
+                  </div>
+                  <div style={{ marginTop: '14px' }}>
+                    <Field label="Default Footer Text">
+                      <Input value={brand.default_footer_text || ''} onChange={v => setBrand(b => ({ ...b, default_footer_text: v }))} placeholder="AmeretaVerse" />
+                    </Field>
+                  </div>
+                  <div style={{ marginTop: '14px' }}>
+                    <Field label="Default Footer Icon URL">
+                      <Input value={brand.default_footer_icon_url || ''} onChange={v => setBrand(b => ({ ...b, default_footer_icon_url: v }))} placeholder="https://..." />
+                    </Field>
+                  </div>
+                </div>
+                {/* Right: live preview */}
+                <div>
+                  <Label>Live Preview</Label>
+                  <EmbedPreview
+                    serverId={sid}
+                    isPremium={false}
+                    color={brand.default_embed_color || '#94730D'}
+                    thumbnailUrl={brand.default_thumbnail_url || ''}
+                    footerText={brand.default_footer_text || ''}
+                    bodySize="base"
+                    showImage={false}
+                    onTitleChange={() => {}}
+                    onDescriptionChange={() => {}}
+                    onColorChange={v => setBrand(b => ({ ...b, default_embed_color: v }))}
+                    onFooterTextChange={v => setBrand(b => ({ ...b, default_footer_text: v }))}
+                  />
+                </div>
+              </div>
+              <div style={{ marginTop: '20px' }}>
+                <ActionBar saveState={saving ? 'saving' : (saveMsg.startsWith('✓') ? 'saved' : 'idle')} onSave={handleSaveBrand} />
+                {saveMsg && !saveMsg.startsWith('✓') && <div style={{ color: C.red, fontSize: '13px', marginTop: '8px' }}>{saveMsg}</div>}
+              </div>
+            </SettingsCard>
+
+            <SettingsCard title="Bot Profile">
+              {!isBotOwnerGuild && (
+                <div style={{ background: 'rgba(200,168,78,0.1)', border: '1px solid rgba(200,168,78,0.3)', borderRadius: '8px', padding: '10px 14px', marginBottom: '14px', fontSize: '13px', color: C.gold }}>
+                  🔒 Bot Profile customization is for the primary guild only.
+                </div>
+              )}
+              <fieldset disabled={!isBotOwnerGuild} style={{ border: 'none', padding: 0, margin: 0, opacity: isBotOwnerGuild ? 1 : 0.45 }}>
+                <Field label="Bot Display Name">
+                  <Input
+                    value={brand.bot_display_name || ''}
+                    onChange={v => setBrand(b => ({ ...b, bot_display_name: v }))}
+                    placeholder="AVbot"
+                    disabled={!isBotOwnerGuild}
+                  />
+                </Field>
+                <div style={{ marginTop: '14px' }}>
+                  <Field label="Bot Avatar URL" hint="Direct image URL for the bot's avatar">
+                    <Input
+                      value={brand.bot_avatar_url || ''}
+                      onChange={v => setBrand(b => ({ ...b, bot_avatar_url: v }))}
+                      placeholder="https://..."
+                      disabled={!isBotOwnerGuild}
+                    />
+                  </Field>
+                </div>
+              </fieldset>
+              {isBotOwnerGuild && (
+                <div style={{ marginTop: '20px' }}>
+                  <ActionBar saveState={saving ? 'saving' : (saveMsg.startsWith('✓') ? 'saved' : 'idle')} onSave={handleSaveBrand} />
+                </div>
+              )}
+            </SettingsCard>
+          </>
+        );
+      })()}
 
       {subTab === 'access' && data && (
         <SettingsCard title="Module Access by Role">
