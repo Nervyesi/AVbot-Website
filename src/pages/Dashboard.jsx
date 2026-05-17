@@ -21,7 +21,7 @@ import {
   fetchEngagePools, updateEngagePool,
   fetchSettings, updateBrand, updateAccess,
 } from '../api';
-import { DISCORD_INVITE_URL, API_BASE_URL } from '../constants';
+import { DISCORD_INVITE_URL, ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -310,7 +310,7 @@ const ModuleLock = ({ name }) => (
       Bot must be installed in your server to manage this module.
     </p>
     <a
-      href={DISCORD_INVITE_URL}
+      href={ADD_TO_DISCORD_URL}
       target="_blank"
       rel="noopener noreferrer"
       style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 24px', background: C.gold, color: '#0A0A0F', borderRadius: '8px', fontWeight: 700, fontSize: '14px', textDecoration: 'none' }}
@@ -999,7 +999,7 @@ const Overview = () => {
             Once invited, manage raids, engages, forms, tickets, and more from this control panel.
           </p>
           <a
-            href={DISCORD_INVITE_URL}
+            href={ADD_TO_DISCORD_URL}
             target="_blank"
             rel="noopener noreferrer"
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 24px', background: C.gold, color: '#0A0A0F', borderRadius: '8px', fontWeight: 700, fontSize: '14px', textDecoration: 'none', fontFamily: 'Sora, sans-serif' }}
@@ -3698,7 +3698,7 @@ const ServerSelector = ({ server, servers = [], onSelect }) => {
         <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, minWidth: '220px', background: '#1a1a22', border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden', zIndex: 50, boxShadow: '0 8px 24px rgba(0,0,0,0.6)' }}>
           {[...servers, ADD_SERVER_ENTRY].map(s => (
             <div key={s.id}
-              onClick={() => { if (s.id === 'add') window.open('https://discord.gg/zueuN7xmWx', '_blank'); else onSelect(s); setOpen(false); }}
+              onClick={() => { if (s.id === 'add') window.open(ADD_TO_DISCORD_URL, '_blank'); else onSelect(s); setOpen(false); }}
               style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', cursor: 'pointer', background: server.id === s.id ? 'rgba(200,168,78,0.08)' : 'transparent', color: s.id === 'add' ? C.gold : '#fff', fontSize: '13px', fontWeight: s.id === 'add' ? 600 : 400, transition: 'background 0.15s' }}
               onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
               onMouseOut={e => { e.currentTarget.style.background = server.id === s.id ? 'rgba(200,168,78,0.08)' : 'transparent'; }}>
