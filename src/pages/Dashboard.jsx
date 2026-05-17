@@ -127,43 +127,198 @@ const SettingsCard = ({ title, children, style }) => (
   </Card>
 );
 
-// Standalone color swatch + popover picker (used in Brand settings)
-const BrandColorPicker = ({ color, onChange }) => {
-  const [open, setOpen] = useState(false);
+
+
+// ── User avatar URL helper ────────────────────────────────────────────────────
+
+function userAvatarUrl(user) {
+  if (!user) return 'https://cdn.discordapp.com/embed/avatars/0.png';
+  if (user.avatar_url) return user.avatar_url;
+  if (user.avatar && (user.user_id || user.id)) {
+    return `https://cdn.discordapp.com/avatars/${user.user_id || user.id}/${user.avatar}.png?size=64`;
+  }
+  return 'https://cdn.discordapp.com/embed/avatars/0.png';
+}
+
+// ── Discord-message-style Brand preview (edit-in-place) ───────────────────────
+
+function DiscordMessagePreview({
+  botAvatar, botName, accentColor, thumbnail, footerText, footerIcon,
+  onAvatarClick, onNameEdit, onColorChange, onThumbnailClick,
+  onFooterTextEdit, onFooterIconClick,
+  isPremium,
+}) {
+  const [editingName, setEditingName]     = useState(false);
+  const [editingFooter, setEditingFooter] = useState(false);
+  const [colorOpen, setColorOpen]         = useState(false);
   const pickerRef = useRef(null);
-  const swatchRef = useRef(null);
-  const safeColor = /^#[0-9a-fA-F]{3,6}$/.test(color) ? color : '#94730D';
 
   useEffect(() => {
-    if (!open) return;
+    if (!colorOpen) return;
     const handler = (e) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target) &&
-          swatchRef.current && !swatchRef.current.contains(e.target)) {
-        setOpen(false);
-      }
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) setColorOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+  }, [colorOpen]);
+
+  const safe_color = /^#[0-9a-fA-F]{3,6}$/.test(accentColor) ? accentColor : '#94730D';
 
   return (
-    <div style={{ position: 'relative' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <div ref={swatchRef} onClick={() => setOpen(p => !p)}
-          style={{ width: '36px', height: '36px', borderRadius: '6px', background: safeColor, cursor: 'pointer', border: '2px solid rgba(255,255,255,0.15)', flexShrink: 0 }} />
-        <input value={safeColor} onChange={e => onChange(e.target.value)}
-          style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '8px 10px', color: '#fff', fontSize: '13px', fontFamily: 'monospace', width: '110px', outline: 'none' }} />
-      </div>
-      {open && (
-        <div ref={pickerRef} style={{ position: 'absolute', left: 0, top: '44px', zIndex: 100, background: '#1a1a22', border: `1px solid ${C.border}`, borderRadius: '10px', padding: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.55)' }}>
-          <HexColorPicker color={safeColor} onChange={onChange} />
-          <button onClick={() => setOpen(false)}
-            style={{ marginTop: '8px', background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: '12px', width: '100%', textAlign: 'right' }}>Done</button>
+    <div style={{ background: '#313338', borderRadius: '8px', padding: '16px 16px 12px', fontFamily: 'Whitney, Sora, sans-serif', position: 'relative' }}>
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+        {/* Bot avatar */}
+        <div
+          onClick={isPremium && onAvatarClick ? onAvatarClick : undefined}
+          title={isPremium ? 'Click to change avatar' : undefined}
+          style={{
+            width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0,
+            overflow: 'hidden', background: 'rgba(255,255,255,0.08)',
+            cursor: isPremium && onAvatarClick ? 'pointer' : 'default',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            border: isPremium ? '2px solid transparent' : 'none',
+            position: 'relative',
+            boxSizing: 'border-box',
+          }}
+          onMouseEnter={e => { if (isPremium) e.currentTarget.style.borderColor = '#f0a500'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'transparent'; }}
+        >
+          {botAvatar
+            ? <img src={botAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <span style={{ fontSize: '18px' }}>🤖</span>}
         </div>
-      )}
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Bot name row */}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginBottom: '4px' }}>
+            {editingName && isPremium ? (
+              <input
+                autoFocus
+                defaultValue={botName}
+                onBlur={e => { onNameEdit && onNameEdit(e.target.value); setEditingName(false); }}
+                onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditingName(false); }}
+                style={{ background: 'transparent', border: 'none', borderBottom: '1px solid #f0a500', color: '#fff', fontWeight: 700, fontSize: '15px', outline: 'none', fontFamily: 'inherit', width: '120px' }}
+              />
+            ) : (
+              <span
+                onClick={isPremium && onNameEdit ? () => setEditingName(true) : undefined}
+                title={isPremium ? 'Click to edit name' : undefined}
+                style={{ color: '#fff', fontWeight: 700, fontSize: '15px', cursor: isPremium && onNameEdit ? 'text' : 'default' }}
+              >
+                {botName || 'AVbot'}
+              </span>
+            )}
+            <span style={{ background: '#5865F2', color: '#fff', fontSize: '9px', fontWeight: 700, padding: '1px 4px', borderRadius: '3px', letterSpacing: '0.05em' }}>BOT</span>
+            <span style={{ color: '#949ba4', fontSize: '12px' }}>Today at 12:34</span>
+          </div>
+
+          {/* Embed card */}
+          <div style={{ display: 'flex', background: '#2b2d31', borderRadius: '4px', overflow: 'visible', position: 'relative' }}>
+            {/* Accent bar */}
+            <div
+              onClick={isPremium && onColorChange ? () => setColorOpen(o => !o) : undefined}
+              title={isPremium ? 'Click to change color' : undefined}
+              style={{
+                width: '4px', flexShrink: 0, background: safe_color, borderRadius: '4px 0 0 4px',
+                cursor: isPremium && onColorChange ? 'pointer' : 'default', minHeight: '100%',
+                transition: 'width 0.1s',
+              }}
+              onMouseEnter={e => { if (isPremium && onColorChange) e.currentTarget.style.width = '6px'; }}
+              onMouseLeave={e => { e.currentTarget.style.width = '4px'; }}
+            />
+            {/* Color picker popover */}
+            {colorOpen && isPremium && (
+              <div ref={pickerRef} style={{ position: 'absolute', left: '10px', top: '0', zIndex: 100, background: '#1e1f22', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}>
+                <HexColorPicker color={safe_color} onChange={onColorChange} />
+                <div style={{ marginTop: '8px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ color: '#949ba4', fontSize: '11px', fontFamily: 'monospace' }}>{safe_color}</span>
+                  <button onClick={() => setColorOpen(false)} style={{ background: 'none', border: 'none', color: '#949ba4', cursor: 'pointer', fontSize: '11px' }}>Done</button>
+                </div>
+              </div>
+            )}
+
+            {/* Embed body */}
+            <div style={{ flex: 1, padding: '10px 14px 10px 12px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: '#fff', fontWeight: 700, fontSize: '15px', marginBottom: '4px' }}>Example embed</div>
+                <div style={{ color: '#dbdee1', fontSize: '14px', lineHeight: '1.5', marginBottom: '8px' }}>
+                  This embed uses your default brand. Specific modules can override these settings.
+                </div>
+                {/* Footer */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '8px', marginTop: '4px' }}>
+                  <div
+                    onClick={isPremium && onFooterIconClick ? onFooterIconClick : undefined}
+                    title={isPremium ? 'Click to change footer icon' : undefined}
+                    style={{ width: '20px', height: '20px', borderRadius: '50%', overflow: 'hidden', background: 'rgba(255,255,255,0.08)', cursor: isPremium && onFooterIconClick ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                  >
+                    {footerIcon
+                      ? <img src={footerIcon} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <span style={{ fontSize: '10px', color: '#949ba4' }}>+</span>}
+                  </div>
+                  {editingFooter && isPremium ? (
+                    <input
+                      autoFocus
+                      defaultValue={footerText}
+                      onBlur={e => { onFooterTextEdit && onFooterTextEdit(e.target.value); setEditingFooter(false); }}
+                      onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                      style={{ background: 'transparent', border: 'none', borderBottom: '1px solid #f0a500', color: '#949ba4', fontSize: '12px', outline: 'none', fontFamily: 'inherit', flex: 1 }}
+                    />
+                  ) : (
+                    <span
+                      onClick={isPremium && onFooterTextEdit ? () => setEditingFooter(true) : undefined}
+                      title={isPremium ? 'Click to edit footer text' : undefined}
+                      style={{ color: '#949ba4', fontSize: '12px', cursor: isPremium && onFooterTextEdit ? 'text' : 'default' }}
+                    >
+                      {footerText || 'Powered by AVbot'}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* Thumbnail */}
+              <div
+                onClick={isPremium && onThumbnailClick ? onThumbnailClick : undefined}
+                title={isPremium ? 'Click to change thumbnail' : undefined}
+                style={{
+                  width: '80px', height: '80px', flexShrink: 0, borderRadius: '4px', overflow: 'hidden',
+                  background: thumbnail ? 'transparent' : 'rgba(255,255,255,0.04)',
+                  border: thumbnail ? 'none' : '1px dashed rgba(255,255,255,0.15)',
+                  cursor: isPremium && onThumbnailClick ? 'pointer' : 'default',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                {thumbnail
+                  ? <img src={thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; }} />
+                  : <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)', textAlign: 'center' }}>+ image</span>}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
-};
+}
+
+// ── Module lock screen (shown when no server is selected) ─────────────────────
+
+const ModuleLock = ({ name }) => (
+  <div style={{ textAlign: 'center', padding: '80px 24px' }}>
+    <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔒</div>
+    <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#fff', marginBottom: '8px' }}>
+      Add AVbot to unlock {name}
+    </h2>
+    <p style={{ color: C.muted, fontSize: '14px', marginBottom: '24px' }}>
+      Bot must be installed in your server to manage this module.
+    </p>
+    <a
+      href={DISCORD_INVITE_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 24px', background: C.gold, color: '#0A0A0F', borderRadius: '8px', fontWeight: 700, fontSize: '14px', textDecoration: 'none' }}
+    >
+      ➕ Add AVbot to Discord
+    </a>
+  </div>
+);
 
 // ── Config maps — maps form field key → config table key ─────────────────────
 // Only keys that exist in DEFAULT_CONFIG are included here.
@@ -793,7 +948,17 @@ const Overview = () => {
     : totalMessages === undefined ? undefined
     : totalMessages.toLocaleString();
 
-  const cards = [
+  const isPublicMode = servers.length === 0;
+
+  // When no server: use public AmeretaVerse stats in the 4 stat cards
+  const publicCards = isPublicMode && publicStats ? [
+    { label: 'Total Members',           icon: '👥', val: publicStats.total_members?.toLocaleString() },
+    { label: 'Active Members (30d)',    icon: '🟢', val: publicStats.active_members?.toLocaleString(), sub: 'AmeretaVerse' },
+    { label: 'Member Growth (30 days)', icon: '📈', val: `+${publicStats.member_growth_30d ?? 0}`, sub: 'net joins' },
+    { label: 'Total Messages',          icon: '💬', val: publicStats.total_messages?.toLocaleString() },
+  ] : null;
+
+  const cards = publicCards || [
     { label: 'Total Members',           icon: '👥', val: stats?.member_count?.toLocaleString() },
     { label: 'Active Members',          icon: '🟢', val: stats?.online_count?.toLocaleString(), sub: 'online now' },
     { label: 'Member Growth (30 days)', icon: '📈', val: fmtGrowth, sub: 'net joins' },
@@ -805,7 +970,7 @@ const Overview = () => {
       <div style={{ marginBottom: '24px' }}>
         <h2 style={{ margin: '0 0 4px', fontSize: '1.5rem', fontWeight: 800, letterSpacing: '-0.02em' }}>Overview</h2>
         <p style={{ margin: 0, color: C.muted, fontSize: '13px' }}>
-          {server?.name ?? 'Select a server'}{loading ? ' · Loading…' : ''}
+          {isPublicMode ? 'AmeretaVerse · Public Stats' : (server?.name ?? 'Select a server')}{loading ? ' · Loading…' : ''}
         </p>
       </div>
 
@@ -823,49 +988,27 @@ const Overview = () => {
         )}
       </div>
 
-      {/* ── Server cards ── */}
-      {servers.length === 0 && !loading && (
-        <div style={{ maxWidth: '800px', margin: '0 auto', padding: '48px 24px' }}>
-          {publicStats && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '48px' }}>
-              {[
-                { label: 'Total Members', value: publicStats.total_members.toLocaleString() },
-                { label: 'Active (30d)', value: publicStats.active_members.toLocaleString() },
-                { label: 'Growth (30d)', value: `+${publicStats.member_growth_30d}` },
-                { label: 'Total Messages', value: publicStats.total_messages.toLocaleString() },
-              ].map(s => (
-                <div key={s.label} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '24px', fontWeight: 700, color: C.gold }}>{s.value}</div>
-                  <div style={{ fontSize: '12px', color: C.muted, marginTop: '4px' }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          <div style={{ textAlign: 'center', background: 'rgba(0,0,0,0.3)', border: `1px solid ${C.border}`, borderRadius: '16px', padding: '48px 32px' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔓</div>
-            <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#fff', marginBottom: '10px' }}>
-              Add AVbot to unlock the dashboard
-            </h2>
-            <p style={{ fontSize: '14px', color: C.muted, maxWidth: '420px', margin: '0 auto 28px', lineHeight: '1.6' }}>
-              Once invited, manage raids, engages, forms, tickets, and more from this control panel.
-            </p>
-            <a
-              href={DISCORD_INVITE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '8px',
-                padding: '12px 28px', background: C.gold, color: '#0A0A0F',
-                borderRadius: '8px', fontWeight: 700, fontSize: '15px',
-                textDecoration: 'none', fontFamily: 'Sora, sans-serif',
-              }}
-            >
-              ➕ Add AVbot to Discord
-            </a>
-          </div>
+      {/* ── No-server CTA ── */}
+      {isPublicMode && !loading && (
+        <div style={{ marginTop: '32px', textAlign: 'center', background: 'rgba(0,0,0,0.3)', border: `1px solid ${C.border}`, borderRadius: '12px', padding: '40px 24px' }}>
+          <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔓</div>
+          <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '8px' }}>
+            Add AVbot to unlock the Dashboard
+          </h2>
+          <p style={{ color: C.muted, fontSize: '14px', marginBottom: '20px', maxWidth: '400px', margin: '0 auto 20px', lineHeight: '1.6' }}>
+            Once invited, manage raids, engages, forms, tickets, and more from this control panel.
+          </p>
+          <a
+            href={DISCORD_INVITE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 24px', background: C.gold, color: '#0A0A0F', borderRadius: '8px', fontWeight: 700, fontSize: '14px', textDecoration: 'none', fontFamily: 'Sora, sans-serif' }}
+          >
+            ➕ Add AVbot to Discord
+          </a>
         </div>
       )}
-      {servers.length > 0 && (
+      {!isPublicMode && (
         <>
           <div style={{ fontSize: '11px', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '12px' }}>Your Servers</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(110px,1fr))', gap: '12px' }}>
@@ -3634,6 +3777,7 @@ const SettingsModule = () => {
   const [brand, setBrand] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [assetTarget, setAssetTarget] = useState(null); // 'bot_avatar_url' | 'default_thumbnail_url' | 'default_footer_icon_url'
 
   useEffect(() => {
     if (!sid) return;
@@ -3706,94 +3850,68 @@ const SettingsModule = () => {
       </div>
 
       {subTab === 'brand' && (() => {
-        const isBotOwnerGuild = sid === '1199707792706117642';
+        const isBrandPremium = sid === '1199707792706117642';
+
+        const handleImageSelect = (url) => {
+          if (assetTarget) setBrand(b => ({ ...b, [assetTarget]: url }));
+          setAssetTarget(null);
+        };
+
         return (
           <>
-            <SettingsCard title="Default Brand Embed">
-              <p style={{ margin: '0 0 18px', color: C.muted, fontSize: '13px' }}>
-                Fallback color and footer used when a module does not set its own. Module-specific settings always take priority.
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', alignItems: 'start' }}>
-                {/* Left: controls */}
-                <div>
-                  <Field label="Default Embed Color">
-                    <BrandColorPicker
-                      color={brand.default_embed_color || '#94730D'}
-                      onChange={v => setBrand(b => ({ ...b, default_embed_color: v }))}
-                    />
-                  </Field>
-                  <div style={{ marginTop: '14px' }}>
-                    <Field label="Default Thumbnail URL" hint="Top-right image in embeds">
-                      <Input value={brand.default_thumbnail_url || ''} onChange={v => setBrand(b => ({ ...b, default_thumbnail_url: v }))} placeholder="https://..." />
-                    </Field>
-                  </div>
-                  <div style={{ marginTop: '14px' }}>
-                    <Field label="Default Footer Text">
-                      <Input value={brand.default_footer_text || ''} onChange={v => setBrand(b => ({ ...b, default_footer_text: v }))} placeholder="AmeretaVerse" />
-                    </Field>
-                  </div>
-                  <div style={{ marginTop: '14px' }}>
-                    <Field label="Default Footer Icon URL">
-                      <Input value={brand.default_footer_icon_url || ''} onChange={v => setBrand(b => ({ ...b, default_footer_icon_url: v }))} placeholder="https://..." />
-                    </Field>
-                  </div>
-                </div>
-                {/* Right: live preview */}
-                <div>
-                  <Label>Live Preview</Label>
-                  <EmbedPreview
-                    serverId={sid}
-                    isPremium={false}
-                    color={brand.default_embed_color || '#94730D'}
-                    thumbnailUrl={brand.default_thumbnail_url || ''}
-                    footerText={brand.default_footer_text || ''}
-                    bodySize="base"
-                    showImage={false}
-                    onTitleChange={() => {}}
-                    onDescriptionChange={() => {}}
-                    onColorChange={v => setBrand(b => ({ ...b, default_embed_color: v }))}
-                    onFooterTextChange={v => setBrand(b => ({ ...b, default_footer_text: v }))}
-                  />
-                </div>
-              </div>
-              <div style={{ marginTop: '20px' }}>
-                <ActionBar saveState={saving ? 'saving' : (saveMsg.startsWith('✓') ? 'saved' : 'idle')} onSave={handleSaveBrand} />
-                {saveMsg && !saveMsg.startsWith('✓') && <div style={{ color: C.red, fontSize: '13px', marginTop: '8px' }}>{saveMsg}</div>}
-              </div>
-            </SettingsCard>
+            <div style={{ marginBottom: '12px', color: C.muted, fontSize: '13px' }}>
+              Fallback color, avatar and footer used across all bot embeds. Module-specific settings always take priority.
+            </div>
+            <div style={{ position: 'relative' }}>
+              <DiscordMessagePreview
+                botAvatar={brand.bot_avatar_url}
+                botName={brand.bot_display_name || 'AVbot'}
+                accentColor={brand.default_embed_color || '#94730D'}
+                thumbnail={brand.default_thumbnail_url}
+                footerText={brand.default_footer_text}
+                footerIcon={brand.default_footer_icon_url}
+                isPremium={isBrandPremium}
+                onAvatarClick={isBrandPremium ? () => setAssetTarget('bot_avatar_url') : null}
+                onNameEdit={isBrandPremium ? (v) => setBrand(b => ({ ...b, bot_display_name: v })) : null}
+                onColorChange={isBrandPremium ? (v) => setBrand(b => ({ ...b, default_embed_color: v })) : null}
+                onThumbnailClick={isBrandPremium ? () => setAssetTarget('default_thumbnail_url') : null}
+                onFooterTextEdit={isBrandPremium ? (v) => setBrand(b => ({ ...b, default_footer_text: v })) : null}
+                onFooterIconClick={isBrandPremium ? () => setAssetTarget('default_footer_icon_url') : null}
+              />
 
-            <SettingsCard title="Bot Profile">
-              {!isBotOwnerGuild && (
-                <div style={{ background: 'rgba(200,168,78,0.1)', border: '1px solid rgba(200,168,78,0.3)', borderRadius: '8px', padding: '10px 14px', marginBottom: '14px', fontSize: '13px', color: C.gold }}>
-                  🔒 Bot Profile customization is for the primary guild only.
+              {!isBrandPremium && (
+                <div style={{
+                  position: 'absolute', inset: 0, background: 'rgba(10,10,15,0.65)',
+                  backdropFilter: 'blur(2px)', borderRadius: '8px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <div style={{ textAlign: 'center', maxWidth: '320px', padding: '24px' }}>
+                    <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔒</div>
+                    <h3 style={{ color: '#fff', fontWeight: 600, marginBottom: '8px', fontSize: '16px', margin: '0 0 8px' }}>
+                      Visual customization is available on Premium
+                    </h3>
+                    <p style={{ color: '#949ba4', fontSize: '13px', lineHeight: '1.5', margin: 0 }}>
+                      Contact support to unlock branded embeds and bot profile customization.
+                    </p>
+                  </div>
                 </div>
               )}
-              <fieldset disabled={!isBotOwnerGuild} style={{ border: 'none', padding: 0, margin: 0, opacity: isBotOwnerGuild ? 1 : 0.45 }}>
-                <Field label="Bot Display Name">
-                  <Input
-                    value={brand.bot_display_name || ''}
-                    onChange={v => setBrand(b => ({ ...b, bot_display_name: v }))}
-                    placeholder="AVbot"
-                    disabled={!isBotOwnerGuild}
-                  />
-                </Field>
-                <div style={{ marginTop: '14px' }}>
-                  <Field label="Bot Avatar URL" hint="Direct image URL for the bot's avatar">
-                    <Input
-                      value={brand.bot_avatar_url || ''}
-                      onChange={v => setBrand(b => ({ ...b, bot_avatar_url: v }))}
-                      placeholder="https://..."
-                      disabled={!isBotOwnerGuild}
-                    />
-                  </Field>
-                </div>
-              </fieldset>
-              {isBotOwnerGuild && (
-                <div style={{ marginTop: '20px' }}>
-                  <ActionBar saveState={saving ? 'saving' : (saveMsg.startsWith('✓') ? 'saved' : 'idle')} onSave={handleSaveBrand} />
-                </div>
-              )}
-            </SettingsCard>
+            </div>
+
+            {isBrandPremium && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
+                <ActionBar saveState={saving ? 'saving' : (saveMsg.startsWith('✓') ? 'saved' : 'idle')} onSave={handleSaveBrand} />
+                {saveMsg && !saveMsg.startsWith('✓') && <span style={{ color: C.red, fontSize: '13px' }}>{saveMsg}</span>}
+              </div>
+            )}
+
+            {assetTarget && (
+              <AssetPickerModal
+                serverId={sid}
+                onPick={handleImageSelect}
+                onClose={() => setAssetTarget(null)}
+              />
+            )}
           </>
         );
       })()}
@@ -3942,25 +4060,25 @@ const Dashboard = () => {
     Settings:      NAV.filter(n => n.group === 'Settings'),
     'Admin Panel': NAV.filter(n => n.group === 'Admin Panel'),
   };
-  const avatarUrl = user.avatar
-    ? `https://cdn.discordapp.com/avatars/${user.user_id}/${user.avatar}.png?size=64`
-    : null;
+  const avatarUrl = userAvatarUrl(user);
+
+  const noServerAccess = servers.length === 0;
 
   // Pages defined inside render so they access context naturally via useContext
   const PAGES = {
     overview:     <Overview />,
-    analytics:    <Analytics />,
-    verification: <VerificationSettings />,
-    roles:        <RoleSelectSettings />,
-    forms:        <FormsSettings />,
-    tickets:      <TicketsSettings />,
-    raid:         <RaidSettings />,
-    engage:       <EngageSettings />,
-    protection:   <ProtectionSettings />,
-    settings:     <SettingsModule />,
-    flagged:      <FlaggedUsers />,
-    modlog:       <ModLog />,
-    auditlog:     <AuditLog />,
+    analytics:    noServerAccess ? <ModuleLock name="Analytics" /> : <Analytics />,
+    verification: noServerAccess ? <ModuleLock name="Verification" /> : <VerificationSettings />,
+    roles:        noServerAccess ? <ModuleLock name="Role Select" /> : <RoleSelectSettings />,
+    forms:        noServerAccess ? <ModuleLock name="Forms" /> : <FormsSettings />,
+    tickets:      noServerAccess ? <ModuleLock name="Tickets" /> : <TicketsSettings />,
+    raid:         noServerAccess ? <ModuleLock name="Raid" /> : <RaidSettings />,
+    engage:       noServerAccess ? <ModuleLock name="Engage" /> : <EngageSettings />,
+    protection:   noServerAccess ? <ModuleLock name="Protection" /> : <ProtectionSettings />,
+    settings:     noServerAccess ? <ModuleLock name="Server Settings" /> : <SettingsModule />,
+    flagged:      noServerAccess ? <ModuleLock name="Flagged Users" /> : <FlaggedUsers />,
+    modlog:       noServerAccess ? <ModuleLock name="Mod Log" /> : <ModLog />,
+    auditlog:     noServerAccess ? <ModuleLock name="Audit Log" /> : <AuditLog />,
   };
 
   return (
@@ -3986,10 +4104,12 @@ const Dashboard = () => {
 
           <div style={{ padding: '14px 16px', borderTop: `1px solid ${C.border}` }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-              {avatarUrl
-                ? <img src={avatarUrl} alt="" style={{ width: '32px', height: '32px', borderRadius: '50%' }} />
-                : <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg,#5865F2,#3a4299)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>👤</div>
-              }
+              <img
+                src={avatarUrl}
+                alt={user?.username || 'User'}
+                onError={(e) => { e.target.onerror = null; e.target.src = 'https://cdn.discordapp.com/embed/avatars/0.png'; }}
+                style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', background: 'rgba(255,255,255,0.1)' }}
+              />
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 600 }}>{user.username}</div>
                 <div style={{ fontSize: '11px', color: C.muted }}>Discord</div>
