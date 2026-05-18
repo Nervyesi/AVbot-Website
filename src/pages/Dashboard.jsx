@@ -20,7 +20,6 @@ import {
   fetchRaidGuideDefaults, fetchRaidScrapingHealth,
   fetchEngagePools, updateEngagePool,
   fetchSettings, updateBrand, updateAccess,
-  fetchUserPoints, adjustPoints,
 } from '../api';
 import { DISCORD_INVITE_URL, ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 
@@ -2982,12 +2981,6 @@ const EngageSettings = () => {
   const [saving, setSaving]           = useState(false);
   const [toast, setToast]             = useState('');
 
-  // Admin Points state
-  const [pointsUserId, setPointsUserId] = useState('');
-  const [pointsData, setPointsData]     = useState(null);
-  const [pointsLoading, setPointsLoading] = useState(false);
-  const [pointsToast, setPointsToast]   = useState('');
-
   useEffect(() => {
     if (!sid) return;
     setLoading(true);
@@ -3041,40 +3034,6 @@ const EngageSettings = () => {
       setToast('Save failed: ' + err.message);
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleLookupPoints = async () => {
-    const uid = pointsUserId.trim();
-    if (!uid) return;
-    setPointsLoading(true);
-    setPointsToast('');
-    setPointsData(null);
-    try {
-      const res = await fetchUserPoints(sid, uid);
-      setPointsData(res);
-    } catch (err) {
-      setPointsToast('Lookup failed: ' + err.message);
-    } finally {
-      setPointsLoading(false);
-    }
-  };
-
-  const handleAdjust = async (action, type, amount, poolId) => {
-    const uid = pointsUserId.trim();
-    setPointsToast('');
-    try {
-      const body = { action, type, user_id: uid || undefined, amount, pool_id: poolId };
-      if (action === 'reset-all') { body.confirm = 'CONFIRM'; delete body.user_id; }
-      const res = await adjustPoints(sid, body);
-      if (uid) {
-        const updated = await fetchUserPoints(sid, uid);
-        setPointsData(updated);
-      }
-      setPointsToast(`✓ Done${res.new_points != null ? ` — new balance: ${res.new_points} pts` : ''}`);
-      setTimeout(() => setPointsToast(''), 3000);
-    } catch (err) {
-      setPointsToast('Error: ' + err.message);
     }
   };
 
@@ -3200,87 +3159,9 @@ const EngageSettings = () => {
       {toast && !toast.startsWith('✓') && (
         <div style={{ marginTop: '8px', fontSize: '13px', color: C.red }}>{toast}</div>
       )}
-
-      <SettingsCard title="Admin Points" style={{ marginTop: '24px' }}>
-        <p style={{ margin: '0 0 14px', color: C.muted, fontSize: '13px' }}>
-          Look up and adjust user point balances. Enter a Discord user ID.
-        </p>
-        <FieldRow>
-          <Field label="Discord User ID">
-            <Input value={pointsUserId} onChange={setPointsUserId} placeholder="123456789012345678" />
-          </Field>
-          <Field label="">
-            <button
-              onClick={handleLookupPoints}
-              disabled={pointsLoading}
-              style={{
-                marginTop: '4px', padding: '8px 18px', fontSize: '13px', fontWeight: 600,
-                fontFamily: 'Sora, sans-serif', cursor: 'pointer', borderRadius: '6px',
-                background: C.gold, color: '#000', border: 'none',
-                opacity: pointsLoading ? 0.6 : 1,
-              }}>
-              {pointsLoading ? 'Loading…' : 'Lookup'}
-            </button>
-          </Field>
-        </FieldRow>
-
-        {pointsData && (
-          <div style={{ marginTop: '16px' }}>
-            <div style={{
-              padding: '12px 16px', borderRadius: '8px',
-              background: C.subtle, border: `1px solid ${C.border}`,
-              marginBottom: '14px', fontSize: '13px',
-            }}>
-              <div style={{ color: C.muted, marginBottom: '6px' }}>User: <code style={{ color: '#fff' }}>{pointsData.user_id}</code></div>
-              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-                <span style={{ color: C.gold }}>Community: <strong style={{ color: '#fff' }}>{pointsData.community_points} pts</strong></span>
-                {pointsData.engage_pools.map(p => (
-                  <span key={p.pool_id} style={{ color: C.gold }}>{p.display_name}: <strong style={{ color: '#fff' }}>{p.points} pts</strong></span>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ fontSize: '12px', color: C.muted, marginBottom: '8px', fontWeight: 600 }}>COMMUNITY POINTS</div>
-            <FieldRow style={{ marginBottom: '12px' }}>
-              {[100, 1000].map(n => (
-                <button key={`+com${n}`} onClick={() => handleAdjust('add', 'community', n)} style={btnStyle(C.green)}>+{n}</button>
-              ))}
-              {[100, 1000].map(n => (
-                <button key={`-com${n}`} onClick={() => handleAdjust('remove', 'community', n)} style={btnStyle(C.red)}>-{n}</button>
-              ))}
-              <button onClick={() => handleAdjust('reset', 'community', 0)} style={btnStyle(C.muted)}>Reset</button>
-            </FieldRow>
-
-            {pointsData.engage_pools.map(p => (
-              <div key={p.pool_id}>
-                <div style={{ fontSize: '12px', color: C.muted, marginBottom: '8px', fontWeight: 600 }}>{p.display_name.toUpperCase()} ENGAGE POINTS</div>
-                <FieldRow style={{ marginBottom: '12px' }}>
-                  {[100, 1000].map(n => (
-                    <button key={`+eng${p.pool_id}${n}`} onClick={() => handleAdjust('add', 'engage', n, p.pool_id)} style={btnStyle(C.green)}>+{n}</button>
-                  ))}
-                  {[100, 1000].map(n => (
-                    <button key={`-eng${p.pool_id}${n}`} onClick={() => handleAdjust('remove', 'engage', n, p.pool_id)} style={btnStyle(C.red)}>-{n}</button>
-                  ))}
-                  <button onClick={() => handleAdjust('reset', 'engage', 0, p.pool_id)} style={btnStyle(C.muted)}>Reset</button>
-                </FieldRow>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {pointsToast && (
-          <div style={{ marginTop: '8px', fontSize: '13px', color: pointsToast.startsWith('✓') ? C.green : C.red }}>{pointsToast}</div>
-        )}
-      </SettingsCard>
     </div>
   );
 };
-
-const btnStyle = (color) => ({
-  padding: '6px 14px', fontSize: '12px', fontWeight: 600,
-  fontFamily: 'Sora, sans-serif', cursor: 'pointer', borderRadius: '5px',
-  background: 'transparent', border: `1px solid ${color}`, color,
-});
 
 // ── Protection ────────────────────────────────────────────────────────────────
 
