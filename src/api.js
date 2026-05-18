@@ -285,3 +285,14 @@ export const updateAccess = (sid, roleId, module, granted) =>
     method: 'PUT',
     body: JSON.stringify({ role_id: String(roleId), module, granted }),
   });
+
+// ── Admin Points ───────────────────────────────────────────────────────────
+
+export const fetchUserPoints = (sid, uid) =>
+  apiFetch(`/api/servers/${sid}/admin/points/user/${uid}`);
+
+export const adjustPoints = (sid, body) =>
+  apiFetch(`/api/servers/${sid}/admin/points/adjust`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
