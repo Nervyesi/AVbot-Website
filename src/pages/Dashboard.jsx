@@ -165,7 +165,7 @@ function DiscordMessagePreview({
   const safe_color = /^#[0-9a-fA-F]{3,6}$/.test(accentColor) ? accentColor : '#94730D';
 
   return (
-    <div style={{ background: '#313338', borderRadius: '8px', padding: '16px 16px 12px', fontFamily: 'Whitney, Sora, sans-serif', position: 'relative' }}>
+    <div style={{ background: 'transparent', padding: 0, fontFamily: 'Whitney, Sora, sans-serif', position: 'relative' }}>
       <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
         {/* Bot avatar */}
         <div
