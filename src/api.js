@@ -286,6 +286,12 @@ export const updateAccess = (sid, roleId, module, granted) =>
     body: JSON.stringify({ role_id: String(roleId), module, granted }),
   });
 
+export const updateLevels = (sid, payload) =>
+  apiFetch(`/api/servers/${sid}/settings/levels`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+
 // ── Admin Points ───────────────────────────────────────────────────────────
 
 export const fetchUserPoints = (sid, uid) =>

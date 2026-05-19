@@ -19,7 +19,7 @@ import {
   fetchRaidLeaderboard, fetchRaidVerificationLog, runRaidManualCheck, sendRaidGuide,
   fetchRaidGuideDefaults, fetchRaidScrapingHealth,
   fetchEngagePools, updateEngagePool,
-  fetchSettings, updateBrand, updateAccess,
+  fetchSettings, updateBrand, updateAccess, updateLevels,
 } from '../api';
 import { DISCORD_INVITE_URL, ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 
@@ -3802,6 +3802,27 @@ const SettingsModule = () => {
     }
   };
 
+  const handleSaveLevels = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        level_enabled:             brand.level_enabled ? 1 : 0,
+        xp_per_message:            parseInt(brand.xp_per_message, 10) || 0,
+        xp_cooldown_seconds:       parseInt(brand.xp_cooldown_seconds, 10) || 0,
+        level_up_message_enabled:  brand.level_up_message_enabled ? 1 : 0,
+        level_up_channel_id:       brand.level_up_channel_id || '',
+      };
+      const updated = await updateLevels(sid, payload);
+      setBrand(updated);
+      setSaveMsg('✓ Saved');
+    } catch (e) {
+      setSaveMsg('✗ ' + e.message);
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSaveMsg(''), 3000);
+    }
+  };
+
   const handleToggleAccess = async (roleId, module, granted) => {
     setData(prev => ({
       ...prev,
@@ -3839,7 +3860,7 @@ const SettingsModule = () => {
       <PageHeader icon="⚙️" title="Server Settings" badge="SERVER" desc="Bot-wide brand defaults and per-module access control." />
 
       <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${C.border}`, marginBottom: '20px' }}>
-        {[['brand', '🎨 Brand'], ['access', '🔒 Access Control']].map(([id, label]) => (
+        {[['brand', '🎨 Brand'], ['levels', '⭐ Levels'], ['access', '🔒 Access Control']].map(([id, label]) => (
           <button key={id} onClick={() => setSubTab(id)} style={{
             padding: '8px 16px', fontSize: '13px', fontWeight: 600,
             fontFamily: 'Sora, sans-serif', cursor: 'pointer', background: 'none', border: 'none',
@@ -3915,6 +3936,59 @@ const SettingsModule = () => {
           </>
         );
       })()}
+
+      {subTab === 'levels' && (
+        <>
+          <SettingsCard title="Activity Leveling">
+            <p style={{ margin: '0 0 14px', color: C.muted, fontSize: '13px' }}>
+              Members earn XP for sending messages. Each level unlocks bragging rights — and you can hook role rewards on top later.
+            </p>
+            <Toggle
+              value={!!brand.level_enabled}
+              onChange={v => setBrand(b => ({ ...b, level_enabled: v ? 1 : 0 }))}
+              label="Enable leveling"
+            />
+            <FieldRow>
+              <Field label="XP per message" hint="how much XP a member earns per qualifying message">
+                <Input
+                  type="number"
+                  value={brand.xp_per_message ?? 15}
+                  onChange={v => setBrand(b => ({ ...b, xp_per_message: v }))}
+                  placeholder="15"
+                />
+              </Field>
+              <Field label="Cooldown (seconds)" hint="minimum gap between XP grants per user">
+                <Input
+                  type="number"
+                  value={brand.xp_cooldown_seconds ?? 60}
+                  onChange={v => setBrand(b => ({ ...b, xp_cooldown_seconds: v }))}
+                  placeholder="60"
+                />
+              </Field>
+            </FieldRow>
+          </SettingsCard>
+
+          <SettingsCard title="Level-up Announcements" style={{ marginTop: '14px' }}>
+            <Toggle
+              value={!!brand.level_up_message_enabled}
+              onChange={v => setBrand(b => ({ ...b, level_up_message_enabled: v ? 1 : 0 }))}
+              label="Send a message when someone levels up"
+            />
+            <Field label="Channel" hint="leave blank to post in the channel where they leveled up">
+              <Input
+                value={brand.level_up_channel_id || ''}
+                onChange={v => setBrand(b => ({ ...b, level_up_channel_id: v }))}
+                placeholder="#general or 123456789"
+              />
+            </Field>
+          </SettingsCard>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
+            <ActionBar saveState={saving ? 'saving' : (saveMsg.startsWith('✓') ? 'saved' : 'idle')} onSave={handleSaveLevels} />
+            {saveMsg && !saveMsg.startsWith('✓') && <span style={{ color: C.red, fontSize: '13px' }}>{saveMsg}</span>}
+          </div>
+        </>
+      )}
 
       {subTab === 'access' && data && (
         <SettingsCard title="Module Access by Role">
