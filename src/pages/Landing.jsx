@@ -67,7 +67,7 @@ const features = [
 const faqs = [
   {
     q: 'Is AVbot free to use?',
-    a: 'AVbot has a free tier with core features. Premium plans unlock advanced automation, custom branding, and priority support for high-volume servers.',
+    a: 'AVbot is free to add to your server. All core features — verification, raids, engages, forms, tickets, role selection, protection, and analytics — are available out of the box.',
   },
   {
     q: 'Do I need to know how to code to set it up?',

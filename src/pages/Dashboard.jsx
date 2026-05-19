@@ -767,7 +767,7 @@ const EmbedPreview = ({
       <div style={{ position: 'relative', background: 'transparent', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '4px', overflow: 'visible', marginTop: '12px', display: 'flex', fontFamily: 'Whitney, Sora, sans-serif' }}>
         {/* Color bar */}
         <div ref={barRef} onClick={() => vizClick(() => setPickerOpen(p => !p))}
-          title={isPremium ? 'Click to change color' : 'Color (premium)'}
+          title={isPremium ? 'Click to change color' : 'Color — coming soon'}
           style={{ width: '4px', background: safeColor, flexShrink: 0, cursor: 'pointer', borderRadius: '4px 0 0 4px', minHeight: '100%' }} />
 
         {/* Color picker popover */}
@@ -804,7 +804,7 @@ const EmbedPreview = ({
             </div>
             {/* Thumbnail zone */}
             <div onClick={() => vizClick(() => setAssetModal('thumbnail'))}
-              title={isPremium ? 'Click to upload thumbnail' : 'Thumbnail (premium)'}
+              title={isPremium ? 'Click to upload thumbnail' : 'Thumbnail — coming soon'}
               style={{ width: '80px', height: '80px', flexShrink: 0, borderRadius: '4px', overflow: 'hidden', cursor: 'pointer', background: thumbnailUrl ? 'transparent' : 'rgba(255,255,255,0.04)', border: thumbnailUrl ? 'none' : '1px dashed rgba(255,255,255,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {thumbnailUrl
                 ? <img src={thumbnailUrl} alt="thumb" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display='none'; }} />
@@ -819,13 +819,13 @@ const EmbedPreview = ({
           {/* Image zone */}
           {showImage && (
             <div onClick={() => vizClick(() => setAssetModal('image'))}
-              title={isPremium ? 'Click to upload image/GIF' : 'Image (premium)'}
+              title={isPremium ? 'Click to upload image/GIF' : 'Image — coming soon'}
               style={{ marginTop: '10px', borderRadius: '4px', overflow: 'hidden', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', ...(imageUrl ? {} : { height: '130px', background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.1)' }) }}>
               {imageUrl
                 ? <img src={imageUrl} alt="embed-img" style={{ maxWidth: '100%', maxHeight: '300px', objectFit: 'contain', width: 'auto', height: 'auto', display: 'block' }} onError={e => { e.target.style.display='none'; }} />
                 : <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: '12px' }}>
                     <div style={{ fontSize: '28px', marginBottom: '4px' }}>🖼️</div>
-                    <div>{isPremium ? '+ Upload image or GIF' : '🔒 Image (premium)'}</div>
+                    <div>{isPremium ? '+ Upload image or GIF' : '🔒 Image — coming soon'}</div>
                   </div>
               }
             </div>
@@ -838,7 +838,7 @@ const EmbedPreview = ({
                   placeholder="Footer text (empty = brand default)"
                   style={{ ...iStyle, fontSize: '11px', color: 'rgba(255,255,255,0.38)' }} />
               : <div onClick={() => setComingSoon(true)}
-                  title="Footer text (premium)"
+                  title="Footer text — coming soon"
                   style={{ cursor: 'pointer', fontSize: '11px', color: 'rgba(255,255,255,0.28)', fontFamily: 'Sora, sans-serif', padding: '2px 0', userSelect: 'none' }}>
                   {footerText || 'Powered by AVbot'} 🔒
                 </div>
@@ -3909,10 +3909,10 @@ const SettingsModule = () => {
                   <div style={{ textAlign: 'center', maxWidth: '320px', padding: '24px' }}>
                     <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔒</div>
                     <h3 style={{ color: '#fff', fontWeight: 600, marginBottom: '8px', fontSize: '16px', margin: '0 0 8px' }}>
-                      Visual customization is available on Premium
+                      Visual customization is coming soon
                     </h3>
                     <p style={{ color: '#949ba4', fontSize: '13px', lineHeight: '1.5', margin: 0 }}>
-                      Contact support to unlock branded embeds and bot profile customization.
+                      Brand customization will be available in a future update.
                     </p>
                   </div>
                 </div>
