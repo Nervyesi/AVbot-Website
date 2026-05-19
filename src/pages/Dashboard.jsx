@@ -133,9 +133,21 @@ const SettingsCard = ({ title, children, style }) => (
 
 function userAvatarUrl(user) {
   if (!user) return 'https://cdn.discordapp.com/embed/avatars/0.png';
+  // Prefer the explicit avatar_url field if backend supplies it.
   if (user.avatar_url) return user.avatar_url;
-  if (user.avatar && (user.user_id || user.id)) {
-    return `https://cdn.discordapp.com/avatars/${user.user_id || user.id}/${user.avatar}.png?size=64`;
+  // Legacy backends stored the full URL on `avatar` — pass it through unchanged.
+  if (typeof user.avatar === 'string' && /^https?:\/\//.test(user.avatar)) {
+    return user.avatar;
+  }
+  // Otherwise treat `avatar` as a Discord avatar hash and construct a CDN URL.
+  const id = user.user_id || user.id;
+  if (user.avatar_hash && id) {
+    const ext = String(user.avatar_hash).startsWith('a_') ? 'gif' : 'png';
+    return `https://cdn.discordapp.com/avatars/${id}/${user.avatar_hash}.${ext}?size=128`;
+  }
+  if (user.avatar && id) {
+    const ext = String(user.avatar).startsWith('a_') ? 'gif' : 'png';
+    return `https://cdn.discordapp.com/avatars/${id}/${user.avatar}.${ext}?size=128`;
   }
   return 'https://cdn.discordapp.com/embed/avatars/0.png';
 }
@@ -4177,13 +4189,32 @@ const Dashboard = () => {
           </nav>
 
           <div style={{ padding: '14px 16px', borderTop: `1px solid ${C.border}` }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', position: 'relative' }}>
               <img
                 src={avatarUrl}
                 alt={user?.username || 'User'}
-                onError={(e) => { e.target.onerror = null; e.target.src = 'https://cdn.discordapp.com/embed/avatars/0.png'; }}
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  // Swap the broken <img> for the initials placeholder right beside it.
+                  e.target.style.display = 'none';
+                  const fallback = e.target.nextSibling;
+                  if (fallback) fallback.style.display = 'flex';
+                }}
                 style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', background: 'rgba(255,255,255,0.1)' }}
               />
+              <div
+                aria-hidden="true"
+                style={{
+                  display: 'none',
+                  width: '32px', height: '32px', borderRadius: '50%',
+                  background: 'rgba(200,168,78,0.18)', color: C.gold,
+                  alignItems: 'center', justifyContent: 'center',
+                  fontSize: '13px', fontWeight: 700,
+                  fontFamily: 'Sora, sans-serif',
+                }}
+              >
+                {(user?.username?.[0] || '?').toUpperCase()}
+              </div>
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 600 }}>{user.username}</div>
                 <div style={{ fontSize: '11px', color: C.muted }}>Discord</div>
