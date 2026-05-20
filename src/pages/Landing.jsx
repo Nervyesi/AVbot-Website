@@ -4,11 +4,11 @@ import { ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 
 const LOGO_URL = 'https://cdn.avbot.app/1199707792706117642/2e6734d8c9fc47fab6b8525a57374de3.png';
 
-// Tailwind v4's source-scan via @tailwindcss/postcss silently fails in this CRA
-// project — no utilities emitted — so we use inline styles throughout (same
-// convention as Dashboard.jsx). Design tokens live in :root in index.css.
+// Tailwind v4 utility emission is broken in this CRA setup, so styling is done
+// with inline styles + the :root design tokens defined in index.css. Same
+// convention as Dashboard.jsx.
 
-// ── Hero ─────────────────────────────────────────────────────────────────────
+// ── Hero background effects ──────────────────────────────────────────────────
 
 function ParticleField() {
   const particles = React.useMemo(() => (
@@ -25,10 +25,7 @@ function ParticleField() {
   return (
     <div
       aria-hidden="true"
-      style={{
-        position: 'absolute', inset: 0,
-        overflow: 'hidden', pointerEvents: 'none',
-      }}
+      style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}
     >
       <div
         style={{
@@ -59,6 +56,102 @@ function ParticleField() {
   );
 }
 
+function WavingFlag() {
+  const [windSpeed, setWindSpeed] = useState(4);
+
+  useEffect(() => {
+    let lastX = 0;
+    let lastT = Date.now();
+    const handler = (e) => {
+      const now = Date.now();
+      const dt = Math.max(1, now - lastT);
+      const velocity = Math.abs(e.clientX - lastX) / dt;
+      lastX = e.clientX;
+      lastT = now;
+      // Faster cursor, faster wave. Clamp 1.5s..5s.
+      setWindSpeed((prev) => {
+        const target = Math.max(1.5, 5 - velocity * 8);
+        // Ease toward target so changes feel natural rather than snappy.
+        return prev * 0.7 + target * 0.3;
+      });
+    };
+    window.addEventListener('mousemove', handler, { passive: true });
+    return () => window.removeEventListener('mousemove', handler);
+  }, []);
+
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        right: 0, top: '20%',
+        width: '320px', height: '420px',
+        opacity: 0.12,
+        pointerEvents: 'none',
+        background: 'linear-gradient(135deg, var(--av-gold) 0%, transparent 70%)',
+        transformOrigin: 'top left',
+        animation: `flag-wave ${windSpeed.toFixed(2)}s ease-in-out infinite`,
+        maskImage: 'repeating-linear-gradient(to right, black, black 2px, transparent 2px, transparent 6px)',
+        WebkitMaskImage: 'repeating-linear-gradient(to right, black, black 2px, transparent 2px, transparent 6px)',
+      }}
+    />
+  );
+}
+
+// ── Scroll meteor (page-wide, behind content) ────────────────────────────────
+
+function ScrollMeteor() {
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const update = () => {
+      const h = document.documentElement.scrollHeight - window.innerHeight;
+      setProgress(h > 0 ? Math.min(1, window.scrollY / h) : 0);
+    };
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'fixed',
+        left: '50%',
+        top: `${progress * 100}vh`,
+        transform: 'translateX(-50%)',
+        pointerEvents: 'none',
+        zIndex: 0,
+        transition: 'top 0.1s linear',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          top: '-128px', left: '50%',
+          width: '2px', height: '128px',
+          transform: 'translateX(-50%)',
+          background: 'linear-gradient(to bottom, transparent, var(--av-gold-glow), var(--av-gold))',
+        }}
+      />
+      <div
+        style={{
+          width: '12px', height: '12px', borderRadius: '50%',
+          background: 'var(--av-gold-light)',
+          boxShadow: '0 0 30px 10px var(--av-gold-glow)',
+        }}
+      />
+    </div>
+  );
+}
+
+// ── Hero ─────────────────────────────────────────────────────────────────────
+
 function HeroSection({ inviteUrl }) {
   return (
     <section
@@ -73,20 +166,30 @@ function HeroSection({ inviteUrl }) {
       }}
     >
       <ParticleField />
+      <WavingFlag />
 
       <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
+        initial={{ scale: 0.85, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 1.2, ease: 'easeOut' }}
-        style={{ position: 'relative', marginBottom: '32px' }}
+        style={{
+          position: 'relative',
+          marginBottom: '36px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: '100%',
+          maxWidth: '320px',
+        }}
       >
         <div
           aria-hidden="true"
           style={{
-            position: 'absolute', inset: 0, borderRadius: '50%',
+            position: 'absolute',
+            inset: '-20% -10%',
             background: 'var(--av-gold)',
-            filter:     'blur(48px)',
+            filter:     'blur(60px)',
+            opacity:    0.5,
             animation:  'av-logo-pulse 3s ease-in-out infinite',
+            borderRadius: '50%',
           }}
         />
         <img
@@ -95,9 +198,12 @@ function HeroSection({ inviteUrl }) {
           draggable="false"
           style={{
             position: 'relative',
-            width:  'clamp(96px, 16vw, 160px)',
-            height: 'clamp(96px, 16vw, 160px)',
+            width: '100%',
+            height: 'auto',
+            maxHeight: '180px',
+            objectFit: 'contain',
             userSelect: 'none',
+            display: 'block',
           }}
         />
       </motion.div>
@@ -108,17 +214,16 @@ function HeroSection({ inviteUrl }) {
         transition={{ duration: 1, delay: 0.3 }}
         style={{
           margin: 0,
-          fontSize: 'clamp(2.5rem, 6.5vw, 4.75rem)',
+          fontSize: 'clamp(2.4rem, 6.5vw, 4.5rem)',
           fontWeight: 800,
           lineHeight: 1.05,
           letterSpacing: '-0.03em',
           maxWidth: '900px',
-          color: 'var(--av-text)',
         }}
       >
-        Your Community
-        <br />
-        <span style={{ color: 'var(--av-gold)' }}>Deserves Better.</span>
+        <span style={{ display: 'block', color: 'var(--av-text)' }}>One bot.</span>
+        <span style={{ display: 'block', color: 'var(--av-gold)' }}>Nine modules.</span>
+        <span style={{ display: 'block', color: 'var(--av-text)' }}>Zero manual work.</span>
       </motion.h1>
 
       <motion.p
@@ -126,15 +231,16 @@ function HeroSection({ inviteUrl }) {
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 1, delay: 0.6 }}
         style={{
-          marginTop: '24px',
-          fontSize:  'clamp(1rem, 2vw, 1.25rem)',
+          marginTop: '28px',
+          fontSize: 'clamp(1rem, 1.95vw, 1.2rem)',
           lineHeight: 1.65,
-          maxWidth:  '640px',
+          maxWidth: '720px',
           color: 'var(--av-text-muted)',
         }}
       >
-        AVbot is the Web3-native Discord engine built for raids, engagement,
-        and growth. Crafted for serious communities.
+        Verification, Roles, Forms, Tickets, Raids, Engagement, Protection, Analytics, and Logs.
+        <br />
+        All in one place. All in your brand. All under your control.
       </motion.p>
 
       <motion.div
@@ -296,6 +402,8 @@ function LiveStatsBar() {
       ref={ref}
       id="stats"
       style={{
+        position: 'relative',
+        zIndex: 1,
         borderTop:    '1px solid var(--av-border)',
         borderBottom: '1px solid var(--av-border)',
         backgroundColor: 'var(--av-bg-elevated)',
@@ -318,56 +426,80 @@ function LiveStatsBar() {
   );
 }
 
-// ── Module Showcase ──────────────────────────────────────────────────────────
+// ── Module Showcase (9 modules) ──────────────────────────────────────────────
 
 const MODULES = [
   {
-    id:          'raid',
-    icon:        '⚔️',
-    title:       'Raid',
-    tagline:     'Amplify your X reach.',
-    description: 'Reward your community with points for engaging with your tweets. Live X verification, anti-cheat, and a competitive leaderboard.',
-    features:    ['Live Twitter verification', 'Anti-cheat detection', 'Customizable rewards', 'Real-time leaderboard'],
-  },
-  {
-    id:          'engage',
-    icon:        '🔁',
-    title:       'Engage',
-    tagline:     'A self-sustaining ecosystem.',
-    description: "Members earn points by engaging with each other's tweets, then spend those points to submit their own. A perpetual engine for your community.",
-    features:    ['Per-pool isolation', 'Submit your own tweets', 'Configurable economy', 'Multi-pool for power users'],
-  },
-  {
-    id:          'protection',
-    icon:        '🛡️',
-    title:       'Protection',
-    tagline:     "Your community's guardian.",
-    description: 'Anti-spam, anti-raid, and anti-scam guardrails that work silently in the background. Sleep easy.',
-    features:    ['Spam filter', 'Raid detection', 'Account-age gates', 'Customizable rules'],
+    id:          'analytics',
+    icon:        '📊',
+    title:       'Analytics',
+    tagline:     'Numbers that matter.',
+    description: 'Real time community health metrics, member growth, engagement trends, and module performance. Make decisions with data.',
+    features:    ['Live dashboards', 'Member growth tracking', 'Module performance', 'Custom timeframes'],
   },
   {
     id:          'verify',
     icon:        '✅',
     title:       'Verification',
-    tagline:     'Identity, on your terms.',
-    description: "Token-gated, role-based access. Verify members through customizable challenges that fit your community's vibe.",
-    features:    ['Token gating', 'Role assignment', 'Custom panels', 'Web3-native'],
+    tagline:     'Identity on your terms.',
+    description: 'Token gated, role based access. Verify members through customizable challenges that fit your community vibe.',
+    features:    ['Token gating', 'Role assignment', 'Custom panels', 'Web3 native'],
+  },
+  {
+    id:          'roleselect',
+    icon:        '🎭',
+    title:       'Role Selection',
+    tagline:     'Self serve roles.',
+    description: 'Beautiful role pickers powered by reactions or buttons. Members claim their tags without burdening your mod team.',
+    features:    ['Reaction or button panels', 'Multiple categories', 'Restricted access', 'Auto sync'],
   },
   {
     id:          'forms',
     icon:        '📝',
     title:       'Forms',
-    tagline:     'Onboarding, redefined.',
+    tagline:     'Onboarding redefined.',
     description: 'Build custom application forms for your community. Approval workflows, role rewards, and full submission history.',
-    features:    ['Drag-and-drop builder', 'Approval workflows', 'Auto-role on approval', 'Submission history'],
+    features:    ['Visual builder', 'Approval workflows', 'Auto role on approval', 'Full audit trail'],
   },
   {
     id:          'tickets',
     icon:        '🎫',
     title:       'Tickets',
     tagline:     'Support that scales.',
-    description: "Ticket management that doesn't turn your DMs into chaos. Categorized, threaded, and trackable.",
-    features:    ['Threaded conversations', 'Category routing', 'Auto-close inactive', 'Full audit trail'],
+    description: 'Ticket management that keeps DMs sane. Categorized, threaded, and trackable. Built for serious operations.',
+    features:    ['Threaded conversations', 'Category routing', 'Auto close inactive', 'Full audit trail'],
+  },
+  {
+    id:          'raid',
+    icon:        '⚔️',
+    title:       'Raid',
+    tagline:     'Amplify your X reach.',
+    description: 'Reward your community with points for engaging with your tweets. Live X verification, anti cheat, and a competitive leaderboard.',
+    features:    ['Live X verification', 'Anti cheat detection', 'Customizable rewards', 'Real time leaderboard'],
+  },
+  {
+    id:          'engage',
+    icon:        '🔁',
+    title:       'Engage',
+    tagline:     'Self sustaining ecosystem.',
+    description: "Members earn points by engaging with each other tweets, then spend those points to submit their own. A perpetual engine for your community.",
+    features:    ['Per pool isolation', 'Submit your own tweets', 'Configurable economy', 'Multi pool support'],
+  },
+  {
+    id:          'protection',
+    icon:        '🛡️',
+    title:       'Protection',
+    tagline:     'Your community guardian.',
+    description: 'Anti spam, anti raid, and anti scam guardrails that work silently in the background. Sleep easy at night.',
+    features:    ['Spam filter', 'Raid detection', 'Account age gates', 'Customizable rules'],
+  },
+  {
+    id:          'logs',
+    icon:        '📋',
+    title:       'Logs',
+    tagline:     'Every action, traceable.',
+    description: 'A unified activity log across every module. Admin actions, flagged users, settings changes, and protection events. Full transparency.',
+    features:    ['Unified event feed', 'Per module filtering', 'Flagged user registry', 'CSV export'],
   },
 ];
 
@@ -379,7 +511,7 @@ function ModuleCard({ module, index }) {
       initial={{ y: 40, opacity: 0 }}
       whileInView={{ y: 0, opacity: 1 }}
       viewport={{ once: true, margin: '-50px' }}
-      transition={{ duration: 0.6, delay: index * 0.08 }}
+      transition={{ duration: 0.6, delay: index * 0.07 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -449,7 +581,15 @@ function ModuleCard({ module, index }) {
 
 function ModuleShowcase() {
   return (
-    <section id="showcase" style={{ padding: '96px 24px', backgroundColor: 'var(--av-bg)' }}>
+    <section
+      id="showcase"
+      style={{
+        position: 'relative',
+        zIndex: 1,
+        padding: '96px 24px',
+        backgroundColor: 'var(--av-bg)',
+      }}
+    >
       <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
         <motion.div
           initial={{ y: 30, opacity: 0 }}
@@ -465,14 +605,17 @@ function ModuleShowcase() {
             letterSpacing: '-0.02em',
             color: 'var(--av-text)',
           }}>
-            Six modules. <span style={{ color: 'var(--av-gold)' }}>One bot.</span>
+            Nine modules. <span style={{ color: 'var(--av-gold)' }}>One engine.</span>
           </h2>
           <p style={{
             marginTop: '14px',
             fontSize: '1.05rem',
             color: 'var(--av-text-muted)',
+            maxWidth: '640px',
+            marginLeft: 'auto',
+            marginRight: 'auto',
           }}>
-            Each module crafted for serious Web3 communities. Pick what fits.
+            Built into a single bot. No stacked subscriptions, no integrations to maintain.
           </p>
         </motion.div>
 
@@ -506,22 +649,27 @@ const Landing = () => {
 
   return (
     <div style={{
+      position: 'relative',
       backgroundColor: 'var(--av-bg)',
       color: 'var(--av-text)',
       minHeight: '100vh',
       fontFamily: 'Sora, sans-serif',
     }}>
-      <HeroSection inviteUrl={inviteUrl} />
-      <LiveStatsBar />
-      <ModuleShowcase />
+      <ScrollMeteor />
 
-      <div style={{
-        padding: '96px 24px',
-        textAlign: 'center',
-        fontSize: '13px',
-        color: 'var(--av-text-dim)',
-      }}>
-        More sections coming soon…
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        <HeroSection inviteUrl={inviteUrl} />
+        <LiveStatsBar />
+        <ModuleShowcase />
+
+        <div style={{
+          padding: '96px 24px',
+          textAlign: 'center',
+          fontSize: '13px',
+          color: 'var(--av-text-dim)',
+        }}>
+          More sections coming soon.
+        </div>
       </div>
     </div>
   );

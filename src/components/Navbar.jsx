@@ -28,12 +28,12 @@ const Navbar = () => {
     }}>
       {/* Logo */}
       <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <div style={{
-          width: '36px', height: '36px', borderRadius: '8px',
-          background: 'linear-gradient(135deg, #C8A84E, #94730D)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontWeight: 800, fontSize: '15px', color: '#0A0A0F',
-        }}>AV</div>
+        <img
+          src="https://cdn.avbot.app/1199707792706117642/2e6734d8c9fc47fab6b8525a57374de3.png"
+          alt="AVbot"
+          draggable="false"
+          style={{ height: '32px', width: 'auto', objectFit: 'contain', display: 'block', userSelect: 'none' }}
+        />
         <span style={{ fontWeight: 700, fontSize: '18px', color: '#fff', letterSpacing: '-0.02em' }}>
           AVbot
         </span>
