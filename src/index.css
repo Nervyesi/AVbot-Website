@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Tailwind v4 auto-detect via the @tailwindcss/postcss plugin appears to
+   silently miss CRA's src/ tree (no utilities emitted in build CSS).
+   Tailwind utility usage in this repo is being converted to inline
+   styles to match the existing Dashboard.jsx convention; this file
+   keeps the import for any legacy classes still relying on it. */
+
 @theme {
   --color-bg: #0A0A0F;
   --color-gold: #C8A84E;
