@@ -1,450 +1,411 @@
-import React, { useEffect, useState } from 'react';
-import DiscordMockup from '../components/DiscordMockup';
-import { ADD_TO_DISCORD_URL } from '../constants';
+import React, { useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import { ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 
-// ── Scroll Animation Hook ──────────────────────────────────────────────────
-function useScrollReveal() {
-  useEffect(() => {
-    const els = document.querySelectorAll('.fade-in, .slide-left, .slide-right');
-    const observer = new IntersectionObserver(
-      entries => entries.forEach(e => {
-        if (e.isIntersecting) { e.target.classList.add('visible'); }
-      }),
-      { threshold: 0.15 }
-    );
-    els.forEach(el => observer.observe(el));
-    return () => observer.disconnect();
-  });
-}
+const LOGO_URL = 'https://cdn.avbot.app/1199707792706117642/2e6734d8c9fc47fab6b8525a57374de3.png';
 
-// ── Feature data ──────────────────────────────────────────────────────────
-const features = [
-  {
-    mockup: 'verification',
-    title: 'Smart Verification',
-    desc: 'Stop bots before they enter. AVbot\'s multi-layer captcha system verifies real humans automatically, keeping your server clean without any manual moderation.',
-    icon: '🔐',
-  },
-  {
-    mockup: 'roleSelection',
-    title: 'Role Selection',
-    desc: 'Let members self-assign roles via Discord buttons. Creators and community members get different access levels, permissions, and channels — all automated.',
-    icon: '🎭',
-  },
-  {
-    mockup: 'creatorTicket',
-    title: 'Creator Tickets',
-    desc: 'Accept creator applications through a structured ticket flow. Review follower counts, engagement rates, and content type before approving or rejecting — right in Discord.',
-    icon: '📋',
-  },
-  {
-    mockup: 'raidSystem',
-    title: 'Raid System',
-    desc: 'Coordinate mass engagement on Twitter in seconds. Launch raids with targets, rewards, and time limits. Members earn points for each action taken.',
-    icon: '⚔️',
-  },
-  {
-    mockup: 'engageForEngage',
-    title: 'Engage-for-Engage',
-    desc: 'A self-sustaining engagement pool where creators support each other. Post your tweet, engage with others, and earn points — all tracked and incentivized automatically.',
-    icon: '🔄',
-  },
-  {
-    mockup: 'sectionRoles',
-    title: 'Section Roles',
-    desc: 'Organize your server with toggle-based section rooms. Members pick their interests (NFTs, Trading, AI, Degen) and unlock relevant channels. Zero config needed.',
-    icon: '🏠',
-  },
-  {
-    mockup: 'protection',
-    title: 'Auto-Moderation',
-    desc: 'Full server protection on autopilot. Link detection, spam muting, phishing blocklist, suspicious user flagging, and anti-raid lockdown — all logged to your mod channel.',
-    icon: '🛡️',
-  },
-];
+// Single page-wide style block so we don't fight the existing index.css.
+// Tailwind is available (v4 zero-config) — use it freely for layout/spacing.
 
-// ── FAQ data ──────────────────────────────────────────────────────────────
-const faqs = [
-  {
-    q: 'Is AVbot free to use?',
-    a: 'AVbot is free to add to your server. All core features — verification, raids, engages, forms, tickets, role selection, protection, and analytics — are available out of the box.',
-  },
-  {
-    q: 'Do I need to know how to code to set it up?',
-    a: 'Not at all. AVbot is fully configured through Discord slash commands and an intuitive dashboard. No coding, hosting, or technical knowledge required.',
-  },
-  {
-    q: 'How does the points system work?',
-    a: 'Members earn points by completing raids, engaging in the E4E pool, verifying, and participating in events. Admins can set point values per action and configure leaderboards.',
-  },
-  {
-    q: 'Can AVbot handle large servers?',
-    a: 'AVbot is built for scale. Whether you have 100 or 100,000 members, the verification, raid, and engagement systems are optimized for high concurrency without rate limit issues.',
-  },
-  {
-    q: 'Is my server\'s data safe?',
-    a: 'All data is encrypted at rest and in transit. AVbot only requests the minimum necessary Discord permissions and never stores message content beyond what\'s needed for features.',
-  },
-];
+// ── Hero ─────────────────────────────────────────────────────────────────────
 
-// ── Steps ─────────────────────────────────────────────────────────────────
-const steps = [
-  { icon: '🤖', step: '01', title: 'Invite', desc: 'Add AVbot to your Discord server with one click. It\'s live in under 30 seconds.' },
-  { icon: '⚙️', step: '02', title: 'Configure', desc: 'Run /setup in your server. AVbot creates channels, roles, and configs automatically.' },
-  { icon: '🎨', step: '03', title: 'Customize', desc: 'Adjust point values, raid rewards, embed colors, and verification difficulty from the dashboard.' },
-  { icon: '🚀', step: '04', title: 'Launch', desc: 'Turn on modules one by one. Your community starts running itself from day one.' },
-];
+function ParticleField() {
+  // Pre-computed positions/delays so the layout is stable between renders.
+  // 30 particles max per spec rule #9.
+  const particles = React.useMemo(() => {
+    return Array.from({ length: 30 }).map((_, i) => ({
+      top:      Math.random() * 100,
+      left:     Math.random() * 100,
+      size:     Math.random() < 0.3 ? 2 : 1,
+      duration: 15 + Math.random() * 20,
+      delay:    Math.random() * 10,
+      anim:     i % 4,
+    }));
+  }, []);
 
-// ── FAQ Item ──────────────────────────────────────────────────────────────
-const FaqItem = ({ q, a }) => {
-  const [open, setOpen] = useState(false);
   return (
-    <div
-      style={{
-        background: 'rgba(255,255,255,0.03)',
-        border: `1px solid ${open ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.06)'}`,
-        borderRadius: '10px',
-        marginBottom: '10px',
-        transition: 'border-color 0.2s',
-        overflow: 'hidden',
-      }}
-    >
-      <button
-        onClick={() => setOpen(!open)}
+    <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+      {/* Central radial gold glow */}
+      <div
+        className="absolute top-1/2 left-1/2 rounded-full"
         style={{
-          width: '100%', background: 'none', border: 'none', cursor: 'pointer',
-          padding: '18px 22px', display: 'flex', justifyContent: 'space-between',
-          alignItems: 'center', color: '#fff', fontFamily: 'Sora, sans-serif',
-          fontWeight: 600, fontSize: '15px', textAlign: 'left',
+          width: '800px', height: '800px',
+          transform: 'translate(-50%, -50%)',
+          background: 'radial-gradient(circle, var(--av-gold-glow) 0%, transparent 70%)',
+          filter: 'blur(60px)',
         }}
-      >
-        {q}
-        <span style={{
-          color: '#C8A84E', fontSize: '20px', lineHeight: 1,
-          transform: open ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s',
-        }}>+</span>
-      </button>
-      {open && (
-        <div style={{
-          padding: '0 22px 18px', color: 'rgba(255,255,255,0.7)',
-          fontSize: '14px', lineHeight: 1.7,
-        }}>{a}</div>
-      )}
+      />
+      {particles.map((p, i) => (
+        <div
+          key={i}
+          className="absolute rounded-full"
+          style={{
+            top:        `${p.top}%`,
+            left:       `${p.left}%`,
+            width:      `${p.size * 2}px`,
+            height:     `${p.size * 2}px`,
+            background: 'rgba(200,168,78,0.45)',
+            boxShadow:  '0 0 6px rgba(200,168,78,0.3)',
+            animation:  `av-float-${p.anim} ${p.duration}s ease-in-out ${p.delay}s infinite`,
+          }}
+        />
+      ))}
     </div>
   );
-};
+}
 
-// ── Main Component ─────────────────────────────────────────────────────────
-const Landing = () => {
-  useScrollReveal();
+function HeroSection({ inviteUrl }) {
+  return (
+    <section
+      className="relative flex flex-col items-center justify-center px-6 text-center overflow-hidden"
+      style={{ minHeight: '100vh', backgroundColor: 'var(--av-bg)' }}
+    >
+      <ParticleField />
+
+      <motion.div
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 1.2, ease: 'easeOut' }}
+        className="relative mb-8"
+      >
+        <div
+          className="absolute inset-0 rounded-full"
+          style={{
+            background:    'var(--av-gold)',
+            filter:        'blur(48px)',
+            animation:     'av-logo-pulse 3s ease-in-out infinite',
+          }}
+        />
+        <img
+          src={LOGO_URL}
+          alt="AVbot"
+          className="relative w-32 h-32 md:w-40 md:h-40 select-none"
+          draggable="false"
+        />
+      </motion.div>
+
+      <motion.h1
+        initial={{ y: 30, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 1, delay: 0.3 }}
+        className="text-5xl md:text-7xl font-bold tracking-tight max-w-4xl leading-[1.05]"
+        style={{ color: 'var(--av-text)' }}
+      >
+        Your Community
+        <br />
+        <span style={{ color: 'var(--av-gold)' }}>Deserves Better.</span>
+      </motion.h1>
+
+      <motion.p
+        initial={{ y: 30, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 1, delay: 0.6 }}
+        className="mt-6 text-lg md:text-xl max-w-2xl leading-relaxed"
+        style={{ color: 'var(--av-text-muted)' }}
+      >
+        AVbot is the Web3-native Discord engine built for raids, engagement,
+        and growth. Crafted for serious communities.
+      </motion.p>
+
+      <motion.div
+        initial={{ y: 30, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 1, delay: 0.9 }}
+        className="mt-10 flex flex-col sm:flex-row gap-4"
+      >
+        <a
+          href={inviteUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="px-8 py-4 rounded-lg font-semibold relative overflow-hidden group transition-transform"
+          style={{ backgroundColor: 'var(--av-gold)', color: '#000' }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
+        >
+          <span className="relative z-10">Add AVbot to Discord</span>
+          <span
+            className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ backgroundColor: 'var(--av-gold-light)' }}
+            aria-hidden="true"
+          />
+        </a>
+
+        <a
+          href="#showcase"
+          className="px-8 py-4 rounded-lg font-semibold border transition-colors"
+          style={{
+            borderColor: 'var(--av-border-strong)',
+            color:       'var(--av-text)',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--av-gold)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--av-border-strong)'; }}
+        >
+          See It in Action
+        </a>
+      </motion.div>
+
+      <motion.a
+        href="#stats"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1, y: [0, 10, 0] }}
+        transition={{
+          opacity: { delay: 1.5, duration: 0.8 },
+          y:       { duration: 2, repeat: Infinity, delay: 1.5 },
+        }}
+        className="absolute bottom-8 left-1/2"
+        style={{ transform: 'translateX(-50%)' }}
+        aria-label="Scroll for more"
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--av-text-dim)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 5v14M5 12l7 7 7-7" />
+        </svg>
+      </motion.a>
+    </section>
+  );
+}
+
+// ── Live Stats Bar ───────────────────────────────────────────────────────────
+
+function StatItem({ label, value, prefix = '', visible }) {
+  const [displayed, setDisplayed] = useState(0);
+
+  useEffect(() => {
+    if (!visible) return;
+    const target = Number(value) || 0;
+    if (target <= 0) { setDisplayed(0); return; }
+
+    const duration = 2000;
+    const stepTime = 16;
+    const steps    = duration / stepTime;
+    const increment = target / steps;
+    let current = 0;
+    const interval = setInterval(() => {
+      current += increment;
+      if (current >= target) {
+        setDisplayed(target);
+        clearInterval(interval);
+      } else {
+        setDisplayed(Math.floor(current));
+      }
+    }, stepTime);
+    return () => clearInterval(interval);
+  }, [visible, value]);
 
   return (
-    <div style={{ background: '#0A0A0F', minHeight: '100vh', color: '#fff', fontFamily: 'Sora, sans-serif' }}>
+    <div className="text-center">
+      <div className="text-3xl md:text-4xl font-bold" style={{ color: 'var(--av-gold)' }}>
+        {prefix}{displayed.toLocaleString()}
+      </div>
+      <div
+        className="text-xs md:text-sm uppercase tracking-wider mt-2"
+        style={{ color: 'var(--av-text-dim)', letterSpacing: '0.12em' }}
+      >
+        {label}
+      </div>
+    </div>
+  );
+}
 
-      {/* ── HERO ── */}
-      <section style={{
-        minHeight: '100vh',
-        display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
-        textAlign: 'center', padding: '120px 2rem 80px',
-        position: 'relative', overflow: 'hidden',
-      }}>
-        {/* Background glow */}
-        <div style={{
-          position: 'absolute', top: '20%', left: '50%', transform: 'translate(-50%,-50%)',
-          width: '600px', height: '600px',
-          background: 'radial-gradient(circle, rgba(200,168,78,0.08) 0%, transparent 70%)',
-          pointerEvents: 'none',
-        }} />
+function LiveStatsBar() {
+  const [stats, setStats]     = useState(null);
+  const [visible, setVisible] = useState(false);
+  const ref = useRef(null);
 
-        <div className="fade-in" style={{ transitionDelay: '0.1s' }}>
-          <span style={{
-            display: 'inline-block',
-            background: 'rgba(200,168,78,0.12)',
-            border: '1px solid rgba(200,168,78,0.35)',
-            color: '#C8A84E',
-            padding: '6px 16px',
-            borderRadius: '100px',
-            fontSize: '11px',
-            fontWeight: 700,
-            letterSpacing: '0.12em',
-            marginBottom: '28px',
-            textTransform: 'uppercase',
-          }}>
-            ⚡ The Ultimate Web3 Discord Bot
-          </span>
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE_URL}/api/public/ameretaverse-overview`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setStats(d); })
+      .catch(() => {
+        if (!cancelled) setStats({ total_members: 0, active_members: 0, member_growth_30d: 0, total_messages: 0 });
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setVisible(true); },
+      { threshold: 0.3 },
+    );
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      id="stats"
+      className="border-y"
+      style={{ borderColor: 'var(--av-border)', backgroundColor: 'var(--av-bg-elevated)' }}
+    >
+      <div className="max-w-6xl mx-auto px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
+        <StatItem label="Members Engaged"    value={stats?.total_members || 0}      visible={visible} />
+        <StatItem label="Active This Month"  value={stats?.active_members || 0}     visible={visible} />
+        <StatItem label="Growth (30d)"       value={stats?.member_growth_30d || 0}  visible={visible} prefix="+" />
+        <StatItem label="Total Interactions" value={stats?.total_messages || 0}     visible={visible} />
+      </div>
+    </div>
+  );
+}
+
+// ── Module Showcase ──────────────────────────────────────────────────────────
+
+const MODULES = [
+  {
+    id:         'raid',
+    icon:       '⚔️',
+    title:      'Raid',
+    tagline:    'Amplify your X reach.',
+    description:'Reward your community with points for engaging with your tweets. Live X verification, anti-cheat, and a competitive leaderboard.',
+    features:   ['Live Twitter verification', 'Anti-cheat detection', 'Customizable rewards', 'Real-time leaderboard'],
+  },
+  {
+    id:         'engage',
+    icon:       '🔁',
+    title:      'Engage',
+    tagline:    'A self-sustaining ecosystem.',
+    description:"Members earn points by engaging with each other's tweets, then spend those points to submit their own. A perpetual engine for your community.",
+    features:   ['Per-pool isolation', 'Submit your own tweets', 'Configurable economy', 'Multi-pool for power users'],
+  },
+  {
+    id:         'protection',
+    icon:       '🛡️',
+    title:      'Protection',
+    tagline:    "Your community's guardian.",
+    description:'Anti-spam, anti-raid, and anti-scam guardrails that work silently in the background. Sleep easy.',
+    features:   ['Spam filter', 'Raid detection', 'Account-age gates', 'Customizable rules'],
+  },
+  {
+    id:         'verify',
+    icon:       '✅',
+    title:      'Verification',
+    tagline:    'Identity, on your terms.',
+    description:"Token-gated, role-based access. Verify members through customizable challenges that fit your community's vibe.",
+    features:   ['Token gating', 'Role assignment', 'Custom panels', 'Web3-native'],
+  },
+  {
+    id:         'forms',
+    icon:       '📝',
+    title:      'Forms',
+    tagline:    'Onboarding, redefined.',
+    description:'Build custom application forms for your community. Approval workflows, role rewards, and full submission history.',
+    features:   ['Drag-and-drop builder', 'Approval workflows', 'Auto-role on approval', 'Submission history'],
+  },
+  {
+    id:         'tickets',
+    icon:       '🎫',
+    title:      'Tickets',
+    tagline:    'Support that scales.',
+    description:"Ticket management that doesn't turn your DMs into chaos. Categorized, threaded, and trackable.",
+    features:   ['Threaded conversations', 'Category routing', 'Auto-close inactive', 'Full audit trail'],
+  },
+];
+
+function ModuleCard({ module, index }) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <motion.div
+      initial={{ y: 40, opacity: 0 }}
+      whileInView={{ y: 0, opacity: 1 }}
+      viewport={{ once: true, margin: '-50px' }}
+      transition={{ duration: 0.6, delay: index * 0.08 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="relative rounded-xl border p-6 overflow-hidden group cursor-default transition-colors duration-300"
+      style={{
+        backgroundColor: 'var(--av-bg-elevated)',
+        borderColor:     hovered ? 'var(--av-gold)' : 'var(--av-border)',
+      }}
+    >
+      <div
+        className="absolute inset-0 transition-opacity duration-300 pointer-events-none"
+        style={{
+          opacity:    hovered ? 1 : 0,
+          background: 'radial-gradient(circle at top right, var(--av-gold-glow) 0%, transparent 70%)',
+        }}
+        aria-hidden="true"
+      />
+      <div className="relative">
+        <div className="text-4xl mb-4">{module.icon}</div>
+        <h3 className="text-2xl font-bold mb-1" style={{ color: 'var(--av-text)' }}>
+          {module.title}
+        </h3>
+        <div className="text-sm font-medium mb-4" style={{ color: 'var(--av-gold)' }}>
+          {module.tagline}
         </div>
-
-        <h1 className="fade-in" style={{
-          fontSize: 'clamp(2.8rem, 7vw, 5.5rem)',
-          fontWeight: 800,
-          lineHeight: 1.05,
-          margin: '0 0 24px',
-          letterSpacing: '-0.03em',
-          transitionDelay: '0.2s',
-        }}>
-          Your community<br />
-          <span className="gold-gradient">runs itself.</span>
-        </h1>
-
-        <p className="fade-in" style={{
-          fontSize: 'clamp(1rem, 2vw, 1.15rem)',
-          color: 'rgba(255,255,255,0.6)',
-          maxWidth: '580px',
-          lineHeight: 1.7,
-          margin: '0 0 40px',
-          transitionDelay: '0.3s',
-        }}>
-          Verification. Creator management. Raids. Engagement. Points. Leaderboards.
-          <br />One bot. Zero manual work. Built for Web3.
+        <p className="text-sm mb-5 leading-relaxed" style={{ color: 'var(--av-text-muted)' }}>
+          {module.description}
         </p>
 
-        <div className="fade-in" style={{
-          display: 'flex', gap: '14px', flexWrap: 'wrap', justifyContent: 'center',
-          transitionDelay: '0.4s',
-        }}>
-          <a href={ADD_TO_DISCORD_URL} className="btn-primary" style={{ textDecoration: 'none', fontSize: '15px', padding: '14px 28px' }}>
-            <span>🤖</span> Add to Discord
-          </a>
-          <a href="#features" className="btn-secondary" style={{ textDecoration: 'none', fontSize: '15px', padding: '14px 28px' }}>
-            See Features ↓
-          </a>
-        </div>
+        <ul className="space-y-2">
+          {module.features.map((f) => (
+            <li key={f} className="flex items-center gap-2 text-sm" style={{ color: 'var(--av-text-dim)' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--av-gold)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M5 13l4 4L19 7" />
+              </svg>
+              {f}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </motion.div>
+  );
+}
 
-        {/* Scroll hint */}
-        <div className="fade-in" style={{
-          position: 'absolute', bottom: '40px',
-          color: 'rgba(255,255,255,0.3)', fontSize: '12px',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
-          transitionDelay: '0.8s',
-        }}>
-          <div style={{ width: '1px', height: '40px', background: 'linear-gradient(to bottom, transparent, rgba(200,168,78,0.5))' }} />
-          scroll
-        </div>
-      </section>
+function ModuleShowcase() {
+  return (
+    <section id="showcase" className="py-24 px-6" style={{ backgroundColor: 'var(--av-bg)' }}>
+      <div className="max-w-6xl mx-auto">
+        <motion.div
+          initial={{ y: 30, opacity: 0 }}
+          whileInView={{ y: 0, opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.7 }}
+          className="text-center mb-16"
+        >
+          <h2 className="text-4xl md:text-5xl font-bold tracking-tight" style={{ color: 'var(--av-text)' }}>
+            Six modules. <span style={{ color: 'var(--av-gold)' }}>One bot.</span>
+          </h2>
+          <p className="mt-4 text-lg" style={{ color: 'var(--av-text-muted)' }}>
+            Each module crafted for serious Web3 communities. Pick what fits.
+          </p>
+        </motion.div>
 
-      {/* ── STATS BAR ── */}
-      <section style={{
-        borderTop: '1px solid rgba(200,168,78,0.12)',
-        borderBottom: '1px solid rgba(200,168,78,0.12)',
-        background: 'rgba(200,168,78,0.03)',
-        padding: '28px 2rem',
-      }}>
-        <div style={{
-          maxWidth: '900px', margin: '0 auto',
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '16px', textAlign: 'center',
-        }}>
-          {[
-            { val: '10+', label: 'Modules' },
-            { val: '24/7', label: 'Uptime' },
-            { val: '∞', label: 'Customizable' },
-            { val: '0', label: 'Manual Work' },
-          ].map(s => (
-            <div key={s.label} className="fade-in">
-              <div style={{ fontSize: '2.2rem', fontWeight: 800, lineHeight: 1 }} className="gold-gradient">
-                {s.val}
-              </div>
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', marginTop: '4px', fontWeight: 500 }}>
-                {s.label}
-              </div>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {MODULES.map((m, i) => (
+            <ModuleCard key={m.id} module={m} index={i} />
           ))}
         </div>
-      </section>
+      </div>
+    </section>
+  );
+}
 
-      {/* ── FEATURE SHOWCASE ── */}
-      <section id="features" style={{ padding: '100px 2rem' }}>
-        <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-          <div className="fade-in" style={{ textAlign: 'center', marginBottom: '80px' }}>
-            <h2 style={{ fontSize: 'clamp(2rem, 4vw, 3rem)', fontWeight: 800, margin: '0 0 16px', letterSpacing: '-0.02em' }}>
-              Everything your server needs,<br /><span className="gold-gradient">built right in.</span>
-            </h2>
-            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '15px', maxWidth: '480px', margin: '0 auto' }}>
-              Six powerful modules. One bot. Works out of the box.
-            </p>
-          </div>
+// ── Page ─────────────────────────────────────────────────────────────────────
 
-          {features.map((f, i) => {
-            const isEven = i % 2 === 0;
-            return (
-              <div
-                key={f.mockup}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-                  gap: '60px',
-                  alignItems: 'center',
-                  marginBottom: '100px',
-                  direction: isEven ? 'ltr' : 'rtl',
-                }}
-              >
-                {/* Text */}
-                <div className={isEven ? 'slide-left' : 'slide-right'} style={{ direction: 'ltr' }}>
-                  <div style={{
-                    fontSize: '40px', marginBottom: '16px',
-                    width: '64px', height: '64px',
-                    background: 'rgba(200,168,78,0.1)',
-                    border: '1px solid rgba(200,168,78,0.2)',
-                    borderRadius: '14px',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {f.icon}
-                  </div>
-                  <h3 style={{
-                    fontSize: '1.8rem', fontWeight: 700, margin: '0 0 14px',
-                    letterSpacing: '-0.02em',
-                  }}>{f.title}</h3>
-                  <p style={{
-                    color: 'rgba(255,255,255,0.6)', lineHeight: 1.75, fontSize: '15px', margin: 0,
-                  }}>{f.desc}</p>
-                </div>
+const Landing = () => {
+  const [inviteUrl, setInviteUrl] = useState(ADD_TO_DISCORD_URL);
 
-                {/* Discord Mockup */}
-                <div
-                  className={isEven ? 'slide-right' : 'slide-left'}
-                  style={{ direction: 'ltr', display: 'flex', justifyContent: 'center' }}
-                >
-                  <DiscordMockup type={f.mockup} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE_URL}/api/public/bot-info`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled && d?.invite_url) setInviteUrl(d.invite_url); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
-      {/* ── HOW IT WORKS ── */}
-      <section id="how-it-works" style={{
-        padding: '100px 2rem',
-        borderTop: '1px solid rgba(255,255,255,0.05)',
-        background: 'rgba(255,255,255,0.01)',
-      }}>
-        <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-          <div className="fade-in" style={{ textAlign: 'center', marginBottom: '70px' }}>
-            <h2 style={{ fontSize: 'clamp(2rem, 4vw, 3rem)', fontWeight: 800, margin: '0 0 16px' }}>
-              Up and running in <span className="gold-gradient">4 steps.</span>
-            </h2>
-            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '15px' }}>
-              From invite to fully automated in minutes.
-            </p>
-          </div>
+  return (
+    <div style={{ backgroundColor: 'var(--av-bg)', color: 'var(--av-text)', minHeight: '100vh', fontFamily: 'Sora, sans-serif' }}>
+      <HeroSection inviteUrl={inviteUrl} />
+      <LiveStatsBar />
+      <ModuleShowcase />
 
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '24px',
-          }}>
-            {steps.map((s, i) => (
-              <div
-                key={s.title}
-                className="fade-in glass"
-                style={{
-                  padding: '28px 24px',
-                  borderRadius: '16px',
-                  transitionDelay: `${i * 0.1}s`,
-                }}
-              >
-                <div style={{
-                  color: 'rgba(200,168,78,0.3)',
-                  fontSize: '48px', fontWeight: 800, lineHeight: 1, marginBottom: '4px',
-                }}>{s.step}</div>
-                <div style={{ fontSize: '28px', marginBottom: '12px' }}>{s.icon}</div>
-                <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem', fontWeight: 700 }}>{s.title}</h3>
-                <p style={{ margin: 0, color: 'rgba(255,255,255,0.55)', fontSize: '13px', lineHeight: 1.6 }}>{s.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── FAQ ── */}
-      <section id="faq" style={{ padding: '100px 2rem' }}>
-        <div style={{ maxWidth: '700px', margin: '0 auto' }}>
-          <div className="fade-in" style={{ textAlign: 'center', marginBottom: '60px' }}>
-            <h2 style={{ fontSize: 'clamp(2rem, 4vw, 3rem)', fontWeight: 800, margin: '0 0 16px' }}>
-              Got <span className="gold-gradient">questions?</span>
-            </h2>
-            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '15px' }}>
-              Everything you need to know before adding AVbot.
-            </p>
-          </div>
-          <div className="fade-in">
-            {faqs.map(f => <FaqItem key={f.q} {...f} />)}
-          </div>
-        </div>
-      </section>
-
-      {/* ── FINAL CTA ── */}
-      <section style={{
-        padding: '100px 2rem',
-        textAlign: 'center',
-        borderTop: '1px solid rgba(200,168,78,0.12)',
-        background: 'radial-gradient(ellipse at center, rgba(200,168,78,0.05) 0%, transparent 70%)',
-      }}>
-        <div className="fade-in">
-          <h2 style={{
-            fontSize: 'clamp(2rem, 5vw, 3.5rem)',
-            fontWeight: 800, margin: '0 0 20px', letterSpacing: '-0.03em',
-          }}>
-            Ready to automate<br /><span className="gold-gradient">your server?</span>
-          </h2>
-          <p style={{
-            color: 'rgba(255,255,255,0.55)', fontSize: '16px', marginBottom: '36px', maxWidth: '420px', margin: '0 auto 36px',
-          }}>
-            Join hundreds of Web3 communities already running on AVbot.
-          </p>
-          <a href={ADD_TO_DISCORD_URL} className="btn-primary" style={{
-            textDecoration: 'none', fontSize: '16px', padding: '16px 36px',
-          }}>
-            <span>🤖</span> Add AVbot to Discord — It's Free
-          </a>
-        </div>
-      </section>
-
-      {/* ── FOOTER ── */}
-      <footer style={{
-        borderTop: '1px solid rgba(255,255,255,0.05)',
-        padding: '40px 2rem',
-        background: 'rgba(0,0,0,0.3)',
-      }}>
-        <div style={{
-          maxWidth: '1000px', margin: '0 auto',
-          display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center',
-          gap: '20px',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '32px', height: '32px', borderRadius: '8px',
-              background: 'linear-gradient(135deg, #C8A84E, #94730D)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontWeight: 800, fontSize: '13px', color: '#0A0A0F',
-            }}>AV</div>
-            <span style={{ fontWeight: 700, color: '#fff' }}>AVbot</span>
-          </div>
-
-          <div style={{ display: 'flex', gap: '20px' }}>
-            {[
-              { icon: '🐦', label: 'Twitter', href: 'https://twitter.com' },
-              { icon: '💬', label: 'Discord', href: 'https://discord.gg' },
-              { icon: '🐙', label: 'GitHub', href: 'https://github.com/Nervyesi/AVbot-Website' },
-            ].map(s => (
-              <a key={s.label} href={s.href} style={{
-                color: 'rgba(255,255,255,0.5)', textDecoration: 'none',
-                fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px',
-                transition: 'color 0.2s',
-              }}
-                onMouseOver={e => e.currentTarget.style.color = '#C8A84E'}
-                onMouseOut={e => e.currentTarget.style.color = 'rgba(255,255,255,0.5)'}
-              >
-                <span>{s.icon}</span> {s.label}
-              </a>
-            ))}
-          </div>
-
-          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>
-            © 2026 AVbot. Built for Web3 communities.
-          </div>
-        </div>
-      </footer>
+      <div className="py-24 text-center text-sm" style={{ color: 'var(--av-text-dim)' }}>
+        More sections coming soon…
+      </div>
     </div>
   );
 };

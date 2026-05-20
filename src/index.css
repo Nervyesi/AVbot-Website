@@ -10,6 +10,28 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap');
 
+:root {
+  --av-bg:            #0a0a0a;
+  --av-bg-elevated:   #111111;
+  --av-gold:          #94730D;
+  --av-gold-light:    #c89a1f;
+  --av-gold-glow:     rgba(148, 115, 13, 0.4);
+  --av-text:          #e4e4e7;
+  --av-text-muted:    #a1a1aa;
+  --av-text-dim:      #71717a;
+  --av-border:        #27272a;
+  --av-border-strong: #3f3f46;
+}
+
+@keyframes av-float-0 { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-30px); } }
+@keyframes av-float-1 { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(40px); } }
+@keyframes av-float-2 { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-50px); } }
+@keyframes av-float-3 { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(20px); } }
+@keyframes av-logo-pulse {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 0.7; }
+}
+
 * {
   box-sizing: border-box;
 }
