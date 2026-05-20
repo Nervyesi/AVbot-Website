@@ -292,6 +292,61 @@ export const updateLevels = (sid, payload) =>
     body: JSON.stringify(payload),
   });
 
+// ── Logs + Flags ───────────────────────────────────────────────────────────
+
+const buildQuery = (params = {}) => {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== null && v !== undefined && v !== '') query.set(k, v);
+  });
+  return query.toString();
+};
+
+export const fetchLogs = (sid, params = {}) => {
+  const qs = buildQuery(params);
+  return apiFetch(`/api/servers/${sid}/logs${qs ? '?' + qs : ''}`);
+};
+
+export const logsExportUrl = (sid, params = {}) => {
+  const qs = buildQuery(params);
+  return `${API_BASE_URL}/api/servers/${sid}/logs/export${qs ? '?' + qs : ''}`;
+};
+
+// CSV export endpoint requires the bearer token, so we cannot use a bare <a href>.
+// Fetch with auth, turn the response into a Blob, then trigger a download.
+export async function downloadLogs(sid, params = {}) {
+  const token = getToken();
+  const qs = buildQuery(params);
+  const url = `${API_BASE_URL}/api/servers/${sid}/logs/export${qs ? '?' + qs : ''}`;
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `HTTP ${res.status}`);
+  }
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = `logs_${sid}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+}
+
+export const fetchFlags = (sid, params = {}) => {
+  const qs = buildQuery(params);
+  return apiFetch(`/api/servers/${sid}/flags${qs ? '?' + qs : ''}`);
+};
+
+export const resolveFlag = (sid, flagId, note) =>
+  apiFetch(`/api/servers/${sid}/flags/${flagId}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify({ note: note || '' }),
+  });
+
 // ── Admin Points ───────────────────────────────────────────────────────────
 
 export const fetchUserPoints = (sid, uid) =>

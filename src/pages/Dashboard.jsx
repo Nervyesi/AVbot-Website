@@ -7,7 +7,6 @@ import {
   loginWithDiscord, fetchMe, fetchServers, fetchServerStats,
   fetchServerAnalytics, fetchConfig, saveConfig,
   sendProtectionMessage, sendTicketsPanel, sendVerifyMessage,
-  fetchFlaggedUsers, fetchAuditLog,
   clearToken, getToken, setToken,
   listRolePanels, createRolePanel, updateRolePanel, deleteRolePanel,
   createRoleButton, updateRoleButton, deleteRoleButton,
@@ -20,6 +19,7 @@ import {
   fetchRaidGuideDefaults, fetchRaidScrapingHealth,
   fetchEngagePools, updateEngagePool,
   fetchSettings, updateBrand, updateAccess, updateLevels,
+  fetchLogs, downloadLogs, fetchFlags, resolveFlag,
 } from '../api';
 import { DISCORD_INVITE_URL, ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 
@@ -3481,205 +3481,483 @@ const ProtectionSettings = () => {
   );
 };
 
-// ── Admin Panel — Flagged Users ───────────────────────────────────────────────
 
-const FLAG_SOURCES = {
-  raid:       { label: 'Raid',       color: C.gold },
-  engage:     { label: 'Engage',     color: C.orange },
-  protection: { label: 'Protection', color: C.red },
+// ── Logs (unified) ───────────────────────────────────────────────────────────
+
+const LOG_SEVERITY_COLOR = {
+  info:     { fg: 'rgba(255,255,255,0.78)', accent: 'rgba(255,255,255,0.18)' },
+  warning:  { fg: '#f0c97a',                accent: 'rgba(240,201,122,0.5)' },
+  error:    { fg: '#ff8c42',                accent: 'rgba(255,140,66,0.55)' },
+  critical: { fg: '#ed4245',                accent: 'rgba(237,66,69,0.6)' },
+};
+const LOG_CATEGORY_ICON = {
+  bot_activity: '🤖',
+  admin_action: '👮',
+  protection:   '🛡️',
+  settings:     '⚙️',
+  flag:         '🚩',
+};
+const LOG_MODULE_ICON = {
+  raid: '⚔️', engage: '🔁', forms: '📝', tickets: '🎫',
+  verify: '✅', roleselect: '🎭', protection: '🛡️',
+  settings: '⚙️', brand: '🎨', levels: '⭐', access_control: '🔒',
+};
+const FLAG_SEVERITY_COLOR = {
+  low:    { fg: 'rgba(255,255,255,0.78)', accent: 'rgba(255,255,255,0.18)' },
+  medium: { fg: '#f0c97a',                accent: 'rgba(240,201,122,0.5)' },
+  high:   { fg: '#ed4245',                accent: 'rgba(237,66,69,0.6)' },
 };
 
-const FlaggedUsers = () => {
-  const { server } = useContext(DashboardContext);
-  const [flags, setFlags] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [filter, setFilter]   = useState('all');
+function _formatTimeAgo(date) {
+  if (!date) return '';
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60)         return 'just now';
+  if (seconds < 3600)       return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400)      return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 86400 * 7)  return `${Math.floor(seconds / 86400)}d ago`;
+  return date.toLocaleDateString();
+}
 
-  useEffect(() => {
-    if (!server?.id) return;
-    setLoading(true); setFlags(null);
-    fetchFlaggedUsers(server.id)
-      .then(data => { setFlags(Array.isArray(data) ? data : data?.flags ?? []); setLoading(false); })
-      .catch(() => { setFlags([]); setLoading(false); });
-  }, [server?.id]);
+function _parseTs(ts) {
+  if (!ts) return null;
+  const s = String(ts);
+  const iso = s.includes('T') ? s : s.replace(' ', 'T');
+  const withTz = /[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + 'Z';
+  const d = new Date(withTz);
+  return isNaN(d.getTime()) ? null : d;
+}
 
-  const dismiss = id => setFlags(prev => prev.filter(f => f.id !== id));
-  const visible = flags == null ? [] : (filter === 'all' ? flags : flags.filter(f => f.source === filter));
+const _toolbarStyle = {
+  display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px',
+  background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`,
+  borderRadius: '10px', padding: '10px 12px', marginBottom: '14px',
+};
+const _inputStyle = {
+  background: 'rgba(0,0,0,0.4)', border: `1px solid ${C.border}`,
+  borderRadius: '6px', padding: '7px 10px',
+  color: '#fff', fontSize: '13px', fontFamily: 'Sora, sans-serif',
+  outline: 'none',
+};
+const _selectStyle = { ..._inputStyle, paddingRight: '24px', cursor: 'pointer' };
+const _pageBtnStyle = (disabled) => ({
+  background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`,
+  borderRadius: '6px', padding: '6px 12px',
+  color: disabled ? 'rgba(255,255,255,0.25)' : '#fff',
+  cursor: disabled ? 'not-allowed' : 'pointer',
+  fontFamily: 'Sora, sans-serif', fontSize: '12px',
+  opacity: disabled ? 0.5 : 1,
+});
 
-  const ActionBtn = ({ color, label, onClick }) => (
-    <button onClick={onClick} style={{ background: `${color}14`, border: `1px solid ${color}40`, color, padding: '5px 10px', borderRadius: '6px', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '11px', fontWeight: 600 }}>{label}</button>
-  );
-
+function LogsSubtabBar({ active, onChange }) {
+  const tabs = [
+    { id: 'all',          label: 'All Activity',      icon: '📊' },
+    { id: 'bot_activity', label: 'Bot Activity',      icon: '🤖' },
+    { id: 'admin_action', label: 'Admin Actions',     icon: '👮' },
+    { id: 'protection',   label: 'Protection',        icon: '🛡️' },
+    { id: 'flag',         label: 'Flagged Users',     icon: '🚩' },
+    { id: 'settings',     label: 'Settings Changes',  icon: '⚙️' },
+  ];
   return (
-    <div>
-      <PageHeader icon="🚩" title="Flagged Users" desc="All flagged users from Raid, Engage, and Protection modules." />
-
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-        {['all', 'raid', 'engage', 'protection'].map(f => (
-          <button key={f} onClick={() => setFilter(f)} style={{
-            background: filter === f ? 'rgba(200,168,78,0.12)' : 'rgba(255,255,255,0.04)',
-            border: `1px solid ${filter === f ? 'rgba(200,168,78,0.3)' : 'rgba(255,255,255,0.08)'}`,
-            color: filter === f ? C.gold : C.muted,
-            padding: '6px 14px', borderRadius: '7px', cursor: 'pointer',
-            fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600, textTransform: 'capitalize',
-          }}>{f === 'all' ? 'All Sources' : f}</button>
-        ))}
-        <div style={{ flex: 1 }} />
-        {flags != null && <span style={{ fontSize: '12px', color: C.muted }}>{visible.length} entries</span>}
-      </div>
-
-      {loading ? (
-        <Card style={{ textAlign: 'center', padding: '48px' }}><LivePending /></Card>
-      ) : flags == null || visible.length === 0 ? (
-        <Card style={{ textAlign: 'center', padding: '48px', color: C.muted }}>
-          <div style={{ fontSize: '32px', marginBottom: '12px' }}>✅</div>
-          <div style={{ fontSize: '14px' }}>{!server ? 'Select a server to view flagged users' : 'No flagged users'}</div>
-        </Card>
-      ) : (
-        <Card style={{ padding: 0 }}>
-          {visible.map((flag, i) => {
-            const src = FLAG_SOURCES[flag.source] ?? { label: flag.source, color: C.muted };
-            return (
-              <div key={flag.id} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 24px', borderBottom: i < visible.length - 1 ? `1px solid ${C.border}` : 'none' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0, background: `${src.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>🚩</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '3px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: 600 }}>{flag.user ?? flag.username ?? flag.user_id}</span>
-                    <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '100px', background: `${src.color}18`, color: src.color, border: `1px solid ${src.color}30`, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{src.label}</span>
-                  </div>
-                  <div style={{ fontSize: '12px', color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{flag.reason}</div>
-                </div>
-                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.2)', flexShrink: 0, marginRight: '8px' }}>{flag.time ?? flag.timestamp}</div>
-                <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                  <ActionBtn color={C.muted}   label="Dismiss" onClick={() => dismiss(flag.id)} />
-                  <ActionBtn color={C.orange}  label="Warn"    onClick={() => {}} />
-                  <ActionBtn color={C.gold}    label="Kick"    onClick={() => {}} />
-                  <ActionBtn color={C.red}     label="Ban"     onClick={() => {}} />
-                </div>
-              </div>
-            );
-          })}
-        </Card>
-      )}
+    <div style={{
+      display: 'flex', gap: '4px', borderBottom: `1px solid ${C.border}`,
+      marginBottom: '18px', overflowX: 'auto',
+    }}>
+      {tabs.map(t => (
+        <button key={t.id} onClick={() => onChange(t.id)} style={{
+          padding: '9px 14px', fontSize: '13px', fontWeight: 600,
+          fontFamily: 'Sora, sans-serif', background: 'none', border: 'none',
+          borderBottom: active === t.id ? `2px solid ${C.gold}` : '2px solid transparent',
+          color: active === t.id ? C.gold : C.muted, cursor: 'pointer',
+          whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px',
+        }}>
+          <span>{t.icon}</span>{t.label}
+        </button>
+      ))}
     </div>
   );
-};
+}
 
-// ── Admin Panel — Mod Log ─────────────────────────────────────────────────────
+function EventRow({ event }) {
+  const [expanded, setExpanded] = useState(false);
+  const sev = LOG_SEVERITY_COLOR[event.severity] || LOG_SEVERITY_COLOR.info;
+  const created = _parseTs(event.created_at);
+  const hasDetails = event.details && Object.keys(event.details).length > 0;
 
-const MOD_MODULES = ['all', 'Link Detection', 'Spam Detection', 'Phishing', 'Suspicious Users', 'Anti-Raid', 'Banned Words'];
+  return (
+    <div style={{
+      borderLeft: `3px solid ${sev.accent}`,
+      background: 'rgba(255,255,255,0.025)',
+      borderRadius: '0 8px 8px 0',
+      padding: '12px 14px', marginBottom: '8px',
+    }}>
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+        <div style={{ fontSize: '20px', lineHeight: 1, marginTop: '2px' }}>
+          {LOG_CATEGORY_ICON[event.category] || '📌'}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            flexWrap: 'wrap', marginBottom: '5px',
+          }}>
+            {event.module && (
+              <span style={{
+                fontSize: '11px', padding: '2px 8px', borderRadius: '6px',
+                background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.8)',
+              }}>
+                {LOG_MODULE_ICON[event.module] ? `${LOG_MODULE_ICON[event.module]} ` : ''}
+                {event.module}
+              </span>
+            )}
+            <span style={{
+              fontSize: '11px', padding: '2px 8px', borderRadius: '6px',
+              background: 'rgba(255,255,255,0.04)', color: C.muted,
+              fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+            }}>{event.event_type}</span>
+            {event.severity && event.severity !== 'info' && (
+              <span style={{
+                fontSize: '10px', padding: '2px 8px', borderRadius: '6px',
+                background: 'rgba(255,255,255,0.06)', color: sev.fg,
+                textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700,
+              }}>{event.severity}</span>
+            )}
+            <span style={{
+              marginLeft: 'auto', fontSize: '11px', color: C.muted,
+            }} title={created ? created.toLocaleString() : ''}>
+              {_formatTimeAgo(created)}
+            </span>
+          </div>
+          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)' }}>
+            {event.summary}
+          </div>
+          {(event.actor_username || event.target_username) && (
+            <div style={{
+              fontSize: '11px', color: C.muted, marginTop: '5px',
+              display: 'flex', gap: '14px', flexWrap: 'wrap',
+            }}>
+              {event.actor_username && (
+                <span>by <span style={{ color: 'rgba(255,255,255,0.8)' }}>{event.actor_username}</span></span>
+              )}
+              {event.target_username && (
+                <span>→ <span style={{ color: 'rgba(255,255,255,0.8)' }}>{event.target_username}</span></span>
+              )}
+            </div>
+          )}
+          {hasDetails && (
+            <>
+              <button onClick={() => setExpanded(v => !v)} style={{
+                background: 'none', border: 'none', color: C.muted, cursor: 'pointer',
+                fontSize: '11px', fontFamily: 'Sora, sans-serif', padding: 0, marginTop: '6px',
+              }}>
+                {expanded ? '▼' : '▶'} Details
+              </button>
+              {expanded && (
+                <pre style={{
+                  marginTop: '6px', background: 'rgba(0,0,0,0.45)',
+                  border: `1px solid ${C.border}`, borderRadius: '6px',
+                  padding: '8px 10px', fontSize: '11px',
+                  color: 'rgba(255,255,255,0.75)',
+                  overflowX: 'auto', maxHeight: '240px', whiteSpace: 'pre-wrap',
+                  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                }}>{JSON.stringify(event.details, null, 2)}</pre>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-const ModLog = () => {
-  const { server } = useContext(DashboardContext);
-  const [log, setLog]     = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [filter, setFilter]   = useState('all');
+function EventLogSection({ serverId, category }) {
+  const PAGE_SIZE = 50;
+  const [events, setEvents]     = useState([]);
+  const [total, setTotal]       = useState(0);
+  const [loading, setLoading]   = useState(true);
+  const [page, setPage]         = useState(0);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch]     = useState('');  // debounced value used for fetching
+  const [moduleFilter, setModuleFilter]     = useState('');
+  const [severityFilter, setSeverityFilter] = useState('');
+  const [exportError, setExportError]       = useState('');
+  const [exporting, setExporting]           = useState(false);
+
+  // Debounce the search input → 400ms after the last keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // Reset page when filters change
+  useEffect(() => { setPage(0); }, [category, search, moduleFilter, severityFilter]);
 
   useEffect(() => {
-    if (!server?.id) return;
-    setLoading(true); setLog(null);
-    fetchAuditLog(server.id, 50)
-      .then(data => { setLog(Array.isArray(data) ? data : data?.logs ?? []); setLoading(false); })
-      .catch(() => { setLog([]); setLoading(false); });
-  }, [server?.id]);
+    if (!serverId) return;
+    let cancelled = false;
+    setLoading(true);
+    const params = {
+      category:  category || undefined,
+      module:    moduleFilter || undefined,
+      severity:  severityFilter || undefined,
+      search:    search || undefined,
+      limit:     PAGE_SIZE,
+      offset:    page * PAGE_SIZE,
+    };
+    fetchLogs(serverId, params)
+      .then(data => {
+        if (cancelled) return;
+        setEvents(Array.isArray(data?.events) ? data.events : []);
+        setTotal(Number(data?.total) || 0);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        console.error('logs fetch error', err);
+        setEvents([]); setTotal(0);
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [serverId, category, page, search, moduleFilter, severityFilter]);
 
-  const visible = log == null ? [] : (filter === 'all' ? log : log.filter(e => e.module === filter));
-
-  const dotColor = entry => {
-    const m = entry.module ?? '';
-    if (m === 'Anti-Raid' || m === 'Phishing' || m === 'Link Detection') return C.red;
-    return C.orange;
+  const handleExport = async () => {
+    setExportError(''); setExporting(true);
+    try {
+      await downloadLogs(serverId, {
+        category: category || undefined,
+        module:   moduleFilter || undefined,
+      });
+    } catch (err) {
+      setExportError(err.message || 'Export failed');
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
     <div>
-      <PageHeader icon="📝" title="Mod Log" desc="Protection actions taken by the bot for the selected server." />
-
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        {MOD_MODULES.map(m => (
-          <button key={m} onClick={() => setFilter(m)} style={{
-            background: filter === m ? 'rgba(200,168,78,0.12)' : 'rgba(255,255,255,0.04)',
-            border: `1px solid ${filter === m ? 'rgba(200,168,78,0.3)' : 'rgba(255,255,255,0.08)'}`,
-            color: filter === m ? C.gold : C.muted,
-            padding: '5px 12px', borderRadius: '7px', cursor: 'pointer',
-            fontFamily: 'Sora, sans-serif', fontSize: '11px', fontWeight: 600,
-          }}>{m === 'all' ? 'All' : m}</button>
-        ))}
+      <div style={_toolbarStyle}>
+        <input
+          type="text"
+          placeholder="Search summaries or usernames…"
+          value={searchInput}
+          onChange={e => setSearchInput(e.target.value)}
+          style={{ ..._inputStyle, flex: 1, minWidth: '200px' }}
+        />
+        <select value={moduleFilter} onChange={e => setModuleFilter(e.target.value)} style={_selectStyle}>
+          <option value="">All Modules</option>
+          <option value="raid">Raid</option>
+          <option value="engage">Engage</option>
+          <option value="forms">Forms</option>
+          <option value="tickets">Tickets</option>
+          <option value="verify">Verify</option>
+          <option value="roleselect">Role Select</option>
+          <option value="protection">Protection</option>
+          <option value="brand">Brand</option>
+          <option value="levels">Levels</option>
+          <option value="access_control">Access Control</option>
+        </select>
+        <select value={severityFilter} onChange={e => setSeverityFilter(e.target.value)} style={_selectStyle}>
+          <option value="">All Severities</option>
+          <option value="info">Info</option>
+          <option value="warning">Warning</option>
+          <option value="error">Error</option>
+          <option value="critical">Critical</option>
+        </select>
+        <button onClick={handleExport} disabled={exporting} style={{
+          ..._pageBtnStyle(exporting), display: 'flex', alignItems: 'center', gap: '6px',
+        }}>
+          {exporting ? '…' : '⬇️'} Export CSV
+        </button>
+        <span style={{ fontSize: '12px', color: C.muted, marginLeft: 'auto' }}>
+          {total.toLocaleString()} event(s)
+        </span>
       </div>
+      {exportError && (
+        <div style={{ fontSize: '12px', color: C.red, marginBottom: '12px' }}>{exportError}</div>
+      )}
 
-      {loading ? (
-        <Card style={{ textAlign: 'center', padding: '40px' }}><LivePending /></Card>
-      ) : log == null || visible.length === 0 ? (
-        <Card style={{ padding: '40px', textAlign: 'center', color: C.muted, fontSize: '14px' }}>
-          {!server ? 'Select a server to view the mod log' : 'No log entries found'}
-        </Card>
+      {loading && events.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '48px 0', color: C.muted }}>Loading…</div>
+      ) : events.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '48px 0', color: C.muted }}>
+          No events match your filters.
+        </div>
       ) : (
-        <Card style={{ padding: 0 }}>
-          {visible.map((entry, i) => (
-            <div key={entry.id ?? i} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 22px', borderBottom: i < visible.length - 1 ? `1px solid ${C.border}` : 'none' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: dotColor(entry), flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '2px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 600 }}>{entry.action}</span>
-                  <span style={{ fontSize: '11px', color: C.muted, padding: '1px 7px', borderRadius: '100px', background: C.subtle }}>{entry.module}</span>
-                </div>
-                <div style={{ fontSize: '12px', color: C.muted }}>{entry.target} · {entry.detail}</div>
-              </div>
-              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.2)', flexShrink: 0 }}>{entry.time ?? entry.timestamp}</div>
-            </div>
-          ))}
-        </Card>
+        <div>{events.map(e => <EventRow key={e.event_id} event={e} />)}</div>
+      )}
+
+      {total > PAGE_SIZE && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          paddingTop: '14px', marginTop: '6px',
+          borderTop: `1px solid ${C.border}`, fontSize: '12px', color: C.muted,
+        }}>
+          <span>
+            Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total.toLocaleString()}
+          </span>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} style={_pageBtnStyle(page === 0)}>
+              ◀ Previous
+            </button>
+            <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= total} style={_pageBtnStyle((page + 1) * PAGE_SIZE >= total)}>
+              Next ▶
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
-};
+}
 
-// ── Admin Panel — Audit Log ───────────────────────────────────────────────────
+function FlagRow({ flag, onResolve }) {
+  const sev = FLAG_SEVERITY_COLOR[flag.severity] || FLAG_SEVERITY_COLOR.medium;
+  const sourceIcon = LOG_MODULE_ICON[flag.source_module] || '📌';
+  const created = _parseTs(flag.created_at);
+  return (
+    <div style={{
+      borderLeft: `3px solid ${sev.accent}`,
+      background: 'rgba(255,255,255,0.025)',
+      borderRadius: '0 8px 8px 0',
+      padding: '12px 14px', marginBottom: '8px',
+    }}>
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+        <div style={{ fontSize: '20px', lineHeight: 1, marginTop: '2px' }}>🚩</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            flexWrap: 'wrap', marginBottom: '5px',
+          }}>
+            <span style={{
+              fontSize: '11px', padding: '2px 8px', borderRadius: '6px',
+              background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.8)',
+            }}>{sourceIcon} {flag.source_module}</span>
+            <span style={{
+              fontSize: '10px', padding: '2px 8px', borderRadius: '6px',
+              background: 'rgba(255,255,255,0.06)', color: sev.fg,
+              textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700,
+            }}>{flag.severity}</span>
+            <span style={{
+              marginLeft: 'auto', fontSize: '11px', color: C.muted,
+            }} title={created ? created.toLocaleString() : ''}>
+              {created ? created.toLocaleString() : ''}
+            </span>
+          </div>
+          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)' }}>
+            <span style={{ fontWeight: 600 }}>{flag.username || flag.user_id}</span>
+            {flag.reason && <span style={{ color: C.muted }}> — {flag.reason}</span>}
+          </div>
+          {flag.source_ref_id && (
+            <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px' }}>
+              Ref: {flag.source_ref_id}
+            </div>
+          )}
+          {flag.status === 'active' && (
+            <button onClick={() => onResolve(flag.flag_id)} style={{
+              marginTop: '8px', background: 'rgba(200,168,78,0.1)',
+              border: `1px solid ${C.borderHover}`, color: C.gold,
+              borderRadius: '6px', padding: '5px 12px', cursor: 'pointer',
+              fontSize: '11px', fontWeight: 600, fontFamily: 'Sora, sans-serif',
+            }}>
+              ✓ Resolve
+            </button>
+          )}
+          {flag.status !== 'active' && flag.resolved_note && (
+            <div style={{ fontSize: '11px', color: C.muted, marginTop: '6px', fontStyle: 'italic' }}>
+              "{flag.resolved_note}"
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-const AuditLog = () => {
-  const { server } = useContext(DashboardContext);
-  const [log, setLog]     = useState(null);
-  const [loading, setLoading] = useState(false);
+function FlaggedUsersSection({ serverId }) {
+  const [flags, setFlags]               = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [statusFilter, setStatusFilter] = useState('active');
+  const [moduleFilter, setModuleFilter] = useState('');
+  const [toast, setToast]               = useState('');
 
-  useEffect(() => {
-    if (!server?.id) return;
-    setLoading(true); setLog(null);
-    fetchAuditLog(server.id, 50)
-      .then(data => { setLog(Array.isArray(data) ? data : data?.logs ?? []); setLoading(false); })
-      .catch(() => { setLog([]); setLoading(false); });
-  }, [server?.id]);
+  const load = React.useCallback(() => {
+    if (!serverId) return;
+    setLoading(true);
+    fetchFlags(serverId, { status: statusFilter, module: moduleFilter || undefined })
+      .then(data => setFlags(Array.isArray(data) ? data : []))
+      .catch(err => { console.error('flags fetch', err); setFlags([]); })
+      .finally(() => setLoading(false));
+  }, [serverId, statusFilter, moduleFilter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleResolve = async (flagId) => {
+    const note = window.prompt('Resolution note (optional):') || '';
+    try {
+      await resolveFlag(serverId, flagId, note);
+      setToast('✓ Flag resolved');
+      load();
+      setTimeout(() => setToast(''), 2500);
+    } catch (err) {
+      setToast('Failed: ' + (err.message || 'unknown error'));
+      setTimeout(() => setToast(''), 4000);
+    }
+  };
 
   return (
     <div>
-      <PageHeader icon="📋" title="Audit Log" desc="All bot actions — config changes, message sends, role changes, and more." />
+      <div style={_toolbarStyle}>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={_selectStyle}>
+          <option value="active">Active</option>
+          <option value="resolved">Resolved</option>
+          <option value="dismissed">Dismissed</option>
+        </select>
+        <select value={moduleFilter} onChange={e => setModuleFilter(e.target.value)} style={_selectStyle}>
+          <option value="">All Sources</option>
+          <option value="raid">Raid</option>
+          <option value="engage">Engage</option>
+          <option value="protection">Protection</option>
+        </select>
+        <span style={{ marginLeft: 'auto', fontSize: '12px', color: C.muted }}>
+          {flags.length} flag(s)
+        </span>
+      </div>
 
       {loading ? (
-        <Card style={{ textAlign: 'center', padding: '40px' }}><LivePending /></Card>
-      ) : log == null || log.length === 0 ? (
-        <Card style={{ padding: '48px', textAlign: 'center', color: C.muted }}>
-          <div style={{ fontSize: '32px', marginBottom: '12px' }}>📋</div>
-          <div style={{ fontSize: '14px' }}>{!server ? 'Select a server to view the audit log' : 'No audit log entries yet'}</div>
-        </Card>
+        <div style={{ textAlign: 'center', padding: '48px 0', color: C.muted }}>Loading…</div>
+      ) : flags.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '48px 0', color: C.muted }}>
+          No {statusFilter} flags.
+        </div>
       ) : (
-        <Card style={{ padding: 0 }}>
-          {log.map((entry, i) => (
-            <div key={entry.id ?? i} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 22px', borderBottom: i < log.length - 1 ? `1px solid ${C.border}` : 'none' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '8px', flexShrink: 0, background: 'rgba(200,168,78,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>📋</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '2px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 600 }}>{entry.action}</span>
-                  <span style={{ fontSize: '11px', color: C.muted, padding: '1px 7px', borderRadius: '100px', background: C.subtle }}>{entry.module}</span>
-                </div>
-                <div style={{ fontSize: '12px', color: C.muted }}>{entry.detail}</div>
-              </div>
-              <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginBottom: '2px' }}>{entry.user}</div>
-                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.2)' }}>{entry.time ?? entry.timestamp}</div>
-              </div>
-            </div>
-          ))}
-        </Card>
+        <div>{flags.map(f => (
+          <FlagRow key={f.flag_id} flag={f} onResolve={handleResolve} />
+        ))}</div>
       )}
+
+      {toast && (
+        <div style={{
+          marginTop: '12px', fontSize: '12px',
+          color: toast.startsWith('✓') ? C.green : C.red,
+        }}>{toast}</div>
+      )}
+    </div>
+  );
+}
+
+const LogsModule = () => {
+  const { server } = useContext(DashboardContext);
+  const sid = server?.id;
+  const [subtab, setSubtab] = useState('all');
+
+  return (
+    <div>
+      <PageHeader
+        icon="📋"
+        title="Logs"
+        desc="Activity, admin actions, flagged users, and settings changes across this server."
+      />
+      <LogsSubtabBar active={subtab} onChange={setSubtab} />
+      {subtab === 'flag'
+        ? <FlaggedUsersSection serverId={sid} />
+        : <EventLogSection serverId={sid} category={subtab === 'all' ? null : subtab} />}
     </div>
   );
 };
@@ -4066,9 +4344,7 @@ const NAV = [
   { id: 'engage',       icon: '🔄', label: 'Engage',         group: 'Settings' },
   { id: 'protection',   icon: '🛡️', label: 'Protection',     group: 'Settings' },
   { id: 'settings',    icon: '⚙️', label: 'Server Settings', group: 'Settings' },
-  { id: 'flagged',      icon: '🚩', label: 'Flagged Users',  group: 'Admin Panel' },
-  { id: 'modlog',       icon: '📝', label: 'Mod Log',        group: 'Admin Panel' },
-  { id: 'auditlog',     icon: '📋', label: 'Audit Log',      group: 'Admin Panel' },
+  { id: 'logs',         icon: '📋', label: 'Logs',           group: 'Admin Panel' },
 ];
 
 // ── NavBtn ────────────────────────────────────────────────────────────────────
@@ -4162,9 +4438,7 @@ const Dashboard = () => {
     engage:       noServerAccess ? <ModuleLock name="Engage" /> : <EngageSettings />,
     protection:   noServerAccess ? <ModuleLock name="Protection" /> : <ProtectionSettings />,
     settings:     noServerAccess ? <ModuleLock name="Server Settings" /> : <SettingsModule />,
-    flagged:      noServerAccess ? <ModuleLock name="Flagged Users" /> : <FlaggedUsers />,
-    modlog:       noServerAccess ? <ModuleLock name="Mod Log" /> : <ModLog />,
-    auditlog:     noServerAccess ? <ModuleLock name="Audit Log" /> : <AuditLog />,
+    logs:         noServerAccess ? <ModuleLock name="Logs" /> : <LogsModule />,
   };
 
   return (
