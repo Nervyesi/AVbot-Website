@@ -1,14 +1,10 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
-import SilkFlag from '../components/SilkFlag';
 import CursorSmoke from '../components/CursorSmoke';
+import LivingDemo from '../components/LivingDemo';
 
 const LOGO_URL = 'https://cdn.avbot.app/1199707792706117642/2e6734d8c9fc47fab6b8525a57374de3.png';
-
-function clamp(v, lo, hi) {
-  return v < lo ? lo : v > hi ? hi : v;
-}
 
 // Inline styles everywhere because Tailwind v4 utility emission is broken in
 // this CRA setup. Design tokens live in :root via index.css.
@@ -246,28 +242,51 @@ function SecondaryCTA({ href, children }) {
 
 // ── Hero ─────────────────────────────────────────────────────────────────────
 
+function LogoHalo() {
+  // Three layered blurred gold halos breathing at different rhythms behind
+  // the logo. Creates real depth in the dark without the flag.
+  const layers = [
+    { size: 'clamp(260px, 32vw, 440px)',  blur: 24,  pulseMin: 0.42, pulseMax: 0.72, duration: 3.6, color: 'rgba(200,168,78,0.85)' },
+    { size: 'clamp(400px, 50vw, 680px)',  blur: 60,  pulseMin: 0.28, pulseMax: 0.46, duration: 5.0, color: 'rgba(148,115,13,0.70)' },
+    { size: 'clamp(580px, 72vw, 980px)',  blur: 120, pulseMin: 0.12, pulseMax: 0.22, duration: 7.5, color: 'rgba(148,115,13,0.55)' },
+  ];
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        top: '50%', left: '50%',
+        width: 0, height: 0,
+        pointerEvents: 'none',
+        zIndex: 0,
+      }}
+    >
+      {layers.map((L, i) => (
+        <div
+          key={i}
+          style={{
+            position: 'absolute',
+            top: 0, left: 0,
+            width: L.size, height: L.size,
+            background: L.color,
+            borderRadius: '50%',
+            filter: `blur(${L.blur}px)`,
+            transform: 'translate(-50%, -50%)',
+            '--pulse-min': L.pulseMin,
+            '--pulse-max': L.pulseMax,
+            animation: `av-pulse-soft ${L.duration}s ease-in-out infinite`,
+            opacity: L.pulseMin,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function HeroSection({ inviteUrl }) {
   const hasHover = usePointerHover();
   const constellationRef = useRef(null);
   const particlesRef     = useRef(null);
-  // Ref to the DOM element holding logo + headline + subline, so the cloth
-  // can apply a synced transform without triggering React re-renders.
-  const fabricContentRef = useRef(null);
-
-  // Stable onTick handler: writes the synced transform directly to the DOM
-  // element. useCallback keeps reference identity stable across renders so
-  // SilkFlag's effect does not re-init on every Hero render.
-  const handleClothTick = useCallback((d) => {
-    const el = fabricContentRef.current;
-    if (!el) return;
-    // Mute the cloth's displacement before applying. The flag swings a lot
-    // more than the text should. Cap each axis so violent gusts cannot
-    // jerk the text off-center.
-    const tx = clamp(d.tx, -6, 6);
-    const ty = clamp(d.ty, -3, 3);
-    const skew = clamp(d.skew, -0.45, 0.45);
-    el.style.transform = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) rotate(${skew.toFixed(3)}deg)`;
-  }, []);
 
   // Subtle parallax on background layers.
   useEffect(() => {
@@ -347,141 +366,101 @@ function HeroSection({ inviteUrl }) {
           Built for Web3, by Web3.
         </motion.div>
 
-        {/* Flag stage. The cloth canvas sits absolutely behind the content
-            overlay so the flag becomes the visual backdrop. The overlay
-            (logo + headline + subline) sways in sync with the cloth. */}
+        {/* Logo with breathing gold halo. The clean centerpiece. */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.97 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.2, delay: 0.45, ease: [0.16, 0.7, 0.18, 1] }}
+          initial={{ scale: 0.86, opacity: 0, filter: 'blur(10px)' }}
+          animate={{ scale: 1, opacity: 1, filter: 'blur(0px)' }}
+          transition={{ duration: 1.1, delay: 0.55, ease: [0.16, 0.7, 0.18, 1] }}
           style={{
             position: 'relative',
-            width: 'min(980px, 92vw)',
-            // Maintains the flag's bounding-box aspect (with billow padding).
-            // Canvas logical size is 950 x 610 (760 + 60 + 130, 460 + 60 + 90).
-            aspectRatio: '950 / 610',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            margin: '0 auto',
+            width: '100%',
+            marginBottom: '28px',
           }}
         >
-          {/* Cloth (back). The Three.js renderer fills this absolute box. */}
-          <SilkFlag onTick={handleClothTick} />
-
-          {/* Content overlay (front), synced to cloth motion. */}
-          <div
-            ref={fabricContentRef}
+          <LogoHalo />
+          <LightRays />
+          <img
+            src={LOGO_URL}
+            alt="AVbot"
+            draggable="false"
             style={{
               position: 'relative',
-              zIndex: 2,
-              width: '100%',
-              maxWidth: '720px',
-              padding: '0 24px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              willChange: 'transform',
+              width: 'clamp(180px, 22vw, 260px)',
+              height: 'auto',
+              maxHeight: '160px',
+              objectFit: 'contain',
+              userSelect: 'none',
+              display: 'block',
+              filter: 'drop-shadow(0 0 24px rgba(200,168,78,0.45)) drop-shadow(0 0 64px rgba(148,115,13,0.25))',
+              zIndex: 1,
             }}
-          >
-            {/* Soft dark scrim behind the content for readability over gold folds. */}
-            <div
-              aria-hidden="true"
-              style={{
-                position: 'absolute',
-                inset: '-12% -10%',
-                background: 'radial-gradient(ellipse at center, rgba(8,8,10,0.55) 0%, rgba(8,8,10,0.28) 45%, transparent 80%)',
-                filter: 'blur(14px)',
-                pointerEvents: 'none',
-                zIndex: -1,
-              }}
-            />
-
-            {/* Logo. Plain <img>. Cannot become a black rectangle. */}
-            <motion.img
-              initial={{ scale: 0.88, opacity: 0, filter: 'blur(10px)' }}
-              animate={{ scale: 1, opacity: 1, filter: 'blur(0px)' }}
-              transition={{ duration: 1.0, delay: 0.85, ease: [0.16, 0.7, 0.18, 1] }}
-              src={LOGO_URL}
-              alt="AVbot"
-              draggable="false"
-              style={{
-                width: 'clamp(170px, 24vw, 260px)',
-                height: 'auto',
-                objectFit: 'contain',
-                userSelect: 'none',
-                display: 'block',
-                filter: 'drop-shadow(0 0 24px rgba(200,168,78,0.45)) drop-shadow(0 0 56px rgba(148,115,13,0.25))',
-                marginBottom: '18px',
-              }}
-            />
-
-            {/* One-shot light burst from logo center. */}
-            <LightRays />
-
-            {/* Headline */}
-            <h1 style={{
-              margin: 0,
-              fontSize: 'clamp(2rem, 5.4vw, 4rem)',
-              fontWeight: 800,
-              lineHeight: 1.02,
-              letterSpacing: '-0.045em',
-              fontFamily: 'Sora, sans-serif',
-            }}>
-              <motion.span
-                initial={{ y: 22, opacity: 0, filter: 'blur(6px)' }}
-                animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }}
-                transition={{ duration: 0.85, delay: 1.25, ease: [0.22, 0.6, 0.2, 1] }}
-                style={{
-                  display: 'block',
-                  color: 'var(--av-text)',
-                  textShadow: '0 2px 22px rgba(0,0,0,0.55)',
-                }}
-              >
-                Your community
-              </motion.span>
-              <motion.span
-                initial={{ y: 26, opacity: 0, filter: 'blur(8px)' }}
-                animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }}
-                transition={{ duration: 0.9, delay: 1.55, ease: [0.22, 0.6, 0.2, 1] }}
-                style={{
-                  display: 'block',
-                  background: 'linear-gradient(115deg, #94730D 22%, #f1d586 50%, #94730D 78%)',
-                  backgroundSize: '250% 100%',
-                  WebkitBackgroundClip: 'text',
-                  backgroundClip: 'text',
-                  color: 'transparent',
-                  WebkitTextFillColor: 'transparent',
-                  animation: 'av-shine 7s ease-in-out 2.6s infinite',
-                  filter: 'drop-shadow(0 2px 22px rgba(0,0,0,0.45))',
-                }}
-              >
-                deserves better.
-              </motion.span>
-            </h1>
-
-            {/* Subline */}
-            <motion.p
-              initial={{ y: 18, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ duration: 0.85, delay: 1.9, ease: [0.22, 0.6, 0.2, 1] }}
-              style={{
-                marginTop: '20px',
-                marginBottom: 0,
-                fontSize: 'clamp(0.95rem, 1.65vw, 1.1rem)',
-                lineHeight: 1.55,
-                maxWidth: '560px',
-                color: 'var(--av-text-muted)',
-                fontFamily: 'Sora, sans-serif',
-                textShadow: '0 1px 10px rgba(0,0,0,0.45)',
-              }}
-            >
-              AVbot turns your Discord into a living Web3 community engine.
-            </motion.p>
-          </div>
+          />
         </motion.div>
 
-        {/* CTAs sit below the flag. */}
+        {/* Headline */}
+        <h1 style={{
+          margin: 0,
+          fontSize: 'clamp(2.4rem, 6.4vw, 4.75rem)',
+          fontWeight: 800,
+          lineHeight: 1.02,
+          letterSpacing: '-0.045em',
+          fontFamily: 'Sora, sans-serif',
+          textAlign: 'center',
+        }}>
+          <motion.span
+            initial={{ y: 24, opacity: 0, filter: 'blur(6px)' }}
+            animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }}
+            transition={{ duration: 0.9, delay: 1.1, ease: [0.22, 0.6, 0.2, 1] }}
+            style={{
+              display: 'block',
+              color: 'var(--av-text)',
+            }}
+          >
+            Your community
+          </motion.span>
+          <motion.span
+            initial={{ y: 28, opacity: 0, filter: 'blur(8px)' }}
+            animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }}
+            transition={{ duration: 0.95, delay: 1.4, ease: [0.22, 0.6, 0.2, 1] }}
+            style={{
+              display: 'block',
+              background: 'linear-gradient(115deg, #94730D 22%, #f1d586 50%, #94730D 78%)',
+              backgroundSize: '250% 100%',
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
+              color: 'transparent',
+              WebkitTextFillColor: 'transparent',
+              animation: 'av-shine 7s ease-in-out 2.6s infinite',
+              filter: 'drop-shadow(0 0 36px rgba(148,115,13,0.18))',
+            }}
+          >
+            deserves better.
+          </motion.span>
+        </h1>
+
+        {/* Subline */}
+        <motion.p
+          initial={{ y: 18, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.85, delay: 1.75, ease: [0.22, 0.6, 0.2, 1] }}
+          style={{
+            marginTop: '24px',
+            marginBottom: 0,
+            fontSize: 'clamp(1rem, 1.85vw, 1.2rem)',
+            lineHeight: 1.6,
+            maxWidth: '640px',
+            color: 'var(--av-text-muted)',
+            fontFamily: 'Sora, sans-serif',
+            textAlign: 'center',
+          }}
+        >
+          AVbot turns your Discord into a living Web3 community engine.
+        </motion.p>
+
+        {/* CTAs */}
         <motion.div
           initial={{ y: 24, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -932,15 +911,7 @@ const Landing = () => {
         <HeroSection inviteUrl={inviteUrl} />
         <LiveStatsBar />
         <ModuleShowcase />
-
-        <div style={{
-          padding: '96px 24px',
-          textAlign: 'center',
-          fontSize: '13px',
-          color: 'var(--av-text-dim)',
-        }}>
-          More sections coming soon.
-        </div>
+        <LivingDemo />
       </div>
     </div>
   );
