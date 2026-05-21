@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
+import ClothFlag from '../components/ClothFlag';
+import CursorSmoke from '../components/CursorSmoke';
 
 const LOGO_URL = 'https://cdn.avbot.app/1199707792706117642/2e6734d8c9fc47fab6b8525a57374de3.png';
 
@@ -488,37 +490,33 @@ function HeroSection({ inviteUrl }) {
           Built for Web3, by Web3.
         </motion.div>
 
-        {/* Logo */}
+        {/* Logo printed on a real cloth flag */}
         <motion.div
           initial={{ scale: 0.82, opacity: 0, filter: 'blur(12px)' }}
           animate={{ scale: 1, opacity: 1, filter: 'blur(0px)' }}
           transition={{ duration: 1.1, delay: 0.55, ease: [0.16, 0.7, 0.18, 1] }}
           style={{
             position: 'relative',
-            marginBottom: '40px',
+            marginBottom: '24px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             width: '100%',
-            maxWidth: '340px',
             zIndex: 3,
+            filter: 'drop-shadow(0 0 50px rgba(200,168,78,0.35)) drop-shadow(0 0 100px rgba(148,115,13,0.2))',
           }}
         >
           <LightRays />
-          <img
+          <ClothFlag
             src={LOGO_URL}
-            alt="AVbot"
-            draggable="false"
-            style={{
-              position: 'relative',
-              width: '100%',
-              height: 'auto',
-              maxHeight: '190px',
-              objectFit: 'contain',
-              userSelect: 'none',
-              display: 'block',
-              filter: 'drop-shadow(0 0 40px rgba(200,168,78,0.35)) drop-shadow(0 0 80px rgba(148,115,13,0.25))',
-            }}
+            width={360}
+            height={210}
+            padLeft={36}
+            padRight={110}
+            padTop={42}
+            padBottom={70}
+            cols={18}
+            rows={12}
           />
         </motion.div>
 
@@ -1021,6 +1019,7 @@ const Landing = () => {
       fontFamily: 'Sora, sans-serif',
     }}>
       <ScrollMeteor />
+      <CursorSmoke />
 
       <div style={{ position: 'relative', zIndex: 1 }}>
         <HeroSection inviteUrl={inviteUrl} />
