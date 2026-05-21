@@ -674,20 +674,21 @@ const PANELS = [
 
 function DemoPanel({ panel, reverse }) {
   const { Mockup } = panel;
+  // The outer container is a PLAIN div so the panel is always in the DOM
+  // and always visible. Only the inner mockup and text animate on enter.
+  // viewport amount:0.15 once:true is the robust trigger in framer-motion
+  // 12.x. The element does not need to be above any negative root-margin
+  // shrunken viewport, just 15 percent intersecting at any point.
   return (
-    <motion.div
-      initial={{ y: 50, opacity: 0, scale: 0.985 }}
-      whileInView={{ y: 0, opacity: 1, scale: 1 }}
-      viewport={{ once: true, margin: '-80px' }}
-      transition={{ duration: 0.85, ease: [0.22, 0.6, 0.2, 1] }}
+    <div
       className={`living-demo-panel${reverse ? ' reverse' : ''}`}
       style={{ marginBottom: '96px' }}
     >
       <motion.div
-        initial={{ opacity: 0, y: 28 }}
+        initial={{ opacity: 0, y: 24 }}
         whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-80px' }}
-        transition={{ duration: 0.85, delay: 0.05, ease: [0.22, 0.6, 0.2, 1] }}
+        viewport={{ once: true, amount: 0.15 }}
+        transition={{ duration: 0.7, ease: [0.22, 0.6, 0.2, 1] }}
         className="living-demo-mockup"
         style={{
           display: 'flex',
@@ -698,10 +699,10 @@ function DemoPanel({ panel, reverse }) {
       </motion.div>
 
       <motion.div
-        initial={{ opacity: 0, y: 28 }}
+        initial={{ opacity: 0, y: 24 }}
         whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-80px' }}
-        transition={{ duration: 0.85, delay: 0.18, ease: [0.22, 0.6, 0.2, 1] }}
+        viewport={{ once: true, amount: 0.15 }}
+        transition={{ duration: 0.7, delay: 0.12, ease: [0.22, 0.6, 0.2, 1] }}
         className="living-demo-text"
         style={{
           maxWidth: '480px',
@@ -739,7 +740,7 @@ function DemoPanel({ panel, reverse }) {
           {panel.copy}
         </p>
       </motion.div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -756,10 +757,10 @@ export default function LivingDemo() {
     >
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         <motion.div
-          initial={{ y: 30, opacity: 0 }}
+          initial={{ y: 24, opacity: 0 }}
           whileInView={{ y: 0, opacity: 1 }}
-          viewport={{ once: true, margin: '-50px' }}
-          transition={{ duration: 0.8, ease: [0.22, 0.6, 0.2, 1] }}
+          viewport={{ once: true, amount: 0.2 }}
+          transition={{ duration: 0.7, ease: [0.22, 0.6, 0.2, 1] }}
           style={{ textAlign: 'center', marginBottom: '88px' }}
         >
           <h2 style={{
