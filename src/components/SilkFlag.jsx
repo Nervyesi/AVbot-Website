@@ -1,463 +1,309 @@
 import React, { useEffect, useRef } from 'react';
+import {
+  Scene,
+  PerspectiveCamera,
+  WebGLRenderer,
+  PlaneGeometry,
+  Mesh,
+  MeshStandardMaterial,
+  DirectionalLight,
+  HemisphereLight,
+  ACESFilmicToneMapping,
+  DoubleSide,
+  Color,
+} from 'three';
 
 /**
- * SilkFlag.
+ * SilkFlag (Three.js).
  *
- * A Verlet mass-spring cloth simulation rendered to Canvas 2D as raking gold
- * light on black silk. The fabric only. No textures, no images, nothing that
- * can break. Logo and headlines live in a separate HTML content layer that
- * the parent overlays on top.
+ * A high-subdivision PlaneGeometry rendered with a MeshStandardMaterial in
+ * deep black with a soft warm emissive floor. Each frame the vertices are
+ * displaced on Z (and a touch of Y) by layered traveling sine waves whose
+ * amplitude ramps quadratically from zero at the pinned LEFT edge to maximum
+ * at the free right edge. After moving vertices we call
+ * geometry.computeVertexNormals() so the lighting reacts to every fold,
+ * which is what produces real raking-light silk.
  *
- * Architectural notes:
- *   The simulation runs in canvas-local coordinates with the cloth's rest
- *   bounding box offset from the canvas edges by pad* values. The pole is
- *   the leftmost column of pinned particles. The rest of the cloth is free
- *   and responds to ambient wind plus a smoothed, directional cursor wind.
- *
- * Shading (the make-or-break detail):
- *   Each quad is filled with a single color sampled from a 256-entry LUT.
- *   The lookup index is a per-quad lightness in [0..1] derived from
- *     (a) a traveling wave phase  -- this is the rake light
- *     (b) horizontal compression  -- folds go darker
- *     (c) vertical-deviation      -- back-facing folds go darker
- *   The LUT ramps from near-black through dark gold-brown into full
- *   #94730D gold and finally a bright #e8c869 sheen.
+ * One warm gold DirectionalLight rakes the surface from the upper-left back,
+ * a deeper-gold fill comes from the opposite side, and a very dim warm
+ * HemisphereLight keeps the troughs from going pure dead black. ACES tone
+ * mapping ties the highlights together with that cinematic film look.
  *
  * Wind:
- *   ambient   three layered sines vary in space (column, row) and time
- *             with a slow amplitude envelope. Strength is scaled by the
- *             edge factor so ripples travel from pole to free edge.
- *   cursor    raw cursor velocity is smoothed into a target wind vector
- *             with 0.88 inertia. Raw velocity decays at 0.78 each frame so
- *             when the pointer stops the gust decays back to nothing over
- *             roughly a second.
+ *   ambient   layered sines run at all times so the cloth always undulates
+ *             softly. Amplitudes are scaled by an edge factor squared, so
+ *             ripples propagate pole to free edge instead of flapping
+ *             uniformly.
+ *   cursor    raw pointer velocity is smoothed into a wind-strength
+ *             multiplier (baseline 0.7, ceiling ~2.7) with 0.93 inertia and
+ *             a raw-velocity decay at 0.86 each frame. A separate eased
+ *             phase shift driven by cursor X velocity biases the wave
+ *             direction subtly so the wind reads as coming from where the
+ *             cursor moves.
  *
- * Displacement feedback:
- *   each frame we call onTick({ tx, ty, skew }) where tx/ty are the
- *   average displacement of central tracking particles from their rest
- *   positions and skew is a tiny rotation derived from the same average.
- *   The parent applies a muted version of this to the content layer so the
- *   logo and headlines breathe with the fabric.
+ * Lifecycle hygiene:
+ *   ResizeObserver keeps camera + renderer in sync with the parent.
+ *   IntersectionObserver pauses the rAF loop when the flag scrolls out of
+ *   view. dispose() is called on the geometry, material, and renderer on
+ *   unmount; the canvas is removed from the DOM. Listeners are cleaned up.
+ *
+ * Overlay sync:
+ *   onTick({ tx, ty, skew }) is called once per frame with the average
+ *   displacement of nine tracked central vertices. The payload object is
+ *   reused across frames so there are no per-frame allocations.
  */
-export default function SilkFlag({
-  width  = 760,
-  height = 460,
-  padLeft   = 60,
-  padRight  = 130,
-  padTop    = 60,
-  padBottom = 90,
-  cols = 24,
-  rows = 16,
-  onTick,
-}) {
-  const canvasRef = useRef(null);
+export default function SilkFlag({ onTick, segments }) {
+  // Hold the live onTick callback in a ref so changes to the prop never
+  // re-init the Three.js scene.
+  const onTickRef = useRef(onTick);
+  useEffect(() => { onTickRef.current = onTick; }, [onTick]);
+
+  const containerRef = useRef(null);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const container = containerRef.current;
+    if (!container) return;
 
-    // ── Sizing + DPR ─────────────────────────────────────────────────────
-    // The simulation runs in logical pixel coordinates (cssW x cssH). The
-    // canvas backing buffer is sized at logical * dpr for crisp pixels; the
-    // canvas element fills its parent via CSS so it scales responsively.
-    const cssW = width + padLeft + padRight;
-    const cssH = height + padTop + padBottom;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    canvas.width  = Math.round(cssW * dpr);
-    canvas.height = Math.round(cssH * dpr);
-    canvas.style.width  = '100%';
-    canvas.style.height = '100%';
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    // ── Particle state in flat Float32Arrays ─────────────────────────────
-    const N = cols * rows;
-    const px   = new Float32Array(N);
-    const py   = new Float32Array(N);
-    const opx  = new Float32Array(N);
-    const opy  = new Float32Array(N);
-    const rx   = new Float32Array(N); // rest x
-    const ry   = new Float32Array(N); // rest y
-    const pinX = new Float32Array(N);
-    const pinY = new Float32Array(N);
-    const pinned = new Uint8Array(N);
-
-    const cellW = width  / (cols - 1);
-    const cellH = height / (rows - 1);
-    const diagRest = Math.hypot(cellW, cellH);
-    const bend2W = cellW * 2;
-    const bend2H = cellH * 2;
-
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const i = r * cols + c;
-        const X = padLeft + c * cellW;
-        const Y = padTop  + r * cellH;
-        px[i] = X;  py[i] = Y;
-        opx[i] = X; opy[i] = Y;
-        rx[i] = X;  ry[i] = Y;
-        pinX[i] = X; pinY[i] = Y;
-        pinned[i] = c === 0 ? 1 : 0;
-      }
-    }
-
-    // ── Constraints packed [a, b, restLen, stiffness] ────────────────────
-    //   stiffness is the fraction of distance correction applied each
-    //   iteration. Structural/shear at 1.0, bend at 0.35 so bends are
-    //   only a gentle stiffening, not rigid.
-    const consArr = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const i = r * cols + c;
-        if (c < cols - 1) consArr.push(i, i + 1,     cellW,    1.0);
-        if (r < rows - 1) consArr.push(i, i + cols,  cellH,    1.0);
-        if (c < cols - 1 && r < rows - 1) {
-          consArr.push(i,     i + cols + 1, diagRest, 0.85);
-          consArr.push(i + 1, i + cols,     diagRest, 0.85);
-        }
-        if (c < cols - 2) consArr.push(i, i + 2,        bend2W, 0.35);
-        if (r < rows - 2) consArr.push(i, i + cols * 2, bend2H, 0.35);
-      }
-    }
-    const CONS = new Float32Array(consArr);
-    const CONS_LEN = CONS.length;
-
-    // ── Tracking particles for displacement feedback ─────────────────────
-    const trackIdx = [];
-    {
-      const r0 = Math.floor(rows * 0.30);
-      const r1 = Math.floor(rows * 0.70);
-      const c0 = Math.floor(cols * 0.35);
-      const c1 = Math.floor(cols * 0.70);
-      for (let r = r0; r <= r1; r += 2) {
-        for (let c = c0; c <= c1; c += 3) {
-          trackIdx.push(r * cols + c);
-        }
-      }
-    }
-    const trackCount = trackIdx.length;
-
-    // ── Shade LUT (256 entries, precomputed once) ─────────────────────────
-    // Stops define the ramp from black trough to sheen highlight.
-    const LUT = buildShadeLUT();
-
-    // ── Wind state ───────────────────────────────────────────────────────
-    const hasHover = window.matchMedia
+    const hasHover = typeof window !== 'undefined' && window.matchMedia
       ? window.matchMedia('(hover: hover)').matches
       : true;
 
-    let mouseLocalX = -1e6;
-    let mouseLocalY = -1e6;
-    let prevClientX = 0;
-    let prevClientY = 0;
-    let pointerKnown = false;
-    let mouseRawVx = 0;
-    let mouseRawVy = 0;
-    // Smoothed wind (the actual force applied to particles)
-    let windX = 0;
-    let windY = 0;
+    // Lower segment count for touch devices (graceful mobile degradation).
+    const SEG_X = segments?.x ?? (hasHover ? 48 : 32);
+    const SEG_Y = segments?.y ?? (hasHover ? 32 : 20);
+    const VERTS_X = SEG_X + 1; // one more vertex than segments
 
-    const onMove = (e) => {
-      if (!pointerKnown) {
-        prevClientX = e.clientX;
-        prevClientY = e.clientY;
-        pointerKnown = true;
+    // ── Renderer ──────────────────────────────────────────────────────────
+    const renderer = new WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      powerPreference: 'high-performance',
+    });
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    renderer.toneMapping = ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.setClearColor(new Color(0x000000), 0); // transparent
+    container.appendChild(renderer.domElement);
+    Object.assign(renderer.domElement.style, {
+      display: 'block',
+      width: '100%',
+      height: '100%',
+      pointerEvents: 'none',
+    });
+
+    // ── Scene + Camera ────────────────────────────────────────────────────
+    const scene = new Scene();
+    const camera = new PerspectiveCamera(40, 1, 0.1, 100);
+    camera.position.set(0, 0, 4.5);
+    camera.lookAt(0, 0, 0);
+
+    // ── Geometry + initial positions snapshot ─────────────────────────────
+    const W_WORLD = 4.4;
+    const H_WORLD = 2.7;
+    const geo = new PlaneGeometry(W_WORLD, H_WORLD, SEG_X, SEG_Y);
+    const posAttr = geo.attributes.position;
+    const posArr = posAttr.array;
+    const vCount = posArr.length / 3;
+    const original = new Float32Array(posArr); // copy of rest positions
+
+    // ── Material: deep black satin ────────────────────────────────────────
+    const mat = new MeshStandardMaterial({
+      color: 0x080808,
+      metalness: 0.45,
+      roughness: 0.42,
+      emissive: 0x0e0700,
+      emissiveIntensity: 0.7,
+      side: DoubleSide,
+    });
+
+    // ── Mesh, posed at a flattering 3D angle ──────────────────────────────
+    const mesh = new Mesh(geo, mat);
+    mesh.rotation.y = -0.18;   // ~10 degrees, pole comes slightly forward
+    mesh.rotation.z = -0.025;  // ~1.5 degrees, subtle hang tilt
+    scene.add(mesh);
+
+    // ── Lights: raking gold key + opposite-side fill + warm hemisphere ────
+    const keyLight = new DirectionalLight(0xf3d690, 3.2);
+    keyLight.position.set(-2.4, 3.0, 3.5);
+    scene.add(keyLight);
+
+    const fillLight = new DirectionalLight(0xc89a1f, 0.85);
+    fillLight.position.set(2.5, -1.2, 2.0);
+    scene.add(fillLight);
+
+    const hemi = new HemisphereLight(0x40300a, 0x050300, 0.4);
+    scene.add(hemi);
+
+    // ── Indices used to sample displacement for the overlay sync ──────────
+    const trackedIndices = [];
+    for (let j = 1; j <= 3; j++) {
+      for (let i = 1; i <= 3; i++) {
+        const xi = Math.round(SEG_X * (0.30 + (i - 1) * 0.20));
+        const yi = Math.round(SEG_Y * (0.30 + (j - 1) * 0.20));
+        trackedIndices.push(yi * VERTS_X + xi);
       }
-      mouseRawVx = e.clientX - prevClientX;
-      mouseRawVy = e.clientY - prevClientY;
-      prevClientX = e.clientX;
-      prevClientY = e.clientY;
+    }
+    const trackedCount = trackedIndices.length;
 
-      // The canvas is CSS-scaled to fill its parent, so we have to map
-      // displayed pixels back into logical (cloth-coordinate) pixels.
-      const rect = canvas.getBoundingClientRect();
-      const sx = rect.width  > 0 ? cssW / rect.width  : 1;
-      const sy = rect.height > 0 ? cssH / rect.height : 1;
-      mouseLocalX = (e.clientX - rect.left) * sx;
-      mouseLocalY = (e.clientY - rect.top)  * sy;
+    // ── Resize handling ──────────────────────────────────────────────────
+    const resize = () => {
+      const w = container.clientWidth  || 1;
+      const h = container.clientHeight || 1;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(container);
+
+    // ── Pointer + wind state ─────────────────────────────────────────────
+    let mouseClientVx = 0;
+    let mouseClientVy = 0;
+    let prevX = 0, prevY = 0;
+    let pointerKnown = false;
+    let windStrength = 0.85;       // baseline ambient strength
+    let windPhaseShift = 0;        // smoothed directional bias from cursor X
+
+    const onPointerMove = (e) => {
+      if (!pointerKnown) {
+        prevX = e.clientX; prevY = e.clientY;
+        pointerKnown = true;
+        return;
+      }
+      mouseClientVx = e.clientX - prevX;
+      mouseClientVy = e.clientY - prevY;
+      prevX = e.clientX; prevY = e.clientY;
     };
     if (hasHover) {
-      window.addEventListener('pointermove', onMove, { passive: true });
+      window.addEventListener('pointermove', onPointerMove, { passive: true });
     }
 
-    // ── Entrance gust: offset old positions so the cloth has initial
-    //    rightward velocity. Settling produces the unfurl effect.
-    for (let i = 0; i < N; i++) {
-      if (pinned[i]) continue;
-      const c = i % cols;
-      const edge = c / (cols - 1);
-      opx[i] = px[i] - 18 - edge * 10;
-      opy[i] = py[i] - 6;
-    }
+    // ── Pause when the container is offscreen ─────────────────────────────
+    let visible = true;
+    let frame = null;
 
-    // ── Render-time tracking values (reused, no per-frame allocation) ────
-    const tickPayload = { tx: 0, ty: 0, skew: 0 };
+    const io = new IntersectionObserver(([entry]) => {
+      const wasVisible = visible;
+      visible = entry.isIntersecting;
+      // Resume the loop if we just became visible and the loop was paused.
+      if (visible && !wasVisible && frame === null) {
+        frame = requestAnimationFrame(tick);
+      }
+    }, { threshold: 0 });
+    io.observe(container);
 
-    // ── Animation loop ───────────────────────────────────────────────────
-    let frame;
+    // ── Reused payload object so onTick allocates nothing per frame ───────
+    const payload = { tx: 0, ty: 0, skew: 0 };
+
     const startT = performance.now();
-    const dt = 1 / 60;
-    const dt2 = dt * dt;
 
-    const ITER = 5;
-    const damping = 0.984;
-
-    const tick = (now) => {
+    function tick(now) {
+      if (!visible) {
+        frame = null;
+        return;
+      }
       const elapsed = (now - startT) * 0.001;
 
-      // Smooth wind toward target derived from mouse velocity. Strong
-      // inertia gives gusts that build and settle, never snap.
-      const targetWindX = mouseRawVx * 0.55;
-      const targetWindY = mouseRawVy * 0.45;
-      windX = windX * 0.88 + targetWindX * 0.12;
-      windY = windY * 0.88 + targetWindY * 0.12;
-      // Decay raw velocity so a parked cursor returns wind to zero.
-      mouseRawVx *= 0.78;
-      mouseRawVy *= 0.78;
+      // Smooth wind toward target derived from cursor speed.
+      const speed = Math.hypot(mouseClientVx, mouseClientVy);
+      const targetStrength = 0.85 + Math.min(2.0, speed * 0.045);
+      windStrength = windStrength * 0.93 + targetStrength * 0.07;
 
-      // Slow amplitude envelopes for the ambient breeze. These breathe
-      // over tens of seconds, so the wind has gentle gusty character.
-      const A1 = 0.55 + Math.sin(elapsed * 0.13) * 0.40;
-      const A2 = 0.45 + Math.sin(elapsed * 0.27 + 1.3) * 0.35;
-      const t1 = elapsed * 1.05;
-      const t2 = elapsed * 2.70;
-      const t3 = elapsed * 4.40;
+      // Directional phase bias from cursor x velocity.
+      const targetPhase = mouseClientVx * 0.018;
+      windPhaseShift = windPhaseShift * 0.88 + targetPhase * 0.12;
 
-      const gravity = 18;
+      // Decay raw velocity so a parked cursor returns wind to baseline.
+      mouseClientVx *= 0.86;
+      mouseClientVy *= 0.86;
 
-      // ── Verlet integration ────────────────────────────────────────────
-      for (let i = 0; i < N; i++) {
-        if (pinned[i]) {
-          // Tiny breath on the pole so the attachment does not feel welded.
-          const r = (i / cols) | 0;
-          py[i] = pinY[i] + Math.sin(elapsed * 1.4 + r * 0.45) * 0.4;
-          px[i] = pinX[i];
-          opx[i] = px[i];
-          opy[i] = py[i];
-          continue;
-        }
+      const t = elapsed + windPhaseShift;
 
-        const c = i % cols;
-        const r = (i - c) / cols;
-        const edge = c / (cols - 1);                  // 0 pole, 1 free
-        const rowOsc = 0.55 + 0.45 * Math.sin(r * 0.85 + 0.4);
+      // ── Displace every vertex ───────────────────────────────────────────
+      // Pole at -W/2 (left), free edge at +W/2 (right). edge in [0..1].
+      // amp = edge^2 makes the curve aggressive: pole barely moves, free
+      // edge billows.
+      const invW = 1 / W_WORLD;
+      const halfW = W_WORLD * 0.5;
+      const halfH = H_WORLD * 0.5;
+      for (let i = 0; i < vCount; i++) {
+        const base = i * 3;
+        const ox = original[base];
+        const oy = original[base + 1];
 
-        // Layered ambient wind in X. Three sines at decreasing scale.
-        const aX =
-          ( Math.sin(t1 + r * 0.55 + c * 0.18) * 14 * A1
-          + Math.sin(t2 + r * 0.95 + c * 0.34) * 6  * A2
-          + Math.sin(t3 + r * 1.70 + c * 0.92) * 2
-          ) * (0.30 + edge * 1.10) * rowOsc;
+        const edge = (ox + halfW) * invW; // 0 at pole, 1 at free edge
+        const amp = edge * edge;
 
-        const aY =
-          ( Math.sin(t1 * 0.85 + c * 0.27) * 4 * A1
-          + Math.sin(t2 * 0.60 + r * 0.85) * 2 * A2
-          ) * (0.35 + edge * 0.75);
+        // Layered traveling waves (sum of three).
+        const w =
+          Math.sin(ox * 1.7 - t * 1.40 + oy * 0.25) * 0.30 * amp +
+          Math.sin(ox * 2.7 - t * 2.10 - oy * 0.50) * 0.15 * amp +
+          Math.sin(ox * 4.5 - t * 3.00 + oy * 0.80) * 0.06 * amp;
 
-        // Cursor gust localised by Gaussian proximity to the mouse.
-        const dxm = px[i] - mouseLocalX;
-        const dym = py[i] - mouseLocalY;
-        const d2  = dxm * dxm + dym * dym;
-        // sigma = 200 px gives a soft area gust around the cursor.
-        const localGust = Math.exp(-d2 / 40000);
-        const wScale = (0.22 + edge * 0.95) * rowOsc;
-        const cwX = windX * (0.18 + localGust * 1.6) * wScale * 5.0;
-        const cwY = windY * (0.18 + localGust * 1.6) * wScale * 5.0;
+        // Gentle vertical sag scaled by edge factor so the lower-free
+        // corner droops with weight. A small wave on Y too.
+        const lower = oy < 0 ? -oy / halfH : 0; // 0..1 in lower half
+        const sagY =
+          -edge * 0.16
+          - lower * edge * 0.12
+          + Math.sin(t * 0.7 + ox * 0.5) * 0.025 * edge;
 
-        const ax = aX + cwX;
-        const ay = aY + gravity * (0.25 + edge * 0.70) + cwY;
-
-        // Verlet step.
-        const vx = (px[i] - opx[i]) * damping;
-        const vy = (py[i] - opy[i]) * damping;
-        opx[i] = px[i];
-        opy[i] = py[i];
-        px[i] = px[i] + vx + ax * dt2;
-        py[i] = py[i] + vy + ay * dt2;
+        // Write the displaced positions.
+        posArr[base]     = ox;
+        posArr[base + 1] = oy + sagY * windStrength * 0.6;
+        posArr[base + 2] = w * windStrength;
       }
+      posAttr.needsUpdate = true;
+      // Recompute per-vertex normals so lighting reacts to every fold.
+      // This is the line that turns shaded quads into real silk.
+      geo.computeVertexNormals();
 
-      // ── Constraint relaxation ─────────────────────────────────────────
-      for (let it = 0; it < ITER; it++) {
-        for (let k = 0; k < CONS_LEN; k += 4) {
-          const a    = CONS[k]     | 0;
-          const b    = CONS[k + 1] | 0;
-          const rest = CONS[k + 2];
-          const stif = CONS[k + 3];
-
-          const dx = px[b] - px[a];
-          const dy = py[b] - py[a];
-          const distSq = dx * dx + dy * dy;
-          if (distSq < 0.0001) continue;
-          const dist = Math.sqrt(distSq);
-          const diff = (dist - rest) / dist * stif;
-          const offX = dx * diff * 0.5;
-          const offY = dy * diff * 0.5;
-
-          const pa = pinned[a];
-          const pb = pinned[b];
-          if (pa && pb) continue;
-          if (pa) {
-            px[b] -= offX * 2;
-            py[b] -= offY * 2;
-          } else if (pb) {
-            px[a] += offX * 2;
-            py[a] += offY * 2;
-          } else {
-            px[a] += offX;
-            py[a] += offY;
-            px[b] -= offX;
-            py[b] -= offY;
-          }
-        }
+      // ── Sample tracked vertices for the HTML overlay sync ───────────────
+      let sumZ = 0, sumY = 0;
+      for (let k = 0; k < trackedCount; k++) {
+        const b = trackedIndices[k] * 3;
+        sumZ += posArr[b + 2];
+        sumY += posArr[b + 1] - original[b + 1];
       }
+      const avgZ = sumZ / trackedCount;
+      const avgY = sumY / trackedCount;
 
-      // ── Tracking displacement for the content-layer sync ─────────────
-      let sumDx = 0, sumDy = 0;
-      for (let t = 0; t < trackCount; t++) {
-        const i = trackIdx[t];
-        sumDx += px[i] - rx[i];
-        sumDy += py[i] - ry[i];
-      }
-      tickPayload.tx = (sumDx / trackCount) * 0.55;
-      tickPayload.ty = (sumDy / trackCount) * 0.25;
-      // Skew from average horizontal displacement, normalised to flag width.
-      tickPayload.skew = (sumDx / trackCount) / width * 2.4;
-      if (onTick) onTick(tickPayload);
+      payload.tx = avgZ * 12;   // amplify so a few px of sway is visible
+      payload.ty = avgY * 7;
+      payload.skew = avgZ * 1.2; // degrees (parent clamps tightly)
 
-      // ── Render ────────────────────────────────────────────────────────
-      ctx.clearRect(0, 0, cssW, cssH);
+      const cb = onTickRef.current;
+      if (cb) cb(payload);
 
-      // Drop shadow.
-      const shX = padLeft + width * 0.5;
-      const shY = padTop + height + 18;
-      const sgrad = ctx.createRadialGradient(shX, shY, 4, shX, shY, width * 0.6);
-      sgrad.addColorStop(0,   'rgba(0,0,0,0.42)');
-      sgrad.addColorStop(0.6, 'rgba(0,0,0,0.1)');
-      sgrad.addColorStop(1,   'rgba(0,0,0,0)');
-      ctx.save();
-      ctx.translate(shX, shY);
-      ctx.scale(1, 0.28);
-      ctx.translate(-shX, -shY);
-      ctx.fillStyle = sgrad;
-      ctx.fillRect(0, shY - 100, cssW, 220);
-      ctx.restore();
-
-      renderCloth(
-        ctx, px, py, cols, rows, cellW, cellH, LUT, elapsed,
-      );
-
+      renderer.render(scene, camera);
       frame = requestAnimationFrame(tick);
-    };
+    }
 
     frame = requestAnimationFrame(tick);
 
     return () => {
-      cancelAnimationFrame(frame);
-      if (hasHover) window.removeEventListener('pointermove', onMove);
+      if (frame !== null) cancelAnimationFrame(frame);
+      ro.disconnect();
+      io.disconnect();
+      if (hasHover) window.removeEventListener('pointermove', onPointerMove);
+      geo.dispose();
+      mat.dispose();
+      renderer.dispose();
+      const el = renderer.domElement;
+      if (el && el.parentNode) el.parentNode.removeChild(el);
     };
-  }, [width, height, padLeft, padRight, padTop, padBottom, cols, rows, onTick]);
+    // segments is the only re-init trigger; onTick is stored in a ref.
+  }, [segments]);
 
   return (
-    <canvas
-      ref={canvasRef}
+    <div
+      ref={containerRef}
       aria-hidden="true"
-      style={{ display: 'block', pointerEvents: 'none' }}
+      style={{
+        position: 'absolute', inset: 0,
+        pointerEvents: 'none',
+      }}
     />
   );
-}
-
-// ── Per-quad cloth rendering ─────────────────────────────────────────────────
-
-function renderCloth(ctx, px, py, cols, rows, restW, restH, LUT, t) {
-  // Pre-compute time-varying scalars used inside the inner loop.
-  const phaseT1 = t * 0.95;
-  const phaseT2 = t * 1.65;
-
-  for (let r = 0; r < rows - 1; r++) {
-    for (let c = 0; c < cols - 1; c++) {
-      const i0 = r * cols + c;
-      const i1 = i0 + 1;
-      const i2 = i0 + cols;
-      const i3 = i2 + 1;
-
-      const x0 = px[i0], y0 = py[i0];
-      const x1 = px[i1], y1 = py[i1];
-      const x2 = px[i2], y2 = py[i2];
-      const x3 = px[i3], y3 = py[i3];
-
-      // Quad geometry derived from corner positions.
-      const widthTop = x1 - x0;
-      const widthBot = x3 - x2;
-      const avgW = (widthTop + widthBot) * 0.5;
-      const heightL = y2 - y0;
-      const heightR = y3 - y1;
-      const avgH = (heightL + heightR) * 0.5;
-
-      // Horizontal compression: positive when folded (narrower than rest).
-      const hCompression = 1 - avgW / restW;
-      // Vertical deviation: positive when stretched downward, negative when squashed.
-      const vDeviation = (avgH - restH) / restH;
-
-      // Traveling wave phase. Two sines combined give a non-uniform pattern
-      // that flows from pole to free edge over time.
-      const phaseA = Math.sin(phaseT1 + c * 0.26 + r * 0.08);
-      const phaseB = Math.sin(phaseT2 + c * 0.45 - r * 0.18) * 0.45;
-      const phase = (phaseA + phaseB) * 0.5; // -1..+1
-
-      // Lightness in [0..1]. Center 0.45 keeps base tone fairly dark; the
-      // phase term swings the rake light across; compression darkens folds;
-      // back-facing vertical deviation darkens further.
-      let lightness =
-        0.46
-        + phase * 0.40
-        - Math.max(0, hCompression) * 0.55
-        - Math.max(0, vDeviation) * 0.10;
-
-      if (lightness < 0) lightness = 0;
-      else if (lightness > 1) lightness = 1;
-
-      // LUT lookup.
-      ctx.fillStyle = LUT[(lightness * 255) | 0];
-      ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y1);
-      ctx.lineTo(x3, y3);
-      ctx.lineTo(x2, y2);
-      ctx.closePath();
-      ctx.fill();
-    }
-  }
-}
-
-// ── Shade LUT ────────────────────────────────────────────────────────────────
-
-function buildShadeLUT() {
-  // Stops chosen to produce black silk with gold rake-light.
-  // index -> [r, g, b]
-  const stops = [
-    [0,   3,   3,   3 ],   // deepest trough (almost black)
-    [55,  9,   8,   6 ],   // dark
-    [110, 50,  35,  9 ],   // very dark gold-brown
-    [165, 120, 90,  18],   // mid gold
-    [210, 200, 152, 30],   // bright gold
-    [240, 232, 200, 105],  // sheen highlight
-    [255, 252, 222, 152],  // brightest specular
-  ];
-  const lut = new Array(256);
-  for (let i = 0; i < 256; i++) {
-    let prev = stops[0], next = stops[stops.length - 1];
-    for (let s = 0; s < stops.length - 1; s++) {
-      if (i >= stops[s][0] && i <= stops[s + 1][0]) {
-        prev = stops[s]; next = stops[s + 1];
-        break;
-      }
-    }
-    const range = next[0] - prev[0] || 1;
-    const k = (i - prev[0]) / range;
-    const R = (prev[1] + (next[1] - prev[1]) * k) | 0;
-    const G = (prev[2] + (next[2] - prev[2]) * k) | 0;
-    const B = (prev[3] + (next[3] - prev[3]) * k) | 0;
-    lut[i] = `rgb(${R},${G},${B})`;
-  }
-  return lut;
 }

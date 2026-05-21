@@ -366,23 +366,8 @@ function HeroSection({ inviteUrl }) {
             margin: '0 auto',
           }}
         >
-          {/* Cloth (back). Absolute-fills the stage; canvas scales via CSS. */}
-          <div style={{
-            position: 'absolute', inset: 0,
-            pointerEvents: 'none',
-          }}>
-            <SilkFlag
-              onTick={handleClothTick}
-              width={760}
-              height={460}
-              padLeft={60}
-              padRight={130}
-              padTop={60}
-              padBottom={90}
-              cols={24}
-              rows={16}
-            />
-          </div>
+          {/* Cloth (back). The Three.js renderer fills this absolute box. */}
+          <SilkFlag onTick={handleClothTick} />
 
           {/* Content overlay (front), synced to cloth motion. */}
           <div
