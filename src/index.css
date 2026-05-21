@@ -38,13 +38,6 @@
   50%      { opacity: 0.7; }
 }
 
-@keyframes flag-wave {
-  0%, 100% { transform: rotateY(0deg) skewY(1deg) scaleX(1); }
-  25%      { transform: rotateY(8deg)  skewY(-2deg) scaleX(0.98); }
-  50%      { transform: rotateY(-5deg) skewY(2deg)  scaleX(1.02); }
-  75%      { transform: rotateY(6deg)  skewY(-1deg) scaleX(0.99); }
-}
-
 /* Slow shine sweep for the gold gradient text. */
 @keyframes av-shine {
   0%, 100% { background-position: 0% 50%; }

@@ -1,10 +1,14 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
-import ClothFlag from '../components/ClothFlag';
+import SilkFlag from '../components/SilkFlag';
 import CursorSmoke from '../components/CursorSmoke';
 
 const LOGO_URL = 'https://cdn.avbot.app/1199707792706117642/2e6734d8c9fc47fab6b8525a57374de3.png';
+
+function clamp(v, lo, hi) {
+  return v < lo ? lo : v > hi ? hi : v;
+}
 
 // Inline styles everywhere because Tailwind v4 utility emission is broken in
 // this CRA setup. Design tokens live in :root via index.css.
@@ -128,128 +132,6 @@ function ParticleField({ parallaxRef }) {
   );
 }
 
-// ── Silk flag. SVG path morphed every frame, mouse drives wind. ────────────
-
-const FLAG_W = 720;
-const FLAG_H = 360;
-
-function buildFlagPath(t, wind) {
-  const ampTop = 10 + wind * 3.2;
-  const ampMid = 22 + wind * 5.5;
-  const ampBot = 12 + wind * 3.4;
-  const k = (2 * Math.PI) / 220;
-  const omega = 1.9 * wind;
-  const step = 14;
-  const out = [];
-
-  // Top edge, left to right.
-  out.push(`M 0 ${(ampTop * 0.35 * Math.sin(omega * t)).toFixed(2)}`);
-  for (let x = step; x <= FLAG_W; x += step) {
-    const y = ampTop * Math.sin(k * x + omega * t);
-    out.push(`L ${x} ${y.toFixed(2)}`);
-  }
-
-  // Right edge, the "loose" side, top to bottom, biggest amplitude.
-  for (let yi = step; yi <= FLAG_H; yi += step) {
-    const x = FLAG_W + ampMid * Math.sin(k * yi * 1.4 + omega * t + Math.PI / 3);
-    out.push(`L ${x.toFixed(2)} ${yi}`);
-  }
-
-  // Bottom edge, right to left.
-  for (let x = FLAG_W - step; x >= 0; x -= step) {
-    const y = FLAG_H + ampBot * Math.sin(k * x + omega * t + Math.PI / 2);
-    out.push(`L ${x} ${y.toFixed(2)}`);
-  }
-
-  // Left edge stays fixed (this is the implicit pole).
-  out.push(`L 0 ${(ampTop * 0.35 * Math.sin(omega * t)).toFixed(2)}`);
-  out.push('Z');
-  return out.join(' ');
-}
-
-function SilkFlag({ hasHover }) {
-  const pathRef  = useRef(null);
-  const sheenRef = useRef(null);
-  const windRef  = useRef(2.2);
-
-  useEffect(() => {
-    let lastX = 0;
-    let lastT = performance.now();
-    const onMove = (e) => {
-      const now = performance.now();
-      const dt = Math.max(1, now - lastT);
-      const v = Math.abs(e.clientX - lastX) / dt;
-      lastX = e.clientX;
-      lastT = now;
-      // Faster cursor, faster wave. Smooth toward target, clamp 1..7.
-      const target = Math.max(1, Math.min(7, 1 + v * 14));
-      windRef.current = windRef.current * 0.82 + target * 0.18;
-    };
-    if (hasHover) window.addEventListener('mousemove', onMove, { passive: true });
-
-    let frame;
-    const start = performance.now();
-    const tick = (now) => {
-      const t = (now - start) / 1000;
-      const wind = windRef.current;
-      const d = buildFlagPath(t, wind);
-      if (pathRef.current)  pathRef.current.setAttribute('d', d);
-      if (sheenRef.current) sheenRef.current.setAttribute('d', d);
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-
-    return () => {
-      cancelAnimationFrame(frame);
-      if (hasHover) window.removeEventListener('mousemove', onMove);
-    };
-  }, [hasHover]);
-
-  return (
-    <div
-      aria-hidden="true"
-      style={{
-        position: 'absolute',
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -52%) rotate(-2deg)',
-        width: 'min(120vw, 1400px)',
-        height: 'auto',
-        pointerEvents: 'none',
-        zIndex: 0,
-        opacity: 0.95,
-        filter: 'drop-shadow(0 30px 80px rgba(148,115,13,0.25))',
-      }}
-    >
-      <svg
-        viewBox={`-10 -30 ${FLAG_W + 60} ${FLAG_H + 60}`}
-        preserveAspectRatio="xMidYMid meet"
-        style={{ width: '100%', height: 'auto', display: 'block' }}
-      >
-        <defs>
-          <linearGradient id="silkGoldFill" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%"   stopColor="#c89a1f" stopOpacity="0.55" />
-            <stop offset="35%"  stopColor="#94730D" stopOpacity="0.35" />
-            <stop offset="75%"  stopColor="#94730D" stopOpacity="0.08" />
-            <stop offset="100%" stopColor="#94730D" stopOpacity="0" />
-          </linearGradient>
-          <linearGradient id="silkSheen" x1="0" y1="0" x2="1" y2="0.05">
-            <stop offset="0%"   stopColor="#ffeec1" stopOpacity="0" />
-            <stop offset="35%"  stopColor="#ffeec1" stopOpacity="0.18" />
-            <stop offset="55%"  stopColor="#ffeec1" stopOpacity="0" />
-            <stop offset="100%" stopColor="#ffeec1" stopOpacity="0" />
-          </linearGradient>
-          <filter id="silkSoft" x="-5%" y="-5%" width="110%" height="110%">
-            <feGaussianBlur stdDeviation="0.4" />
-          </filter>
-        </defs>
-
-        <path ref={pathRef}  d={buildFlagPath(0, 2.2)} fill="url(#silkGoldFill)" filter="url(#silkSoft)" />
-        <path ref={sheenRef} d={buildFlagPath(0, 2.2)} fill="url(#silkSheen)" />
-      </svg>
-    </div>
-  );
-}
 
 // ── One-shot light ray burst from logo center ───────────────────────────────
 
@@ -281,47 +163,6 @@ function LightRays() {
             animation: 'av-ray-burst 1.6s cubic-bezier(0.22, 0.85, 0.35, 1) 0.55s 1 both',
             animationDelay: `${0.55 + i * 0.03}s`,
             transform: `translate(-50%, -50%) rotate(${angle}deg) scaleY(0)`,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-// ── Layered halos behind the logo (3 stacked blurs at different rhythms) ────
-
-function LogoHalo() {
-  const layers = [
-    { size: 'clamp(280px, 38vw, 520px)', blur: 22,  pulseMin: 0.40, pulseMax: 0.70, duration: 3.6, color: 'rgba(200,168,78,0.85)' },
-    { size: 'clamp(420px, 58vw, 760px)', blur: 60,  pulseMin: 0.28, pulseMax: 0.45, duration: 5.0, color: 'rgba(148,115,13,0.7)'  },
-    { size: 'clamp(620px, 82vw, 1100px)', blur: 120, pulseMin: 0.12, pulseMax: 0.22, duration: 7.5, color: 'rgba(148,115,13,0.5)'  },
-  ];
-  return (
-    <div
-      aria-hidden="true"
-      style={{
-        position: 'absolute',
-        top: '50%', left: '50%',
-        width: 0, height: 0,
-        pointerEvents: 'none',
-        zIndex: 0,
-      }}
-    >
-      {layers.map((L, i) => (
-        <div
-          key={i}
-          style={{
-            position: 'absolute',
-            top: 0, left: 0,
-            width: L.size, height: L.size,
-            background: L.color,
-            borderRadius: '50%',
-            filter: `blur(${L.blur}px)`,
-            transform: 'translate(-50%, -50%)',
-            '--pulse-min': L.pulseMin,
-            '--pulse-max': L.pulseMax,
-            animation: `av-pulse-soft ${L.duration}s ease-in-out infinite`,
-            opacity: L.pulseMin,
           }}
         />
       ))}
@@ -409,6 +250,24 @@ function HeroSection({ inviteUrl }) {
   const hasHover = usePointerHover();
   const constellationRef = useRef(null);
   const particlesRef     = useRef(null);
+  // Ref to the DOM element holding logo + headline + subline, so the cloth
+  // can apply a synced transform without triggering React re-renders.
+  const fabricContentRef = useRef(null);
+
+  // Stable onTick handler: writes the synced transform directly to the DOM
+  // element. useCallback keeps reference identity stable across renders so
+  // SilkFlag's effect does not re-init on every Hero render.
+  const handleClothTick = useCallback((d) => {
+    const el = fabricContentRef.current;
+    if (!el) return;
+    // Mute the cloth's displacement before applying. The flag swings a lot
+    // more than the text should. Cap each axis so violent gusts cannot
+    // jerk the text off-center.
+    const tx = clamp(d.tx, -6, 6);
+    const ty = clamp(d.ty, -3, 3);
+    const skew = clamp(d.skew, -0.45, 0.45);
+    el.style.transform = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) rotate(${skew.toFixed(3)}deg)`;
+  }, []);
 
   // Subtle parallax on background layers.
   useEffect(() => {
@@ -444,24 +303,22 @@ function HeroSection({ inviteUrl }) {
         isolation: 'isolate',
       }}
     >
-      {/* Atmosphere */}
+      {/* Far background atmosphere */}
       <ConstellationGrid parallaxRef={constellationRef} />
-      <SilkFlag hasHover={hasHover} />
       <ParticleField parallaxRef={particlesRef} />
-      <LogoHalo />
       <Vignette />
 
-      {/* Content */}
+      {/* Content column */}
       <div style={{
         position: 'relative',
         zIndex: 3,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        gap: '0',
-        maxWidth: '1000px',
+        maxWidth: '1100px',
+        width: '100%',
       }}>
-        {/* Tagline label */}
+        {/* Tagline pill */}
         <motion.div
           initial={{ y: 12, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -479,7 +336,7 @@ function HeroSection({ inviteUrl }) {
             fontWeight: 700,
             letterSpacing: '0.22em',
             textTransform: 'uppercase',
-            marginBottom: '36px',
+            marginBottom: '24px',
           }}
         >
           <span style={{
@@ -490,97 +347,162 @@ function HeroSection({ inviteUrl }) {
           Built for Web3, by Web3.
         </motion.div>
 
-        {/* Logo printed on a real cloth flag */}
+        {/* Flag stage. The cloth canvas sits absolutely behind the content
+            overlay so the flag becomes the visual backdrop. The overlay
+            (logo + headline + subline) sways in sync with the cloth. */}
         <motion.div
-          initial={{ scale: 0.82, opacity: 0, filter: 'blur(12px)' }}
-          animate={{ scale: 1, opacity: 1, filter: 'blur(0px)' }}
-          transition={{ duration: 1.1, delay: 0.55, ease: [0.16, 0.7, 0.18, 1] }}
+          initial={{ opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1.2, delay: 0.45, ease: [0.16, 0.7, 0.18, 1] }}
           style={{
             position: 'relative',
-            marginBottom: '24px',
+            width: 'min(980px, 92vw)',
+            // Maintains the flag's bounding-box aspect (with billow padding).
+            // Canvas logical size is 950 x 610 (760 + 60 + 130, 460 + 60 + 90).
+            aspectRatio: '950 / 610',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: '100%',
-            zIndex: 3,
-            filter: 'drop-shadow(0 0 50px rgba(200,168,78,0.35)) drop-shadow(0 0 100px rgba(148,115,13,0.2))',
+            margin: '0 auto',
           }}
         >
-          <LightRays />
-          <ClothFlag
-            src={LOGO_URL}
-            width={360}
-            height={210}
-            padLeft={36}
-            padRight={110}
-            padTop={42}
-            padBottom={70}
-            cols={18}
-            rows={12}
-          />
-        </motion.div>
+          {/* Cloth (back). Absolute-fills the stage; canvas scales via CSS. */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            pointerEvents: 'none',
+          }}>
+            <SilkFlag
+              onTick={handleClothTick}
+              width={760}
+              height={460}
+              padLeft={60}
+              padRight={130}
+              padTop={60}
+              padBottom={90}
+              cols={24}
+              rows={16}
+            />
+          </div>
 
-        {/* Headline */}
-        <h1 style={{
-          margin: 0,
-          fontSize: 'clamp(2.5rem, 7.2vw, 5.5rem)',
-          fontWeight: 800,
-          lineHeight: 1.02,
-          letterSpacing: '-0.045em',
-          fontFamily: 'Sora, sans-serif',
-        }}>
-          <motion.span
-            initial={{ y: 28, opacity: 0, filter: 'blur(6px)' }}
-            animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }}
-            transition={{ duration: 0.9, delay: 1.2, ease: [0.22, 0.6, 0.2, 1] }}
-            style={{ display: 'block', color: 'var(--av-text)' }}
-          >
-            Your community
-          </motion.span>
-          <motion.span
-            initial={{ y: 32, opacity: 0, filter: 'blur(8px)' }}
-            animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }}
-            transition={{ duration: 0.95, delay: 1.5, ease: [0.22, 0.6, 0.2, 1] }}
+          {/* Content overlay (front), synced to cloth motion. */}
+          <div
+            ref={fabricContentRef}
             style={{
-              display: 'block',
-              background: 'linear-gradient(115deg, #94730D 22%, #f1d586 50%, #94730D 78%)',
-              backgroundSize: '250% 100%',
-              WebkitBackgroundClip: 'text',
-              backgroundClip: 'text',
-              color: 'transparent',
-              WebkitTextFillColor: 'transparent',
-              animation: 'av-shine 7s ease-in-out 2.6s infinite',
-              textShadow: '0 0 48px rgba(148,115,13,0.18)',
+              position: 'relative',
+              zIndex: 2,
+              width: '100%',
+              maxWidth: '720px',
+              padding: '0 24px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              willChange: 'transform',
             }}
           >
-            deserves better.
-          </motion.span>
-        </h1>
+            {/* Soft dark scrim behind the content for readability over gold folds. */}
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                inset: '-12% -10%',
+                background: 'radial-gradient(ellipse at center, rgba(8,8,10,0.55) 0%, rgba(8,8,10,0.28) 45%, transparent 80%)',
+                filter: 'blur(14px)',
+                pointerEvents: 'none',
+                zIndex: -1,
+              }}
+            />
 
-        {/* Subline */}
-        <motion.p
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.85, delay: 1.85, ease: [0.22, 0.6, 0.2, 1] }}
-          style={{
-            marginTop: '28px',
-            fontSize: 'clamp(1rem, 2vw, 1.25rem)',
-            lineHeight: 1.6,
-            maxWidth: '720px',
-            color: 'var(--av-text-muted)',
-            fontFamily: 'Sora, sans-serif',
-          }}
-        >
-          AVbot turns your Discord into a living Web3 community engine.
-        </motion.p>
+            {/* Logo. Plain <img>. Cannot become a black rectangle. */}
+            <motion.img
+              initial={{ scale: 0.88, opacity: 0, filter: 'blur(10px)' }}
+              animate={{ scale: 1, opacity: 1, filter: 'blur(0px)' }}
+              transition={{ duration: 1.0, delay: 0.85, ease: [0.16, 0.7, 0.18, 1] }}
+              src={LOGO_URL}
+              alt="AVbot"
+              draggable="false"
+              style={{
+                width: 'clamp(170px, 24vw, 260px)',
+                height: 'auto',
+                objectFit: 'contain',
+                userSelect: 'none',
+                display: 'block',
+                filter: 'drop-shadow(0 0 24px rgba(200,168,78,0.45)) drop-shadow(0 0 56px rgba(148,115,13,0.25))',
+                marginBottom: '18px',
+              }}
+            />
 
-        {/* CTAs */}
+            {/* One-shot light burst from logo center. */}
+            <LightRays />
+
+            {/* Headline */}
+            <h1 style={{
+              margin: 0,
+              fontSize: 'clamp(2rem, 5.4vw, 4rem)',
+              fontWeight: 800,
+              lineHeight: 1.02,
+              letterSpacing: '-0.045em',
+              fontFamily: 'Sora, sans-serif',
+            }}>
+              <motion.span
+                initial={{ y: 22, opacity: 0, filter: 'blur(6px)' }}
+                animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }}
+                transition={{ duration: 0.85, delay: 1.25, ease: [0.22, 0.6, 0.2, 1] }}
+                style={{
+                  display: 'block',
+                  color: 'var(--av-text)',
+                  textShadow: '0 2px 22px rgba(0,0,0,0.55)',
+                }}
+              >
+                Your community
+              </motion.span>
+              <motion.span
+                initial={{ y: 26, opacity: 0, filter: 'blur(8px)' }}
+                animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }}
+                transition={{ duration: 0.9, delay: 1.55, ease: [0.22, 0.6, 0.2, 1] }}
+                style={{
+                  display: 'block',
+                  background: 'linear-gradient(115deg, #94730D 22%, #f1d586 50%, #94730D 78%)',
+                  backgroundSize: '250% 100%',
+                  WebkitBackgroundClip: 'text',
+                  backgroundClip: 'text',
+                  color: 'transparent',
+                  WebkitTextFillColor: 'transparent',
+                  animation: 'av-shine 7s ease-in-out 2.6s infinite',
+                  filter: 'drop-shadow(0 2px 22px rgba(0,0,0,0.45))',
+                }}
+              >
+                deserves better.
+              </motion.span>
+            </h1>
+
+            {/* Subline */}
+            <motion.p
+              initial={{ y: 18, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.85, delay: 1.9, ease: [0.22, 0.6, 0.2, 1] }}
+              style={{
+                marginTop: '20px',
+                marginBottom: 0,
+                fontSize: 'clamp(0.95rem, 1.65vw, 1.1rem)',
+                lineHeight: 1.55,
+                maxWidth: '560px',
+                color: 'var(--av-text-muted)',
+                fontFamily: 'Sora, sans-serif',
+                textShadow: '0 1px 10px rgba(0,0,0,0.45)',
+              }}
+            >
+              AVbot turns your Discord into a living Web3 community engine.
+            </motion.p>
+          </div>
+        </motion.div>
+
+        {/* CTAs sit below the flag. */}
         <motion.div
           initial={{ y: 24, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.9, delay: 2.15, ease: [0.22, 0.6, 0.2, 1] }}
           style={{
-            marginTop: '44px',
+            marginTop: '28px',
             display: 'flex',
             gap: '16px',
             flexWrap: 'wrap',
