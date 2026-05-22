@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 import CursorSmoke from '../components/CursorSmoke';
-import LivingDemo from '../components/LivingDemo';
+import ScrollJourney from '../components/ScrollJourney';
 
 const LOGO_URL = 'https://cdn.avbot.app/1199707792706117642/2e6734d8c9fc47fab6b8525a57374de3.png';
 
@@ -243,12 +243,13 @@ function SecondaryCTA({ href, children }) {
 // ── Hero ─────────────────────────────────────────────────────────────────────
 
 function LogoHalo() {
-  // Three layered blurred gold halos breathing at different rhythms behind
-  // the logo. Creates real depth in the dark without the flag.
+  // A restrained gold aura behind the logo. Three layered blurs at very low
+  // intensities so the logo reads as lit from within, not under a spotlight.
+  // Candlelight in a dark room, not a floodlight.
   const layers = [
-    { size: 'clamp(260px, 32vw, 440px)',  blur: 24,  pulseMin: 0.42, pulseMax: 0.72, duration: 3.6, color: 'rgba(200,168,78,0.85)' },
-    { size: 'clamp(400px, 50vw, 680px)',  blur: 60,  pulseMin: 0.28, pulseMax: 0.46, duration: 5.0, color: 'rgba(148,115,13,0.70)' },
-    { size: 'clamp(580px, 72vw, 980px)',  blur: 120, pulseMin: 0.12, pulseMax: 0.22, duration: 7.5, color: 'rgba(148,115,13,0.55)' },
+    { size: 'clamp(180px, 22vw, 300px)', blur: 26,  pulseMin: 0.18, pulseMax: 0.30, duration: 4.2, color: 'rgba(200,168,78,0.55)' },
+    { size: 'clamp(280px, 36vw, 460px)', blur: 64,  pulseMin: 0.10, pulseMax: 0.18, duration: 6.0, color: 'rgba(148,115,13,0.45)' },
+    { size: 'clamp(420px, 54vw, 720px)', blur: 110, pulseMin: 0.05, pulseMax: 0.09, duration: 8.5, color: 'rgba(148,115,13,0.35)' },
   ];
   return (
     <div
@@ -394,7 +395,7 @@ function HeroSection({ inviteUrl }) {
               objectFit: 'contain',
               userSelect: 'none',
               display: 'block',
-              filter: 'drop-shadow(0 0 24px rgba(200,168,78,0.45)) drop-shadow(0 0 64px rgba(148,115,13,0.25))',
+              filter: 'drop-shadow(0 0 14px rgba(200,168,78,0.25)) drop-shadow(0 0 36px rgba(148,115,13,0.12))',
               zIndex: 1,
             }}
           />
@@ -623,212 +624,6 @@ function LiveStatsBar() {
   );
 }
 
-// ── Module Showcase (9 modules) ──────────────────────────────────────────────
-
-const MODULES = [
-  {
-    id:          'analytics',
-    icon:        '📊',
-    title:       'Analytics',
-    tagline:     'Numbers that matter.',
-    description: 'Real time community health metrics, member growth, engagement trends, and module performance. Make decisions with data.',
-    features:    ['Live dashboards', 'Member growth tracking', 'Module performance', 'Custom timeframes'],
-  },
-  {
-    id:          'verify',
-    icon:        '✅',
-    title:       'Verification',
-    tagline:     'Identity on your terms.',
-    description: 'Token gated, role based access. Verify members through customizable challenges that fit your community vibe.',
-    features:    ['Token gating', 'Role assignment', 'Custom panels', 'Web3 native'],
-  },
-  {
-    id:          'roleselect',
-    icon:        '🎭',
-    title:       'Role Selection',
-    tagline:     'Self serve roles.',
-    description: 'Beautiful role pickers powered by reactions or buttons. Members claim their tags without burdening your mod team.',
-    features:    ['Reaction or button panels', 'Multiple categories', 'Restricted access', 'Auto sync'],
-  },
-  {
-    id:          'forms',
-    icon:        '📝',
-    title:       'Forms',
-    tagline:     'Onboarding redefined.',
-    description: 'Build custom application forms for your community. Approval workflows, role rewards, and full submission history.',
-    features:    ['Visual builder', 'Approval workflows', 'Auto role on approval', 'Full audit trail'],
-  },
-  {
-    id:          'tickets',
-    icon:        '🎫',
-    title:       'Tickets',
-    tagline:     'Support that scales.',
-    description: 'Ticket management that keeps DMs sane. Categorized, threaded, and trackable. Built for serious operations.',
-    features:    ['Threaded conversations', 'Category routing', 'Auto close inactive', 'Full audit trail'],
-  },
-  {
-    id:          'raid',
-    icon:        '⚔️',
-    title:       'Raid',
-    tagline:     'Amplify your X reach.',
-    description: 'Reward your community with points for engaging with your tweets. Live X verification, anti cheat, and a competitive leaderboard.',
-    features:    ['Live X verification', 'Anti cheat detection', 'Customizable rewards', 'Real time leaderboard'],
-  },
-  {
-    id:          'engage',
-    icon:        '🔁',
-    title:       'Engage',
-    tagline:     'Self sustaining ecosystem.',
-    description: "Members earn points by engaging with each other tweets, then spend those points to submit their own. A perpetual engine for your community.",
-    features:    ['Per pool isolation', 'Submit your own tweets', 'Configurable economy', 'Multi pool support'],
-  },
-  {
-    id:          'protection',
-    icon:        '🛡️',
-    title:       'Protection',
-    tagline:     'Your community guardian.',
-    description: 'Anti spam, anti raid, and anti scam guardrails that work silently in the background. Sleep easy at night.',
-    features:    ['Spam filter', 'Raid detection', 'Account age gates', 'Customizable rules'],
-  },
-  {
-    id:          'logs',
-    icon:        '📋',
-    title:       'Logs',
-    tagline:     'Every action, traceable.',
-    description: 'A unified activity log across every module. Admin actions, flagged users, settings changes, and protection events. Full transparency.',
-    features:    ['Unified event feed', 'Per module filtering', 'Flagged user registry', 'CSV export'],
-  },
-];
-
-function ModuleCard({ module, index }) {
-  const [hovered, setHovered] = useState(false);
-
-  return (
-    <motion.div
-      initial={{ y: 40, opacity: 0 }}
-      whileInView={{ y: 0, opacity: 1 }}
-      viewport={{ once: true, margin: '-50px' }}
-      transition={{ duration: 0.6, delay: index * 0.07 }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        position: 'relative',
-        padding: '24px',
-        borderRadius: '14px',
-        backgroundColor: 'var(--av-bg-elevated)',
-        border: `1px solid ${hovered ? 'var(--av-gold)' : 'var(--av-border)'}`,
-        overflow: 'hidden',
-        transition: 'border-color 0.3s',
-      }}
-    >
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute', inset: 0,
-          opacity: hovered ? 1 : 0,
-          transition: 'opacity 0.3s',
-          pointerEvents: 'none',
-          background: 'radial-gradient(circle at top right, var(--av-gold-glow) 0%, transparent 70%)',
-        }}
-      />
-      <div style={{ position: 'relative' }}>
-        <div style={{ fontSize: '36px', marginBottom: '16px' }}>{module.icon}</div>
-        <h3 style={{
-          margin: 0,
-          fontSize: '1.5rem',
-          fontWeight: 700,
-          color: 'var(--av-text)',
-        }}>
-          {module.title}
-        </h3>
-        <div style={{
-          marginTop: '4px',
-          fontSize: '13px',
-          fontWeight: 500,
-          color: 'var(--av-gold)',
-        }}>
-          {module.tagline}
-        </div>
-        <p style={{
-          marginTop: '14px',
-          fontSize: '14px',
-          lineHeight: 1.6,
-          color: 'var(--av-text-muted)',
-        }}>
-          {module.description}
-        </p>
-
-        <ul style={{ margin: '18px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {module.features.map((f) => (
-            <li key={f} style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              fontSize: '13px', color: 'var(--av-text-dim)',
-            }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--av-gold)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M5 13l4 4L19 7" />
-              </svg>
-              {f}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </motion.div>
-  );
-}
-
-function ModuleShowcase() {
-  return (
-    <section
-      id="showcase"
-      style={{
-        position: 'relative',
-        zIndex: 1,
-        padding: '96px 24px',
-        backgroundColor: 'var(--av-bg)',
-      }}
-    >
-      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-        <motion.div
-          initial={{ y: 30, opacity: 0 }}
-          whileInView={{ y: 0, opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.7 }}
-          style={{ textAlign: 'center', marginBottom: '56px' }}
-        >
-          <h2 style={{
-            margin: 0,
-            fontSize: 'clamp(2rem, 4.5vw, 3rem)',
-            fontWeight: 800,
-            letterSpacing: '-0.02em',
-            color: 'var(--av-text)',
-          }}>
-            Nine modules. <span style={{ color: 'var(--av-gold)' }}>One engine.</span>
-          </h2>
-          <p style={{
-            marginTop: '14px',
-            fontSize: '1.05rem',
-            color: 'var(--av-text-muted)',
-            maxWidth: '640px',
-            marginLeft: 'auto',
-            marginRight: 'auto',
-          }}>
-            Built into a single bot. No stacked subscriptions, no integrations to maintain.
-          </p>
-        </motion.div>
-
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '20px',
-        }}>
-          {MODULES.map((m, i) => (
-            <ModuleCard key={m.id} module={m} index={i} />
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
 
 // ── Scroll meteor (page-wide, behind content) ────────────────────────────────
 
@@ -910,8 +705,7 @@ const Landing = () => {
       <div style={{ position: 'relative', zIndex: 1 }}>
         <HeroSection inviteUrl={inviteUrl} />
         <LiveStatsBar />
-        <ModuleShowcase />
-        <LivingDemo />
+        <ScrollJourney />
       </div>
     </div>
   );

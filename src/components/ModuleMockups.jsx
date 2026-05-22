@@ -2,21 +2,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 
 /**
- * LivingDemo.
- *
- * Nine alternating panels showing each AVbot module in action via small
- * Discord-embed-style CSS mockups. Each panel reveals on scroll via
- * Framer Motion whileInView. Inside each mockup an IntersectionObserver
- * gates the internal animation so counters tick, checkmarks pop, log
- * feeds stagger, etc. only when the mockup is actually visible.
- *
- * No external assets. No screenshots. Pure HTML and CSS in the AVbot
- * dark + gold style.
+ * Module mockups. Discord-embed-style CSS cards used as the in-action panels
+ * along the ScrollJourney. Each mockup has its own IntersectionObserver that
+ * gates its internal animation (counters tick, checkmarks pop, log feeds
+ * stagger) only when the mockup itself is on screen.
  */
 
 // ── Shared style fragments ──────────────────────────────────────────────────
 
-const cardStyle = {
+export const mockupCardStyle = {
   background: '#1e1f22',
   borderLeft: '3px solid var(--av-gold)',
   borderRadius: '6px',
@@ -25,12 +19,12 @@ const cardStyle = {
   fontFamily: 'Sora, sans-serif',
   fontSize: '14px',
   width: '100%',
-  maxWidth: '460px',
+  maxWidth: '440px',
   boxShadow: '0 28px 70px -28px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)',
   position: 'relative',
 };
 
-const embedHeaderStyle = {
+const headerStyle = {
   display: 'flex',
   alignItems: 'center',
   gap: '10px',
@@ -94,7 +88,7 @@ function Counter({ target, prefix = '', suffix = '', inView, duration = 1500 }) 
 
 function BotHeader({ subtitle }) {
   return (
-    <div style={embedHeaderStyle}>
+    <div style={headerStyle}>
       <div style={{
         width: 36, height: 36, borderRadius: '50%',
         background: 'linear-gradient(135deg, #c89a1f, #94730D)',
@@ -116,17 +110,15 @@ function BotHeader({ subtitle }) {
 
 // ── Module mockups ──────────────────────────────────────────────────────────
 
-function AnalyticsMockup() {
+export function AnalyticsMockup() {
   const [ref, inView] = useInViewOnce();
   const bars = [42, 68, 54, 80, 88, 96];
   return (
-    <div ref={ref} style={cardStyle}>
+    <div ref={ref} style={mockupCardStyle}>
       <BotHeader subtitle="Community Pulse" />
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '14px',
-        marginBottom: '18px',
+        display: 'grid', gridTemplateColumns: '1fr 1fr',
+        gap: '14px', marginBottom: '18px',
       }}>
         {[
           { label: 'Members', target: 9978 },
@@ -136,12 +128,7 @@ function AnalyticsMockup() {
         ].map((s) => (
           <div key={s.label}>
             <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--av-gold)' }}>
-              <Counter
-                target={s.target}
-                prefix={s.prefix || ''}
-                suffix={s.suffix || ''}
-                inView={inView}
-              />
+              <Counter target={s.target} prefix={s.prefix || ''} suffix={s.suffix || ''} inView={inView} />
             </div>
             <div style={labelStyle}>{s.label}</div>
           </div>
@@ -149,8 +136,7 @@ function AnalyticsMockup() {
       </div>
       <div style={{
         display: 'flex', alignItems: 'flex-end', gap: '6px',
-        height: '64px',
-        padding: '0 2px',
+        height: '64px', padding: '0 2px',
         borderTop: '1px solid rgba(255,255,255,0.06)',
         paddingTop: '14px',
       }}>
@@ -168,7 +154,7 @@ function AnalyticsMockup() {
   );
 }
 
-function VerifyMockup() {
+export function VerifyMockup() {
   const [ref, inView] = useInViewOnce();
   const [verified, setVerified] = useState(false);
   useEffect(() => {
@@ -177,7 +163,7 @@ function VerifyMockup() {
     return () => clearTimeout(t);
   }, [inView]);
   return (
-    <div ref={ref} style={cardStyle}>
+    <div ref={ref} style={mockupCardStyle}>
       <BotHeader subtitle="Verification required" />
       <div style={{ fontSize: 14, color: 'var(--av-text)', marginBottom: 14 }}>
         Verify yourself to access the community.
@@ -222,7 +208,7 @@ function VerifyMockup() {
   );
 }
 
-function RoleSelectMockup() {
+export function RoleSelectMockup() {
   const [ref, inView] = useInViewOnce();
   const [picked, setPicked] = useState(null);
   useEffect(() => {
@@ -237,7 +223,7 @@ function RoleSelectMockup() {
     { icon: '🤝', label: 'Member' },
   ];
   return (
-    <div ref={ref} style={cardStyle}>
+    <div ref={ref} style={mockupCardStyle}>
       <BotHeader subtitle="Pick your roles" />
       <div style={{ fontSize: 13, color: 'var(--av-text-muted)', marginBottom: 14 }}>
         Choose how you want to engage in this community.
@@ -262,9 +248,7 @@ function RoleSelectMockup() {
             >
               <span style={{ fontSize: 14 }}>{r.icon}</span>
               {r.label}
-              {active && (
-                <span style={{ marginLeft: 'auto', fontSize: 12 }}>✓</span>
-              )}
+              {active && <span style={{ marginLeft: 'auto', fontSize: 12 }}>✓</span>}
             </div>
           );
         })}
@@ -273,7 +257,7 @@ function RoleSelectMockup() {
   );
 }
 
-function RaidMockup() {
+export function RaidMockup() {
   const [ref, inView] = useInViewOnce();
   const [toggled, setToggled] = useState({ like: false, comment: false, retweet: false });
   useEffect(() => {
@@ -290,7 +274,7 @@ function RaidMockup() {
     { key: 'retweet', icon: '🔁', label: 'Retweet' },
   ];
   return (
-    <div ref={ref} style={cardStyle}>
+    <div ref={ref} style={mockupCardStyle}>
       <BotHeader subtitle="Raid #0042" />
       <div style={{ fontSize: 13, color: 'var(--av-text-muted)', marginBottom: 12 }}>
         Engage with the latest community post. Live verification, anti cheat on.
@@ -338,10 +322,10 @@ function RaidMockup() {
   );
 }
 
-function EngageMockup() {
+export function EngageMockup() {
   const [ref, inView] = useInViewOnce();
   return (
-    <div ref={ref} style={cardStyle}>
+    <div ref={ref} style={mockupCardStyle}>
       <BotHeader subtitle="Engage pool, Community" />
       <div style={{
         background: '#16181c',
@@ -378,7 +362,7 @@ function EngageMockup() {
   );
 }
 
-function ProtectionMockup() {
+export function ProtectionMockup() {
   const [ref, inView] = useInViewOnce();
   const events = [
     { sev: 'warn',  icon: '🛡️', text: 'Spam filtered', detail: '@user_a821 muted 10m' },
@@ -392,7 +376,7 @@ function ProtectionMockup() {
     info:  { border: 'rgba(255,255,255,0.2)',  tint: 'rgba(255,255,255,0.03)' },
   };
   return (
-    <div ref={ref} style={cardStyle}>
+    <div ref={ref} style={mockupCardStyle}>
       <BotHeader subtitle="Protection log" />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {events.map((e, i) => (
@@ -421,7 +405,7 @@ function ProtectionMockup() {
   );
 }
 
-function TicketsMockup() {
+export function TicketsMockup() {
   const [ref, inView] = useInViewOnce();
   const bubbles = [
     { who: 'member', text: 'Hey team, I cannot access the creator channel after verification.' },
@@ -429,7 +413,7 @@ function TicketsMockup() {
     { who: 'member', text: 'Builder. Followed all the steps.' },
   ];
   return (
-    <div ref={ref} style={cardStyle}>
+    <div ref={ref} style={mockupCardStyle}>
       <BotHeader subtitle="Ticket #0214" />
       <div style={{
         display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12,
@@ -464,9 +448,7 @@ function TicketsMockup() {
               maxWidth: '85%',
               padding: '8px 12px',
               borderRadius: 10,
-              background: b.who === 'member'
-                ? 'rgba(255,255,255,0.05)'
-                : 'rgba(200,168,78,0.13)',
+              background: b.who === 'member' ? 'rgba(255,255,255,0.05)' : 'rgba(200,168,78,0.13)',
               border: `1px solid ${b.who === 'member' ? 'rgba(255,255,255,0.07)' : 'rgba(200,168,78,0.28)'}`,
               fontSize: 12,
               color: b.who === 'member' ? 'var(--av-text-muted)' : 'var(--av-text)',
@@ -481,7 +463,7 @@ function TicketsMockup() {
   );
 }
 
-function FormsMockup() {
+export function FormsMockup() {
   const [ref, inView] = useInViewOnce();
   const [stamped, setStamped] = useState(false);
   useEffect(() => {
@@ -495,7 +477,7 @@ function FormsMockup() {
     { label: 'Why creator', value: 'Building in public, weekly drops.' },
   ];
   return (
-    <div ref={ref} style={{ ...cardStyle, overflow: 'hidden' }}>
+    <div ref={ref} style={{ ...mockupCardStyle, overflow: 'hidden' }}>
       <BotHeader subtitle="Creator application" />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 }}>
         {fields.map((f) => (
@@ -536,21 +518,21 @@ function FormsMockup() {
   );
 }
 
-function LogsMockup() {
+export function LogsMockup() {
   const [ref, inView] = useInViewOnce();
   const rows = [
-    { sev: 'info',    badge: 'INFO',    cat: 'admin',      text: 'Admin granted access to @new_mod' },
-    { sev: 'warn',    badge: 'WARN',    cat: 'protection', text: 'Phishing link removed in #general' },
-    { sev: 'info',    badge: 'INFO',    cat: 'raid',       text: 'Raid #0042 created by @nervyesi' },
-    { sev: 'warn',    badge: 'WARN',    cat: 'engage',     text: 'Flagged: @user_92ab on submission #07' },
-    { sev: 'info',    badge: 'INFO',    cat: 'settings',   text: 'Brand color updated' },
+    { sev: 'info', badge: 'INFO', cat: 'admin',      text: 'Admin granted access to @new_mod' },
+    { sev: 'warn', badge: 'WARN', cat: 'protection', text: 'Phishing link removed in #general' },
+    { sev: 'info', badge: 'INFO', cat: 'raid',       text: 'Raid #0042 created by @nervyesi' },
+    { sev: 'warn', badge: 'WARN', cat: 'engage',     text: 'Flagged: @user_92ab on submission #07' },
+    { sev: 'info', badge: 'INFO', cat: 'settings',   text: 'Brand color updated' },
   ];
   const sevTone = {
     info: { fg: '#a1a1aa', bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.08)' },
     warn: { fg: '#f1d586', bg: 'rgba(241,213,134,0.08)', border: 'rgba(241,213,134,0.3)' },
   };
   return (
-    <div ref={ref} style={cardStyle}>
+    <div ref={ref} style={mockupCardStyle}>
       <BotHeader subtitle="Unified activity log" />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {rows.map((r, i) => {
@@ -595,200 +577,16 @@ function LogsMockup() {
   );
 }
 
-// ── Panel composition ───────────────────────────────────────────────────────
+// ── Aggregated panel metadata ───────────────────────────────────────────────
 
-const PANELS = [
-  {
-    id: 'analytics',
-    icon: '📊',
-    label: 'Analytics',
-    headline: 'See your community breathe.',
-    copy: 'Real time dashboards track member growth, engagement, and module performance. Decisions become obvious when the data is in front of you.',
-    Mockup: AnalyticsMockup,
-  },
-  {
-    id: 'verify',
-    icon: '✅',
-    label: 'Verification',
-    headline: 'Bots stop at the door.',
-    copy: 'Token gated, role based access. Every member proves they belong through challenges that fit your brand, not a generic captcha.',
-    Mockup: VerifyMockup,
-  },
-  {
-    id: 'roleselect',
-    icon: '🎭',
-    label: 'Role Selection',
-    headline: 'Members tag themselves.',
-    copy: 'Beautiful pickers with reaction or button panels. Members claim their roles in a click. Your mods get their afternoons back.',
-    Mockup: RoleSelectMockup,
-  },
-  {
-    id: 'raid',
-    icon: '⚔️',
-    label: 'Raid',
-    headline: 'Amplify your X reach in minutes.',
-    copy: 'Reward members for engaging with your tweets. Live X verification, anti cheat detection, and a live leaderboard turn organic engagement into a community habit.',
-    Mockup: RaidMockup,
-  },
-  {
-    id: 'engage',
-    icon: '🔁',
-    label: 'Engage',
-    headline: 'A perpetual engine for your community.',
-    copy: 'Members earn points by engaging with each other tweets, then spend those points to submit their own. The flywheel runs itself, no admin work required.',
-    Mockup: EngageMockup,
-  },
-  {
-    id: 'protection',
-    icon: '🛡️',
-    label: 'Protection',
-    headline: 'Sleep through the night.',
-    copy: 'Anti spam, anti raid, and anti scam guardrails work silently. Phishing blocklist, account age gates, and lockdown response all logged for the morning.',
-    Mockup: ProtectionMockup,
-  },
-  {
-    id: 'tickets',
-    icon: '🎫',
-    label: 'Tickets',
-    headline: 'Support that scales.',
-    copy: 'Categorized threads, status pills, and a full audit trail. Your team handles ten tickets like one without losing context.',
-    Mockup: TicketsMockup,
-  },
-  {
-    id: 'forms',
-    icon: '📝',
-    label: 'Forms',
-    headline: 'Onboard the right people.',
-    copy: 'Visual form builder with approval workflows and auto roles. Every application reviewed, every applicant tracked, every decision logged.',
-    Mockup: FormsMockup,
-  },
-  {
-    id: 'logs',
-    icon: '📋',
-    label: 'Logs',
-    headline: 'Every action, traceable.',
-    copy: 'One unified activity log across every module. Admin actions, flagged users, settings changes, and protection events. Full transparency.',
-    Mockup: LogsMockup,
-  },
+export const MODULE_PANELS = [
+  { id: 'analytics',  icon: '📊', label: 'Analytics',      headline: 'See your community breathe.',          copy: 'Real time dashboards track member growth, engagement, and module performance. Decisions become obvious when the data is in front of you.', Mockup: AnalyticsMockup },
+  { id: 'verify',     icon: '✅', label: 'Verification',   headline: 'Bots stop at the door.',                copy: 'Token gated, role based access. Every member proves they belong through challenges that fit your brand, not a generic captcha.', Mockup: VerifyMockup },
+  { id: 'roleselect', icon: '🎭', label: 'Role Selection', headline: 'Members tag themselves.',               copy: 'Beautiful pickers with reaction or button panels. Members claim their roles in a click. Your mods get their afternoons back.', Mockup: RoleSelectMockup },
+  { id: 'raid',       icon: '⚔️', label: 'Raid',            headline: 'Amplify your X reach in minutes.',     copy: 'Reward members for engaging with your tweets. Live X verification, anti cheat detection, and a live leaderboard turn organic engagement into a community habit.', Mockup: RaidMockup },
+  { id: 'engage',     icon: '🔁', label: 'Engage',          headline: 'A perpetual engine for your community.', copy: 'Members earn points by engaging with each other tweets, then spend those points to submit their own. The flywheel runs itself, no admin work required.', Mockup: EngageMockup },
+  { id: 'protection', icon: '🛡️', label: 'Protection',     headline: 'Sleep through the night.',              copy: 'Anti spam, anti raid, and anti scam guardrails work silently. Phishing blocklist, account age gates, and lockdown response all logged for the morning.', Mockup: ProtectionMockup },
+  { id: 'tickets',    icon: '🎫', label: 'Tickets',         headline: 'Support that scales.',                  copy: 'Categorized threads, status pills, and a full audit trail. Your team handles ten tickets like one without losing context.', Mockup: TicketsMockup },
+  { id: 'forms',      icon: '📝', label: 'Forms',           headline: 'Onboard the right people.',             copy: 'Visual form builder with approval workflows and auto roles. Every application reviewed, every applicant tracked, every decision logged.', Mockup: FormsMockup },
+  { id: 'logs',       icon: '📋', label: 'Logs',            headline: 'Every action, traceable.',              copy: 'One unified activity log across every module. Admin actions, flagged users, settings changes, and protection events. Full transparency.', Mockup: LogsMockup },
 ];
-
-function DemoPanel({ panel, reverse }) {
-  const { Mockup } = panel;
-  // The outer container is a PLAIN div so the panel is always in the DOM
-  // and always visible. Only the inner mockup and text animate on enter.
-  // viewport amount:0.15 once:true is the robust trigger in framer-motion
-  // 12.x. The element does not need to be above any negative root-margin
-  // shrunken viewport, just 15 percent intersecting at any point.
-  return (
-    <div
-      className={`living-demo-panel${reverse ? ' reverse' : ''}`}
-      style={{ marginBottom: '96px' }}
-    >
-      <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, amount: 0.15 }}
-        transition={{ duration: 0.7, ease: [0.22, 0.6, 0.2, 1] }}
-        className="living-demo-mockup"
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-        }}
-      >
-        <Mockup />
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, amount: 0.15 }}
-        transition={{ duration: 0.7, delay: 0.12, ease: [0.22, 0.6, 0.2, 1] }}
-        className="living-demo-text"
-        style={{
-          maxWidth: '480px',
-          margin: '0 auto',
-        }}
-      >
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: '8px',
-          marginBottom: '12px',
-          color: 'var(--av-gold)',
-          fontSize: '12px',
-          fontWeight: 700,
-          letterSpacing: '0.18em',
-          textTransform: 'uppercase',
-        }}>
-          <span style={{ fontSize: 18 }}>{panel.icon}</span>
-          {panel.label}
-        </div>
-        <h3 style={{
-          margin: '0 0 14px',
-          fontSize: 'clamp(1.45rem, 2.8vw, 2rem)',
-          fontWeight: 800,
-          letterSpacing: '-0.02em',
-          color: 'var(--av-text)',
-          lineHeight: 1.15,
-        }}>
-          {panel.headline}
-        </h3>
-        <p style={{
-          margin: 0,
-          fontSize: '0.98rem',
-          lineHeight: 1.65,
-          color: 'var(--av-text-muted)',
-        }}>
-          {panel.copy}
-        </p>
-      </motion.div>
-    </div>
-  );
-}
-
-export default function LivingDemo() {
-  return (
-    <section
-      id="in-action"
-      style={{
-        position: 'relative',
-        zIndex: 1,
-        padding: '120px 24px 80px',
-        backgroundColor: 'var(--av-bg)',
-      }}
-    >
-      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-        <motion.div
-          initial={{ y: 24, opacity: 0 }}
-          whileInView={{ y: 0, opacity: 1 }}
-          viewport={{ once: true, amount: 0.2 }}
-          transition={{ duration: 0.7, ease: [0.22, 0.6, 0.2, 1] }}
-          style={{ textAlign: 'center', marginBottom: '88px' }}
-        >
-          <h2 style={{
-            margin: 0,
-            fontSize: 'clamp(2rem, 4.6vw, 3.2rem)',
-            fontWeight: 800,
-            letterSpacing: '-0.02em',
-            color: 'var(--av-text)',
-            lineHeight: 1.1,
-          }}>
-            See AVbot <span style={{ color: 'var(--av-gold)' }}>in action.</span>
-          </h2>
-          <p style={{
-            marginTop: '14px',
-            fontSize: '1.05rem',
-            color: 'var(--av-text-muted)',
-            maxWidth: '620px',
-            marginLeft: 'auto',
-            marginRight: 'auto',
-          }}>
-            Nine modules working in concert. This is what your community feels.
-          </p>
-        </motion.div>
-
-        {PANELS.map((p, i) => (
-          <DemoPanel key={p.id} panel={p} reverse={i % 2 === 1} />
-        ))}
-      </div>
-    </section>
-  );
-}

@@ -57,21 +57,30 @@
   50%      { opacity: var(--pulse-max, 0.5);  transform: translate(-50%, -50%) scale(1.08); }
 }
 
-/* Living Demo panel layout. Two columns on desktop; stacked, mockup first,
-   on mobile regardless of left/right alternation. Inline-style cannot
-   express the responsive reset, so we keep this minimal class here. */
-.living-demo-panel {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: center;
-  gap: 56px;
+/* ScrollJourney station nodes. Inline JSX writes data-lit="0|1" on the
+   group; CSS handles the visual transition. Off state is a faint hint,
+   lit state is a fully glowing gold node with a small pulse. */
+.aj-node .aj-node-glow {
+  opacity: 0.15;
+  transition: opacity 0.5s ease;
 }
-.living-demo-panel.reverse .living-demo-mockup { order: 2; }
-.living-demo-panel.reverse .living-demo-text   { order: 1; }
-@media (max-width: 860px) {
-  .living-demo-panel { grid-template-columns: 1fr; gap: 32px; }
-  .living-demo-panel.reverse .living-demo-mockup,
-  .living-demo-panel.reverse .living-demo-text { order: initial; }
+.aj-node .aj-node-core {
+  opacity: 0.55;
+  transition: opacity 0.4s ease;
+}
+.aj-node .aj-node-pip {
+  opacity: 0.7;
+  transition: opacity 0.4s ease;
+}
+.aj-node[data-lit="1"] .aj-node-glow {
+  opacity: 0.95;
+  animation: aj-node-pulse 2.4s ease-in-out infinite;
+}
+.aj-node[data-lit="1"] .aj-node-core { opacity: 1; }
+.aj-node[data-lit="1"] .aj-node-pip  { opacity: 1; }
+
+@keyframes aj-node-pulse {
+  0%, 100% { transform-origin: center; }
 }
 
 * {
