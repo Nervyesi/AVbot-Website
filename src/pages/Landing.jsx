@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 import CursorSmoke from '../components/CursorSmoke';
-import BlackHole from '../components/BlackHole';
+import BlackHoleVideo from '../components/BlackHoleVideo';
 import ScrollJourney from '../components/ScrollJourney';
 
 const LOGO_URL = 'https://cdn.avbot.app/1199707792706117642/2e6734d8c9fc47fab6b8525a57374de3.png';
@@ -271,25 +271,18 @@ function HeroSection({ inviteUrl }) {
         justifyContent: 'center',
         textAlign: 'center',
         padding: '120px 24px 100px',
-        backgroundColor: 'var(--av-bg)',
+        // Transparent so the fixed BlackHoleVideo behind the Landing root
+        // shows through. The video provides the deep-black backdrop.
+        backgroundColor: 'transparent',
         overflow: 'hidden',
         isolation: 'isolate',
       }}
     >
-      {/* The cinematic centerpiece. A real-time GLSL black hole sits at the
-          back of the hero, behind everything else. The shader provides its
-          own starfield, so we drop the old ConstellationGrid in favour of
-          the lensed stars inside the shader. ParticleField and Vignette
-          stay as subtle foreground atmosphere accents over the disk. */}
-      <motion.div
-        initial={{ opacity: 0, scale: 1.04 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 1.6, delay: 0.1, ease: [0.16, 0.7, 0.18, 1] }}
-        style={{ position: 'absolute', inset: 0, zIndex: 0 }}
-        aria-hidden="true"
-      >
-        <BlackHole intensity={1.0} />
-      </motion.div>
+      {/* The cinematic centerpiece. The scroll-scrubbed black hole video
+          is mounted higher up at the Landing root as a fixed full-bleed
+          background, so it stays behind every section as the user scrolls.
+          ParticleField and Vignette stay as subtle foreground atmosphere
+          accents over the video. */}
       <ParticleField parallaxRef={particlesRef} />
       <Vignette />
 
@@ -575,11 +568,15 @@ const Landing = () => {
   return (
     <div style={{
       position: 'relative',
+      // Page background stays black so the video edges blend seamlessly.
       backgroundColor: 'var(--av-bg)',
       color: 'var(--av-text)',
       minHeight: '100vh',
       fontFamily: 'Sora, sans-serif',
     }}>
+      {/* Fixed full-bleed black hole video. Scroll-scrubbed on desktop,
+          autoplay-looped on touch. Behind every section. */}
+      <BlackHoleVideo />
       <ScrollMeteor />
       <CursorSmoke />
 

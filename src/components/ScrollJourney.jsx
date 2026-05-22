@@ -190,7 +190,9 @@ export default function ScrollJourney() {
       style={{
         position: 'relative',
         height: `${sectionH}px`,
-        backgroundColor: 'var(--av-bg)',
+        // Transparent so the fixed BlackHoleVideo behind the Landing root
+        // shows through the journey as the user scrolls.
+        backgroundColor: 'transparent',
         overflow: 'visible',
       }}
     >
