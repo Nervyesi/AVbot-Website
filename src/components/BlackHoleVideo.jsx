@@ -21,11 +21,6 @@ import React, { useEffect, useRef, useState } from 'react';
 export default function BlackHoleVideo({
   src = '/blackhole.mp4',
   poster = '/blackhole-poster.jpg',
-  // Scrub range expressed as multiples of viewport height. The full video
-  // (~60s) scrubs across this many viewport heights of scroll, so the user
-  // gets a slow, cinematic fly-in instead of blowing through it in one
-  // page-down.
-  scrollRangeVH = 6,
 }) {
   const videoRef     = useRef(null);
   const [scrubMode, setScrubMode] = useState(true);
@@ -68,9 +63,14 @@ export default function BlackHoleVideo({
     let lastWrite = -1;
 
     const computeTarget = () => {
-      // Total scrub distance in pixels: scrollRangeVH * viewport height.
-      const vh = window.innerHeight || 1;
-      const range = Math.max(1, scrollRangeVH * vh);
+      // Scrub progress is the user's position through the full document
+      // scroll: 0 at the top, 1 at the bottom. This way the camera reaches
+      // its closest orbit exactly as the last module section finishes.
+      // Reading scrollHeight each call keeps us robust to layout changes
+      // (image / video loads, module reveals).
+      const docH = document.documentElement.scrollHeight;
+      const vh   = window.innerHeight || 1;
+      const range = Math.max(1, docH - vh);
       const p = Math.min(1, Math.max(0, window.scrollY / range));
       target = metaReady ? p * duration : 0;
     };
@@ -107,7 +107,7 @@ export default function BlackHoleVideo({
       window.removeEventListener('resize', onResize);
       video.removeEventListener('loadedmetadata', onMeta);
     };
-  }, [scrubMode, scrollRangeVH]);
+  }, [scrubMode]);
 
   // Touch path: regular muted autoplay loop. Some Android browsers need a
   // play() kick after metadata loads.

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 import CursorSmoke from '../components/CursorSmoke';
@@ -9,82 +9,6 @@ const LOGO_URL = 'https://cdn.avbot.app/1199707792706117642/2e6734d8c9fc47fab6b8
 
 // Inline styles everywhere because Tailwind v4 utility emission is broken in
 // this CRA setup. Design tokens live in :root via index.css.
-
-// ── Hooks ────────────────────────────────────────────────────────────────────
-
-function usePointerHover() {
-  const [hasHover, setHasHover] = useState(true);
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const mq = window.matchMedia('(hover: hover)');
-    setHasHover(mq.matches);
-    const handler = (e) => setHasHover(e.matches);
-    mq.addEventListener?.('change', handler);
-    return () => mq.removeEventListener?.('change', handler);
-  }, []);
-  return hasHover;
-}
-
-// ── Background atmosphere layers ─────────────────────────────────────────────
-
-function Vignette() {
-  // Whisper-soft corner darken only. The shader has its own subtle vignette,
-  // so this layer just nudges the very edges back without crushing the disk.
-  return (
-    <div
-      aria-hidden="true"
-      style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none',
-        background: 'radial-gradient(ellipse at center, transparent 70%, rgba(0,0,0,0.22) 92%, rgba(0,0,0,0.45) 100%)',
-        zIndex: 2,
-      }}
-    />
-  );
-}
-
-function ParticleField({ parallaxRef }) {
-  const particles = useMemo(() => (
-    Array.from({ length: 30 }).map((_, i) => ({
-      top:      Math.random() * 100,
-      left:     Math.random() * 100,
-      size:     Math.random() < 0.3 ? 2 : 1,
-      duration: 15 + Math.random() * 20,
-      delay:    Math.random() * 10,
-      anim:     i % 4,
-    }))
-  ), []);
-
-  return (
-    <div
-      ref={parallaxRef}
-      aria-hidden="true"
-      style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none',
-        willChange: 'transform',
-        transform: 'translate3d(0,0,0)',
-        zIndex: 1,
-      }}
-    >
-      {particles.map((p, i) => (
-        <div
-          key={i}
-          style={{
-            position: 'absolute',
-            top:        `${p.top}%`,
-            left:       `${p.left}%`,
-            width:      `${p.size * 2}px`,
-            height:     `${p.size * 2}px`,
-            borderRadius: '50%',
-            background:   'rgba(200,168,78,0.55)',
-            boxShadow:    '0 0 8px rgba(200,168,78,0.4)',
-            animation:    `av-float-${p.anim} ${p.duration}s ease-in-out ${p.delay}s infinite`,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
 
 // ── One-shot light ray burst from logo center ───────────────────────────────
 
@@ -242,25 +166,6 @@ function LogoHalo() {
 }
 
 function HeroSection({ inviteUrl }) {
-  const hasHover = usePointerHover();
-  const particlesRef = useRef(null);
-
-  // Subtle parallax on the gold-particle layer.
-  useEffect(() => {
-    if (!hasHover) return;
-    const onMove = (e) => {
-      const cx = window.innerWidth  / 2;
-      const cy = window.innerHeight / 2;
-      const dx = (e.clientX - cx) / cx;
-      const dy = (e.clientY - cy) / cy;
-      if (particlesRef.current) {
-        particlesRef.current.style.transform = `translate3d(${(-dx * 22).toFixed(1)}px, ${(-dy * 22).toFixed(1)}px, 0)`;
-      }
-    };
-    window.addEventListener('mousemove', onMove, { passive: true });
-    return () => window.removeEventListener('mousemove', onMove);
-  }, [hasHover]);
-
   return (
     <section
       style={{
@@ -272,19 +177,15 @@ function HeroSection({ inviteUrl }) {
         textAlign: 'center',
         padding: '120px 24px 100px',
         // Transparent so the fixed BlackHoleVideo behind the Landing root
-        // shows through. The video provides the deep-black backdrop.
+        // shows through. The video provides the deep-black backdrop and
+        // bridges every section seamlessly with no horizontal edge.
         backgroundColor: 'transparent',
-        overflow: 'hidden',
-        isolation: 'isolate',
+        // overflow visible so the hero composites cleanly with the next
+        // section over the same continuous video. No `overflow: hidden`
+        // edges to draw a seam against.
+        overflow: 'visible',
       }}
     >
-      {/* The cinematic centerpiece. The scroll-scrubbed black hole video
-          is mounted higher up at the Landing root as a fixed full-bleed
-          background, so it stays behind every section as the user scrolls.
-          ParticleField and Vignette stay as subtle foreground atmosphere
-          accents over the video. */}
-      <ParticleField parallaxRef={particlesRef} />
-      <Vignette />
 
       {/* Content column */}
       <div style={{
@@ -315,34 +216,44 @@ function HeroSection({ inviteUrl }) {
             zIndex: -1,
           }}
         />
-        {/* Tagline pill */}
-        <motion.div
-          initial={{ y: 12, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8, delay: 0.4, ease: [0.22, 0.6, 0.2, 1] }}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '10px',
-            padding: '6px 16px',
-            borderRadius: '999px',
-            border: '1px solid rgba(200,168,78,0.25)',
-            background: 'rgba(148,115,13,0.05)',
-            color: 'var(--av-gold)',
-            fontSize: '11px',
-            fontWeight: 700,
-            letterSpacing: '0.22em',
-            textTransform: 'uppercase',
-            marginBottom: '24px',
-          }}
-        >
-          <span style={{
-            width: '5px', height: '5px', borderRadius: '50%',
-            background: 'var(--av-gold)',
-            boxShadow: '0 0 10px rgba(200,168,78,0.8)',
-          }} />
-          Built for Web3, by Web3.
-        </motion.div>
+        {/* Cinematic kicker. Two sequenced lines that open the film. The
+            first reveals before the logo even arrives, the second a beat
+            later, then the existing logo + headline + CTA choreography
+            takes over. */}
+        <div style={{
+          marginBottom: '28px',
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          gap: '6px',
+        }}>
+          <motion.div
+            initial={{ y: 8, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.9, delay: 0.25, ease: [0.22, 0.6, 0.2, 1] }}
+            style={{
+              fontSize: '11px',
+              fontWeight: 700,
+              letterSpacing: '0.32em',
+              textTransform: 'uppercase',
+              color: 'var(--av-gold)',
+            }}
+          >
+            Web3 deserved a real engine.
+          </motion.div>
+          <motion.div
+            initial={{ y: 8, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.9, delay: 0.85, ease: [0.22, 0.6, 0.2, 1] }}
+            style={{
+              fontSize: '11px',
+              fontWeight: 700,
+              letterSpacing: '0.32em',
+              textTransform: 'uppercase',
+              color: 'rgba(255,255,255,0.55)',
+            }}
+          >
+            So we built one. From Web3, for Web3.
+          </motion.div>
+        </div>
 
         {/* Logo with breathing gold halo. The clean centerpiece. */}
         <motion.div
@@ -499,57 +410,6 @@ function HeroSection({ inviteUrl }) {
 
 
 
-// ── Scroll meteor (page-wide, behind content) ────────────────────────────────
-
-function ScrollMeteor() {
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    const update = () => {
-      const h = document.documentElement.scrollHeight - window.innerHeight;
-      setProgress(h > 0 ? Math.min(1, window.scrollY / h) : 0);
-    };
-    update();
-    window.addEventListener('scroll', update, { passive: true });
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('scroll', update);
-      window.removeEventListener('resize', update);
-    };
-  }, []);
-
-  return (
-    <div
-      aria-hidden="true"
-      style={{
-        position: 'fixed',
-        left: '50%',
-        top: `${progress * 100}vh`,
-        transform: 'translateX(-50%)',
-        pointerEvents: 'none',
-        zIndex: 0,
-        transition: 'top 0.1s linear',
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          top: '-128px', left: '50%',
-          width: '2px', height: '128px',
-          transform: 'translateX(-50%)',
-          background: 'linear-gradient(to bottom, transparent, var(--av-gold-glow), var(--av-gold))',
-        }}
-      />
-      <div
-        style={{
-          width: '12px', height: '12px', borderRadius: '50%',
-          background: 'var(--av-gold-light)',
-          boxShadow: '0 0 30px 10px var(--av-gold-glow)',
-        }}
-      />
-    </div>
-  );
-}
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
@@ -577,7 +437,6 @@ const Landing = () => {
       {/* Fixed full-bleed black hole video. Scroll-scrubbed on desktop,
           autoplay-looped on touch. Behind every section. */}
       <BlackHoleVideo />
-      <ScrollMeteor />
       <CursorSmoke />
 
       <div style={{ position: 'relative', zIndex: 1 }}>
