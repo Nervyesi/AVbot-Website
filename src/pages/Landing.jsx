@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 import CursorSmoke from '../components/CursorSmoke';
+import BlackHole from '../components/BlackHole';
 import ScrollJourney from '../components/ScrollJourney';
 
 const LOGO_URL = 'https://cdn.avbot.app/1199707792706117642/2e6734d8c9fc47fab6b8525a57374de3.png';
@@ -36,52 +37,6 @@ function Vignette() {
         zIndex: 2,
       }}
     />
-  );
-}
-
-function ConstellationGrid({ parallaxRef }) {
-  const dots = useMemo(() => {
-    const out = [];
-    const cols = 14, rows = 9;
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        out.push({
-          x: (c / (cols - 1)) * 100 + (Math.random() - 0.5) * 3.2,
-          y: (r / (rows - 1)) * 100 + (Math.random() - 0.5) * 3.2,
-          size: Math.random() < 0.12 ? 2 : 1,
-          opacity: 0.06 + Math.random() * 0.18,
-        });
-      }
-    }
-    return out;
-  }, []);
-
-  return (
-    <div
-      ref={parallaxRef}
-      aria-hidden="true"
-      style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none',
-        willChange: 'transform',
-        transform: 'translate3d(0,0,0)',
-        zIndex: 0,
-      }}
-    >
-      {dots.map((d, i) => (
-        <div
-          key={i}
-          style={{
-            position: 'absolute',
-            left: `${d.x}%`, top: `${d.y}%`,
-            width: `${d.size}px`, height: `${d.size}px`,
-            borderRadius: '50%',
-            background: 'rgb(200,168,78)',
-            opacity: d.opacity,
-            boxShadow: d.size === 2 ? '0 0 4px rgba(200,168,78,0.5)' : 'none',
-          }}
-        />
-      ))}
-    </div>
   );
 }
 
@@ -286,10 +241,9 @@ function LogoHalo() {
 
 function HeroSection({ inviteUrl }) {
   const hasHover = usePointerHover();
-  const constellationRef = useRef(null);
-  const particlesRef     = useRef(null);
+  const particlesRef = useRef(null);
 
-  // Subtle parallax on background layers.
+  // Subtle parallax on the gold-particle layer.
   useEffect(() => {
     if (!hasHover) return;
     const onMove = (e) => {
@@ -297,9 +251,6 @@ function HeroSection({ inviteUrl }) {
       const cy = window.innerHeight / 2;
       const dx = (e.clientX - cx) / cx;
       const dy = (e.clientY - cy) / cy;
-      if (constellationRef.current) {
-        constellationRef.current.style.transform = `translate3d(${(-dx * 10).toFixed(1)}px, ${(-dy * 10).toFixed(1)}px, 0)`;
-      }
       if (particlesRef.current) {
         particlesRef.current.style.transform = `translate3d(${(-dx * 22).toFixed(1)}px, ${(-dy * 22).toFixed(1)}px, 0)`;
       }
@@ -323,8 +274,20 @@ function HeroSection({ inviteUrl }) {
         isolation: 'isolate',
       }}
     >
-      {/* Far background atmosphere */}
-      <ConstellationGrid parallaxRef={constellationRef} />
+      {/* The cinematic centerpiece. A real-time GLSL black hole sits at the
+          back of the hero, behind everything else. The shader provides its
+          own starfield, so we drop the old ConstellationGrid in favour of
+          the lensed stars inside the shader. ParticleField and Vignette
+          stay as subtle foreground atmosphere accents over the disk. */}
+      <motion.div
+        initial={{ opacity: 0, scale: 1.04 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 1.6, delay: 0.1, ease: [0.16, 0.7, 0.18, 1] }}
+        style={{ position: 'absolute', inset: 0, zIndex: 0 }}
+        aria-hidden="true"
+      >
+        <BlackHole intensity={1.0} />
+      </motion.div>
       <ParticleField parallaxRef={particlesRef} />
       <Vignette />
 
@@ -338,6 +301,20 @@ function HeroSection({ inviteUrl }) {
         maxWidth: '1100px',
         width: '100%',
       }}>
+        {/* Localised dark radial scrim behind the content so the copy stays
+            crisp over the bright accretion disk. Confined to the content
+            band; the disk outside this region reads at full brightness. */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: '-12% -8%',
+            background: 'radial-gradient(ellipse at center, rgba(8,8,10,0.62) 0%, rgba(8,8,10,0.34) 45%, transparent 80%)',
+            filter: 'blur(18px)',
+            pointerEvents: 'none',
+            zIndex: -1,
+          }}
+        />
         {/* Tagline pill */}
         <motion.div
           initial={{ y: 12, opacity: 0 }}
@@ -520,109 +497,6 @@ function HeroSection({ inviteUrl }) {
   );
 }
 
-// ── Live Stats Bar ───────────────────────────────────────────────────────────
-
-function StatItem({ label, value, prefix = '', visible }) {
-  const [displayed, setDisplayed] = useState(0);
-
-  useEffect(() => {
-    if (!visible) return;
-    const target = Number(value) || 0;
-    if (target <= 0) { setDisplayed(0); return; }
-
-    const duration = 2000;
-    const stepTime = 16;
-    const increment = target / (duration / stepTime);
-    let current = 0;
-    const interval = setInterval(() => {
-      current += increment;
-      if (current >= target) {
-        setDisplayed(target);
-        clearInterval(interval);
-      } else {
-        setDisplayed(Math.floor(current));
-      }
-    }, stepTime);
-    return () => clearInterval(interval);
-  }, [visible, value]);
-
-  return (
-    <div style={{ textAlign: 'center' }}>
-      <div style={{
-        fontSize: 'clamp(1.85rem, 4vw, 2.5rem)',
-        fontWeight: 700,
-        color: 'var(--av-gold)',
-        fontFamily: 'Sora, sans-serif',
-      }}>
-        {prefix}{displayed.toLocaleString()}
-      </div>
-      <div style={{
-        marginTop: '8px',
-        fontSize: '11px',
-        letterSpacing: '0.14em',
-        textTransform: 'uppercase',
-        color: 'var(--av-text-dim)',
-      }}>
-        {label}
-      </div>
-    </div>
-  );
-}
-
-function LiveStatsBar() {
-  const [stats, setStats]     = useState(null);
-  const [visible, setVisible] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`${API_BASE_URL}/api/public/ameretaverse-overview`)
-      .then((r) => r.json())
-      .then((d) => { if (!cancelled) setStats(d); })
-      .catch(() => {
-        if (!cancelled) setStats({ total_members: 0, active_members: 0, member_growth_30d: 0, total_messages: 0 });
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    if (!ref.current) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setVisible(true); },
-      { threshold: 0.3 },
-    );
-    observer.observe(ref.current);
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <div
-      ref={ref}
-      id="stats"
-      style={{
-        position: 'relative',
-        zIndex: 1,
-        borderTop:    '1px solid var(--av-border)',
-        borderBottom: '1px solid var(--av-border)',
-        backgroundColor: 'var(--av-bg-elevated)',
-      }}
-    >
-      <div style={{
-        maxWidth: '1100px',
-        margin: '0 auto',
-        padding: '48px 24px',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-        gap: '32px',
-      }}>
-        <StatItem label="Members Engaged"    value={stats?.total_members || 0}      visible={visible} />
-        <StatItem label="Active This Month"  value={stats?.active_members || 0}     visible={visible} />
-        <StatItem label="Growth (30d)"       value={stats?.member_growth_30d || 0}  visible={visible} prefix="+" />
-        <StatItem label="Total Interactions" value={stats?.total_messages || 0}     visible={visible} />
-      </div>
-    </div>
-  );
-}
 
 
 // ── Scroll meteor (page-wide, behind content) ────────────────────────────────
@@ -704,7 +578,6 @@ const Landing = () => {
 
       <div style={{ position: 'relative', zIndex: 1 }}>
         <HeroSection inviteUrl={inviteUrl} />
-        <LiveStatsBar />
         <ScrollJourney />
       </div>
     </div>
