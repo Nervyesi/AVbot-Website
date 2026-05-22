@@ -57,6 +57,51 @@
   50%      { opacity: var(--pulse-max, 0.5);  transform: translate(-50%, -50%) scale(1.08); }
 }
 
+/* Hero centerpiece orbital rings. */
+@keyframes av-orbit-cw  { from { transform: rotate(0deg); }   to { transform: rotate(360deg); } }
+@keyframes av-orbit-ccw { from { transform: rotate(360deg); } to { transform: rotate(0deg);   } }
+
+/* Breathing radial core / hot inner spot. */
+@keyframes av-core-pulse {
+  0%, 100% { opacity: 0.85; transform: translate(-50%, -50%) scale(1);    }
+  50%      { opacity: 1.00; transform: translate(-50%, -50%) scale(1.06); }
+}
+
+@keyframes av-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes av-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes av-blink {
+  0%, 50%, 100% { opacity: 1; }
+  25%, 75%      { opacity: 0; }
+}
+
+/* Navbar desktop/mobile visibility. Hides the desktop link/CTA cluster on
+   narrow viewports and reveals the hamburger button. */
+@media (max-width: 720px) {
+  .av-nav-desktop { display: none !important; }
+  .av-nav-burger  { display: inline-flex !important; }
+}
+
+/* Station column alignment. Desktop alternates left and right; mobile
+   centres every station so the layout reads cleanly stacked. */
+.av-station-right { align-items: flex-start; text-align: left;  }
+.av-station-left  { align-items: flex-end;   text-align: right; }
+@media (max-width: 860px) {
+  .av-station-right,
+  .av-station-left {
+    align-items: center !important;
+    text-align: center !important;
+    margin: 0 auto !important;
+  }
+}
+
 /* ScrollJourney station nodes. Inline JSX writes data-lit="0|1" on the
    group; CSS handles the visual transition. Off state is a faint hint,
    lit state is a fully glowing gold node with a small pulse. */

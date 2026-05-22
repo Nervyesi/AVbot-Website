@@ -2,33 +2,33 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 
 /**
- * Module mockups. Discord-embed-style CSS cards used as the in-action panels
- * along the ScrollJourney. Each mockup has its own IntersectionObserver that
- * gates its internal animation (counters tick, checkmarks pop, log feeds
- * stagger) only when the mockup itself is on screen.
+ * Module mockups. Premium Discord-embed-style cards depicting each AVbot
+ * module in motion. Each mockup uses an IntersectionObserver to gate its
+ * internal animation so counters tick, checkmarks pop, log feeds stagger,
+ * etc. only when the card is on screen.
  */
 
 // ── Shared style fragments ──────────────────────────────────────────────────
 
 export const mockupCardStyle = {
-  background: '#1e1f22',
+  background: 'linear-gradient(180deg, #1f2024 0%, #1a1b1f 100%)',
   borderLeft: '3px solid var(--av-gold)',
-  borderRadius: '6px',
-  padding: '18px 22px',
+  borderRadius: '8px',
+  padding: '20px 24px',
   color: 'var(--av-text)',
   fontFamily: 'Sora, sans-serif',
   fontSize: '14px',
   width: '100%',
-  maxWidth: '440px',
-  boxShadow: '0 28px 70px -28px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)',
+  maxWidth: '460px',
+  boxShadow:
+    '0 30px 70px -28px rgba(0,0,0,0.78), ' +
+    '0 0 0 1px rgba(255,255,255,0.05), ' +
+    'inset 0 1px 0 rgba(255,255,255,0.04)',
   position: 'relative',
 };
 
-const headerStyle = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '10px',
-  marginBottom: '12px',
+const headerRowStyle = {
+  display: 'flex', alignItems: 'center', gap: '11px', marginBottom: '14px',
 };
 
 const botBadgeStyle = {
@@ -38,16 +38,25 @@ const botBadgeStyle = {
   fontWeight: 700,
   padding: '1px 5px',
   borderRadius: '3px',
-  marginLeft: '4px',
+  marginLeft: '5px',
   letterSpacing: '0.04em',
 };
 
 const labelStyle = {
-  fontSize: '11px',
-  color: 'var(--av-text-dim)',
+  fontSize: '10.5px',
+  color: 'rgba(228,228,231,0.55)',
   textTransform: 'uppercase',
-  letterSpacing: '0.12em',
+  letterSpacing: '0.14em',
+  fontWeight: 600,
 };
+
+const dividerStyle = {
+  height: '1px',
+  background: 'rgba(255,255,255,0.06)',
+  margin: '12px 0',
+};
+
+const monoFont = 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -86,22 +95,34 @@ function Counter({ target, prefix = '', suffix = '', inView, duration = 1500 }) 
   return <>{prefix}{v.toLocaleString()}{suffix}</>;
 }
 
-function BotHeader({ subtitle }) {
+function BotHeader({ subtitle, accent }) {
   return (
-    <div style={headerStyle}>
+    <div style={headerRowStyle}>
       <div style={{
-        width: 36, height: 36, borderRadius: '50%',
+        width: 38, height: 38, borderRadius: '50%',
         background: 'linear-gradient(135deg, #c89a1f, #94730D)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 16, fontWeight: 800, color: '#0a0a0a',
+        fontSize: 14, fontWeight: 800, color: '#0a0a0a',
+        boxShadow: '0 6px 20px -6px rgba(200,168,78,0.5)',
       }}>AV</div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700 }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>
           AVbot
           <span style={botBadgeStyle}>BOT</span>
         </div>
         {subtitle && (
-          <div style={{ fontSize: 11, color: 'var(--av-text-dim)' }}>{subtitle}</div>
+          <div style={{
+            fontSize: 11, color: accent || 'rgba(228,228,231,0.55)',
+            display: 'flex', alignItems: 'center', gap: 6,
+            marginTop: 1,
+          }}>
+            <span style={{
+              width: 4, height: 4, borderRadius: '50%',
+              background: 'currentColor',
+              opacity: 0.7,
+            }} />
+            {subtitle}
+          </div>
         )}
       </div>
     </div>
@@ -112,43 +133,117 @@ function BotHeader({ subtitle }) {
 
 export function AnalyticsMockup() {
   const [ref, inView] = useInViewOnce();
-  const bars = [42, 68, 54, 80, 88, 96];
+  const [tab, setTab] = useState(1); // 0=1d, 1=7d, 2=30d
+  // Sparkline points (normalized 0..1)
+  const spark = [0.32, 0.40, 0.36, 0.48, 0.56, 0.51, 0.62, 0.74, 0.69, 0.82, 0.78, 0.90, 0.94, 1.00];
+
+  // SVG path for the sparkline
+  const W = 380, H = 60;
+  const pathD = spark.map((v, i) => {
+    const x = (i / (spark.length - 1)) * W;
+    const y = H - v * H * 0.85 - 4;
+    return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+  }).join(' ');
+  // Compute fill area
+  const fillPathD = pathD + ` L ${W} ${H} L 0 ${H} Z`;
+
   return (
     <div ref={ref} style={mockupCardStyle}>
-      <BotHeader subtitle="Community Pulse" />
+      <BotHeader subtitle="Community Pulse" accent="var(--av-gold)" />
+
+      <div style={{
+        display: 'flex', gap: 4,
+        background: 'rgba(255,255,255,0.04)',
+        padding: 3, borderRadius: 6,
+        marginBottom: 14,
+        width: 'fit-content',
+      }}>
+        {['1D', '7D', '30D'].map((l, i) => (
+          <button
+            key={l}
+            onClick={() => setTab(i)}
+            style={{
+              padding: '4px 12px',
+              borderRadius: 4,
+              border: 'none',
+              background: tab === i ? 'rgba(200,168,78,0.18)' : 'transparent',
+              color: tab === i ? 'var(--av-gold)' : 'rgba(228,228,231,0.55)',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontFamily: 'Sora, sans-serif',
+              transition: 'all 0.15s',
+            }}
+          >{l}</button>
+        ))}
+      </div>
+
       <div style={{
         display: 'grid', gridTemplateColumns: '1fr 1fr',
-        gap: '14px', marginBottom: '18px',
+        gap: 16, marginBottom: 16,
       }}>
         {[
-          { label: 'Members', target: 9978 },
-          { label: 'Active',  target: 420 },
-          { label: 'Engages', target: 1840 },
-          { label: 'Growth',  target: 28, prefix: '+', suffix: '%' },
+          { label: 'Members', target: 9978, trend: '↗ +124' },
+          { label: 'Active',  target: 1420, trend: '↗ +38' },
+          { label: 'Engages', target: 3840, trend: '↗ +212' },
+          { label: 'Raids',   target: 47,   trend: '↘ -3' },
         ].map((s) => (
           <div key={s.label}>
-            <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--av-gold)' }}>
-              <Counter target={s.target} prefix={s.prefix || ''} suffix={s.suffix || ''} inView={inView} />
+            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--av-gold)', lineHeight: 1.1 }}>
+              <Counter target={s.target} inView={inView} />
             </div>
-            <div style={labelStyle}>{s.label}</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 2 }}>
+              <div style={labelStyle}>{s.label}</div>
+              <div style={{
+                fontSize: 10,
+                color: s.trend.startsWith('↗') ? '#7adc9a' : '#f1d586',
+                fontFamily: monoFont,
+              }}>{s.trend}</div>
+            </div>
           </div>
         ))}
       </div>
-      <div style={{
-        display: 'flex', alignItems: 'flex-end', gap: '6px',
-        height: '64px', padding: '0 2px',
-        borderTop: '1px solid rgba(255,255,255,0.06)',
-        paddingTop: '14px',
-      }}>
-        {bars.map((h, i) => (
-          <div key={i} style={{
-            flex: 1,
-            height: inView ? `${h}%` : '0%',
-            background: 'linear-gradient(180deg, #f1d586, var(--av-gold) 60%, #6f5208)',
-            borderRadius: '3px 3px 0 0',
-            transition: `height 0.9s cubic-bezier(0.22, 0.6, 0.2, 1) ${0.25 + i * 0.08}s`,
-          }} />
-        ))}
+
+      <div style={dividerStyle} />
+
+      <div>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          alignItems: 'baseline', marginBottom: 4,
+        }}>
+          <span style={labelStyle}>Member growth</span>
+          <span style={{ fontSize: 10, color: 'rgba(228,228,231,0.4)', fontFamily: monoFont }}>last 7d</span>
+        </div>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+          <defs>
+            <linearGradient id="ax-spark" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="rgba(241,213,134,0.55)" />
+              <stop offset="100%" stopColor="rgba(148,115,13,0)" />
+            </linearGradient>
+          </defs>
+          <path
+            d={fillPathD}
+            fill="url(#ax-spark)"
+            style={{
+              opacity: inView ? 1 : 0,
+              transition: 'opacity 1s ease 0.4s',
+            }}
+          />
+          <path
+            d={pathD}
+            stroke="var(--av-gold)"
+            strokeWidth="1.5"
+            fill="none"
+            vectorEffect="non-scaling-stroke"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{
+              strokeDasharray: 700,
+              strokeDashoffset: inView ? 0 : 700,
+              transition: 'stroke-dashoffset 1.4s cubic-bezier(0.22, 0.6, 0.2, 1) 0.3s',
+            }}
+          />
+        </svg>
       </div>
     </div>
   );
@@ -156,52 +251,83 @@ export function AnalyticsMockup() {
 
 export function VerifyMockup() {
   const [ref, inView] = useInViewOnce();
-  const [verified, setVerified] = useState(false);
+  // 0 = idle, 1 = verifying, 2 = verified
+  const [stage, setStage] = useState(0);
   useEffect(() => {
     if (!inView) return;
-    const t = setTimeout(() => setVerified(true), 900);
-    return () => clearTimeout(t);
+    const t1 = setTimeout(() => setStage(1), 700);
+    const t2 = setTimeout(() => setStage(2), 1900);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [inView]);
+
   return (
     <div ref={ref} style={mockupCardStyle}>
-      <BotHeader subtitle="Verification required" />
-      <div style={{ fontSize: 14, color: 'var(--av-text)', marginBottom: 14 }}>
-        Verify yourself to access the community.
+      <BotHeader subtitle="Verification panel" />
+
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--av-text)', marginBottom: 6 }}>
+          Welcome to AmeretaVerse
+        </div>
+        <div style={{ fontSize: 13, color: 'rgba(228,228,231,0.7)', lineHeight: 1.55 }}>
+          Verify yourself to unlock the creator channels. Takes ten seconds.
+        </div>
       </div>
+
       <button
         disabled
         style={{
-          background: verified ? '#3ba55c' : 'var(--av-gold)',
-          color: '#0a0a0a',
+          width: '100%',
+          padding: '12px 18px',
           border: 'none',
-          padding: '9px 22px',
-          borderRadius: 6,
+          borderRadius: 8,
           fontWeight: 700,
-          fontSize: 13,
+          fontSize: 14,
           fontFamily: 'Sora, sans-serif',
+          color: stage === 2 ? '#0a0a0a' : '#0a0a0a',
+          background: stage === 2 ? '#3ba55c' : 'var(--av-gold)',
           display: 'inline-flex',
           alignItems: 'center',
-          gap: 8,
-          transition: 'background 0.5s ease, transform 0.4s ease',
-          transform: verified ? 'scale(1.02)' : 'scale(1)',
+          justifyContent: 'center',
+          gap: 10,
           cursor: 'default',
+          transition: 'background 0.5s ease',
+          boxShadow: stage === 2
+            ? '0 0 28px -6px rgba(59,165,92,0.55)'
+            : '0 0 28px -10px rgba(200,168,78,0.55)',
         }}
       >
-        <span style={{
-          display: 'inline-block',
-          transition: 'transform 0.4s ease',
-          transform: verified ? 'rotate(0deg)' : 'rotate(-90deg)',
-        }}>
-          {verified ? '✓' : '○'}
-        </span>
-        {verified ? 'Verified' : 'Verify'}
+        {stage === 0 && <>○ Click to verify</>}
+        {stage === 1 && (
+          <>
+            <span style={{
+              width: 14, height: 14, borderRadius: '50%',
+              border: '2px solid rgba(10,10,10,0.3)',
+              borderTopColor: '#0a0a0a',
+              animation: 'av-spin 0.8s linear infinite',
+              display: 'inline-block',
+            }} />
+            Verifying
+          </>
+        )}
+        {stage === 2 && <>✓ Verified</>}
       </button>
-      {verified && (
+
+      {stage === 2 && (
         <div style={{
-          fontSize: 12, color: 'var(--av-text-dim)', marginTop: 12,
-          opacity: 0, animation: 'fadeUp 0.5s ease 0.1s forwards',
+          marginTop: 14,
+          padding: '10px 12px',
+          background: 'rgba(59,165,92,0.08)',
+          border: '1px solid rgba(59,165,92,0.3)',
+          borderRadius: 6,
+          fontSize: 12,
+          color: '#7adc9a',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          animation: 'av-fade-in 0.5s ease 0.1s both',
         }}>
-          Role granted, access unlocked.
+          <span>🎭</span>
+          Role granted: <span style={{ fontWeight: 700, color: '#a8e7bc' }}>Builder</span>
         </div>
       )}
     </div>
@@ -210,48 +336,251 @@ export function VerifyMockup() {
 
 export function RoleSelectMockup() {
   const [ref, inView] = useInViewOnce();
-  const [picked, setPicked] = useState(null);
+  const [picked, setPicked] = useState(new Set());
   useEffect(() => {
     if (!inView) return;
-    const t = setTimeout(() => setPicked(1), 800);
-    return () => clearTimeout(t);
+    const seq = [0, 3, 1];
+    const timers = seq.map((idx, i) => setTimeout(() => {
+      setPicked((prev) => new Set(prev).add(idx));
+    }, 500 + i * 500));
+    return () => timers.forEach(clearTimeout);
   }, [inView]);
+
   const roles = [
     { icon: '🎨', label: 'Creator' },
     { icon: '🛠️', label: 'Builder' },
     { icon: '📊', label: 'Trader' },
     { icon: '🤝', label: 'Member' },
+    { icon: '🎮', label: 'Gamer' },
+    { icon: '⛓️', label: 'Onchain' },
   ];
+
   return (
     <div ref={ref} style={mockupCardStyle}>
       <BotHeader subtitle="Pick your roles" />
-      <div style={{ fontSize: 13, color: 'var(--av-text-muted)', marginBottom: 14 }}>
-        Choose how you want to engage in this community.
+
+      <div style={{
+        fontSize: 13, color: 'rgba(228,228,231,0.7)',
+        marginBottom: 12, lineHeight: 1.5,
+      }}>
+        Choose any that fit. We will sort your channel access automatically.
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+
+      <div style={{
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8,
+      }}>
         {roles.map((r, i) => {
-          const active = picked === i;
+          const active = picked.has(i);
           return (
             <div
               key={r.label}
               style={{
-                padding: '9px 12px',
-                borderRadius: 6,
-                background: active ? 'rgba(200,168,78,0.18)' : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${active ? 'var(--av-gold)' : 'rgba(255,255,255,0.08)'}`,
-                color: active ? 'var(--av-gold)' : 'var(--av-text)',
+                padding: '10px 12px',
+                borderRadius: 7,
+                background: active ? 'rgba(200,168,78,0.18)' : 'rgba(255,255,255,0.035)',
+                border: `1px solid ${active ? 'var(--av-gold)' : 'rgba(255,255,255,0.07)'}`,
+                color: active ? 'var(--av-gold)' : 'rgba(228,228,231,0.85)',
                 fontSize: 13,
                 fontWeight: active ? 700 : 500,
-                display: 'flex', alignItems: 'center', gap: 8,
-                transition: 'all 0.45s cubic-bezier(0.22, 0.6, 0.2, 1)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                transition: 'all 0.4s cubic-bezier(0.22, 0.6, 0.2, 1)',
               }}
             >
-              <span style={{ fontSize: 14 }}>{r.icon}</span>
-              {r.label}
-              {active && <span style={{ marginLeft: 'auto', fontSize: 12 }}>✓</span>}
+              <span style={{ fontSize: 15 }}>{r.icon}</span>
+              <span>{r.label}</span>
+              {active && (
+                <span style={{ marginLeft: 'auto', fontSize: 12 }}>✓</span>
+              )}
             </div>
           );
         })}
+      </div>
+
+      <div style={{
+        marginTop: 12, paddingTop: 10,
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+      }}>
+        <span style={labelStyle}>Selected</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--av-gold)' }}>
+          {picked.size} / {roles.length}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export function FormsMockup() {
+  const [ref, inView] = useInViewOnce();
+  const [typed, setTyped] = useState('');
+  const [stamped, setStamped] = useState(false);
+  const targetText = 'Building in public. Weekly drops.';
+  useEffect(() => {
+    if (!inView) return;
+    let i = 0;
+    const interval = setInterval(() => {
+      i++;
+      setTyped(targetText.slice(0, i));
+      if (i >= targetText.length) clearInterval(interval);
+    }, 32);
+    const stamp = setTimeout(() => setStamped(true), 2400);
+    return () => { clearInterval(interval); clearTimeout(stamp); };
+  }, [inView]);
+
+  const fields = [
+    { label: 'X handle',   value: '@nervyesi', mono: true },
+    { label: 'Following',  value: '12.4k',     mono: true },
+    { label: 'Content',    value: 'Threads, video', mono: false },
+  ];
+
+  return (
+    <div ref={ref} style={{ ...mockupCardStyle, overflow: 'hidden' }}>
+      <BotHeader subtitle="Creator application" />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {fields.map((f) => (
+          <div key={f.label}>
+            <div style={{ ...labelStyle, marginBottom: 3 }}>{f.label}</div>
+            <div style={{
+              padding: '8px 12px',
+              borderRadius: 5,
+              background: '#13141a',
+              border: '1px solid rgba(255,255,255,0.06)',
+              fontSize: 12.5,
+              color: 'var(--av-text)',
+              fontFamily: f.mono ? monoFont : 'Sora, sans-serif',
+            }}>{f.value}</div>
+          </div>
+        ))}
+        <div>
+          <div style={{ ...labelStyle, marginBottom: 3 }}>Why creator</div>
+          <div style={{
+            padding: '8px 12px',
+            borderRadius: 5,
+            background: '#13141a',
+            border: '1px solid rgba(255,255,255,0.06)',
+            fontSize: 12.5,
+            color: 'var(--av-text)',
+            minHeight: 36,
+            display: 'flex', alignItems: 'center',
+          }}>
+            {typed}
+            <span style={{
+              display: 'inline-block', width: 7, height: 14,
+              background: 'var(--av-gold)',
+              marginLeft: 2,
+              opacity: typed.length === targetText.length ? 0 : 1,
+              animation: 'av-blink 1s steps(1) infinite',
+            }} />
+          </div>
+        </div>
+      </div>
+
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          top: 16, right: 14,
+          padding: '7px 16px',
+          border: '2px solid #3ba55c',
+          borderRadius: 6,
+          color: '#7adc9a',
+          fontSize: 13,
+          fontWeight: 800,
+          letterSpacing: '0.2em',
+          textTransform: 'uppercase',
+          transform: stamped ? 'rotate(-12deg) scale(1)' : 'rotate(-32deg) scale(0.55)',
+          opacity: stamped ? 1 : 0,
+          transition: 'all 0.6s cubic-bezier(0.22, 1.4, 0.4, 1)',
+          background: 'rgba(59,165,92,0.04)',
+        }}
+      >
+        Approved
+      </div>
+    </div>
+  );
+}
+
+export function TicketsMockup() {
+  const [ref, inView] = useInViewOnce();
+  const [status, setStatus] = useState(0); // 0=open, 1=progress, 2=resolved
+  useEffect(() => {
+    if (!inView) return;
+    const t1 = setTimeout(() => setStatus(1), 1400);
+    const t2 = setTimeout(() => setStatus(2), 3200);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [inView]);
+
+  const bubbles = [
+    { who: 'member', text: 'Cannot access the creator channel after verification.', time: '14:02' },
+    { who: 'staff',  text: 'Looking into it. Which role did you pick on join?',     time: '14:03' },
+    { who: 'member', text: 'Builder. Followed every step.',                          time: '14:03' },
+    { who: 'staff',  text: 'Found it. Role assignment was stuck. Refreshing now.',   time: '14:05' },
+  ];
+
+  const statusTone = [
+    { bg: 'rgba(241,213,134,0.16)', border: 'rgba(241,213,134,0.4)', fg: '#f1d586', label: 'OPEN' },
+    { bg: 'rgba(200,168,78,0.16)',  border: 'rgba(200,168,78,0.45)', fg: 'var(--av-gold)', label: 'IN PROGRESS' },
+    { bg: 'rgba(59,165,92,0.16)',   border: 'rgba(59,165,92,0.4)',   fg: '#7adc9a',  label: 'RESOLVED' },
+  ];
+  const tone = statusTone[status];
+
+  return (
+    <div ref={ref} style={mockupCardStyle}>
+      <BotHeader subtitle="Ticket #0214 • Support" />
+
+      <div style={{
+        display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14,
+      }}>
+        <span style={{
+          padding: '3px 10px', borderRadius: 999,
+          background: 'rgba(200,168,78,0.16)',
+          border: '1px solid rgba(200,168,78,0.35)',
+          color: 'var(--av-gold)',
+          fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+        }}>Support</span>
+        <span style={{
+          padding: '3px 10px', borderRadius: 999,
+          background: tone.bg,
+          border: `1px solid ${tone.border}`,
+          color: tone.fg,
+          fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+          transition: 'all 0.45s',
+        }}>{tone.label}</span>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {bubbles.map((b, i) => (
+          <motion.div
+            key={i}
+            initial={{ y: 10, opacity: 0 }}
+            animate={inView ? { y: 0, opacity: 1 } : { y: 10, opacity: 0 }}
+            transition={{ duration: 0.4, delay: 0.25 + i * 0.4 }}
+            style={{
+              alignSelf: b.who === 'member' ? 'flex-start' : 'flex-end',
+              maxWidth: '85%',
+              padding: '8px 12px',
+              borderRadius: 10,
+              background: b.who === 'member'
+                ? 'rgba(255,255,255,0.05)'
+                : 'rgba(200,168,78,0.13)',
+              border: `1px solid ${b.who === 'member' ? 'rgba(255,255,255,0.06)' : 'rgba(200,168,78,0.28)'}`,
+              fontSize: 12,
+              color: b.who === 'member' ? 'rgba(228,228,231,0.85)' : 'var(--av-text)',
+              lineHeight: 1.5,
+              position: 'relative',
+            }}
+          >
+            <div>{b.text}</div>
+            <div style={{
+              fontSize: 9, color: 'rgba(228,228,231,0.4)',
+              fontFamily: monoFont, marginTop: 3,
+              textAlign: 'right',
+            }}>{b.time}</div>
+          </motion.div>
+        ))}
       </div>
     </div>
   );
@@ -273,12 +602,37 @@ export function RaidMockup() {
     { key: 'comment', icon: '💬', label: 'Comment' },
     { key: 'retweet', icon: '🔁', label: 'Retweet' },
   ];
+
   return (
     <div ref={ref} style={mockupCardStyle}>
-      <BotHeader subtitle="Raid #0042" />
-      <div style={{ fontSize: 13, color: 'var(--av-text-muted)', marginBottom: 12 }}>
-        Engage with the latest community post. Live verification, anti cheat on.
+      <BotHeader subtitle="Raid #0042 • Live verification" accent="var(--av-gold)" />
+
+      <div style={{
+        background: '#13141a',
+        border: '1px solid rgba(255,255,255,0.06)',
+        borderRadius: 7,
+        padding: '12px 14px',
+        marginBottom: 14,
+      }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 8 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: '50%',
+            background: 'linear-gradient(135deg, rgba(200,168,78,0.4), rgba(148,115,13,0.7))',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 13, fontWeight: 800, color: '#0a0a0a',
+            flexShrink: 0,
+          }}>A</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--av-text)' }}>
+              @ameretaverse <span style={{ color: 'rgba(228,228,231,0.4)', fontWeight: 400 }}>· 2m</span>
+            </div>
+            <div style={{ fontSize: 12, color: 'rgba(228,228,231,0.8)', lineHeight: 1.5, marginTop: 4 }}>
+              Engage with our latest. Three tasks, full payout. Live cheat detection on.
+            </div>
+          </div>
+        </div>
       </div>
+
       <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
         {tasks.map((t) => {
           const on = toggled[t.key];
@@ -287,11 +641,11 @@ export function RaidMockup() {
               key={t.key}
               style={{
                 flex: 1,
-                padding: '8px 10px',
-                borderRadius: 6,
-                background: on ? 'rgba(59,165,92,0.16)' : 'rgba(255,255,255,0.04)',
+                padding: '9px 10px',
+                borderRadius: 7,
+                background: on ? 'rgba(59,165,92,0.16)' : 'rgba(255,255,255,0.035)',
                 border: `1px solid ${on ? 'rgba(59,165,92,0.55)' : 'rgba(255,255,255,0.08)'}`,
-                color: on ? '#7adc9a' : 'var(--av-text-dim)',
+                color: on ? '#7adc9a' : 'rgba(228,228,231,0.55)',
                 fontSize: 12,
                 fontWeight: 600,
                 display: 'flex',
@@ -308,14 +662,16 @@ export function RaidMockup() {
           );
         })}
       </div>
+
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-        padding: '10px 0 0',
+        padding: '12px 0 0',
         borderTop: '1px solid rgba(255,255,255,0.06)',
       }}>
         <span style={labelStyle}>Points earned</span>
-        <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--av-gold)' }}>
+        <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--av-gold)' }}>
           <Counter target={count} inView={inView} duration={500} key={count} />
+          <span style={{ fontSize: 11, color: 'rgba(228,228,231,0.55)', marginLeft: 6, fontWeight: 500 }}>pts</span>
         </span>
       </div>
     </div>
@@ -324,38 +680,64 @@ export function RaidMockup() {
 
 export function EngageMockup() {
   const [ref, inView] = useInViewOnce();
+  const tweets = [
+    { who: 'nervyesi',  pts: 18 },
+    { who: 'devfounder', pts: 22 },
+  ];
+
   return (
     <div ref={ref} style={mockupCardStyle}>
-      <BotHeader subtitle="Engage pool, Community" />
-      <div style={{
-        background: '#16181c',
-        border: '1px solid rgba(255,255,255,0.06)',
-        borderRadius: 6,
-        padding: '12px 14px',
-        marginBottom: 12,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: '50%',
-            background: 'rgba(200,168,78,0.18)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 13, fontWeight: 700, color: 'var(--av-gold)',
-          }}>N</div>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 700 }}>@nervyesi</div>
-            <div style={{ fontSize: 10, color: 'var(--av-text-dim)' }}>posted a tweet</div>
-          </div>
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--av-text-muted)', lineHeight: 1.5 }}>
-          Just shipped a thing. Tap into the engage pool and we both win.
-        </div>
+      <BotHeader subtitle="Engage pool • Community" accent="var(--av-gold)" />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+        {tweets.map((t, i) => (
+          <motion.div
+            key={t.who}
+            initial={{ y: 8, opacity: 0 }}
+            animate={inView ? { y: 0, opacity: 1 } : { y: 8, opacity: 0 }}
+            transition={{ duration: 0.45, delay: 0.2 + i * 0.35 }}
+            style={{
+              background: '#13141a',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 6,
+              padding: '10px 12px',
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}
+          >
+            <div style={{
+              width: 28, height: 28, borderRadius: '50%',
+              background: 'rgba(200,168,78,0.18)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12, fontWeight: 700, color: 'var(--av-gold)',
+              flexShrink: 0,
+            }}>{t.who.charAt(0).toUpperCase()}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>@{t.who}</div>
+              <div style={{
+                fontSize: 11, color: 'rgba(228,228,231,0.55)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>posted a tweet · ready to engage</div>
+            </div>
+            <div style={{
+              fontSize: 11, fontWeight: 700,
+              color: 'var(--av-gold)',
+              background: 'rgba(200,168,78,0.1)',
+              border: '1px solid rgba(200,168,78,0.3)',
+              padding: '4px 8px',
+              borderRadius: 4,
+              fontFamily: monoFont,
+            }}>+{t.pts}</div>
+          </motion.div>
+        ))}
       </div>
+
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
       }}>
-        <span style={labelStyle}>Balance</span>
-        <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--av-gold)' }}>
-          <Counter target={324} suffix=" pts" inView={inView} />
+        <span style={labelStyle}>Your balance</span>
+        <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--av-gold)' }}>
+          <Counter target={324} inView={inView} />
+          <span style={{ fontSize: 11, color: 'rgba(228,228,231,0.55)', marginLeft: 6, fontWeight: 500 }}>pts</span>
         </span>
       </div>
     </div>
@@ -365,154 +747,68 @@ export function EngageMockup() {
 export function ProtectionMockup() {
   const [ref, inView] = useInViewOnce();
   const events = [
-    { sev: 'warn',  icon: '🛡️', text: 'Spam filtered', detail: '@user_a821 muted 10m' },
-    { sev: 'error', icon: '⚠️', text: 'Raid detected', detail: '12 joins in 30s, lockdown engaged' },
-    { sev: 'warn',  icon: '🚫', text: 'Phishing link blocked', detail: 'discord-nitro.gift' },
-    { sev: 'info',  icon: '🔒', text: 'Account age gate', detail: '3 accounts under 7d held' },
+    { sev: 'warn',  icon: '🛡️', text: 'Spam filtered',       detail: '@user_a821 muted for 10 minutes' },
+    { sev: 'error', icon: '⚠️', text: 'Raid detected',        detail: '12 joins in 30s, lockdown engaged' },
+    { sev: 'warn',  icon: '🚫', text: 'Phishing link blocked', detail: 'discord-nitro.gift removed' },
+    { sev: 'info',  icon: '🔒', text: 'Account age gate',      detail: '3 accounts under 7d held' },
   ];
   const sevColor = {
-    warn:  { border: 'rgba(241,213,134,0.55)', tint: 'rgba(241,213,134,0.06)' },
-    error: { border: 'rgba(255,140,66,0.6)',   tint: 'rgba(255,140,66,0.06)'  },
-    info:  { border: 'rgba(255,255,255,0.2)',  tint: 'rgba(255,255,255,0.03)' },
+    warn:  { border: 'rgba(241,213,134,0.55)', tint: 'rgba(241,213,134,0.06)', dot: '#f1d586' },
+    error: { border: 'rgba(255,140,66,0.6)',   tint: 'rgba(255,140,66,0.06)',  dot: '#ff8c42' },
+    info:  { border: 'rgba(255,255,255,0.2)',  tint: 'rgba(255,255,255,0.03)', dot: 'rgba(255,255,255,0.5)' },
   };
-  return (
-    <div ref={ref} style={mockupCardStyle}>
-      <BotHeader subtitle="Protection log" />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {events.map((e, i) => (
-          <motion.div
-            key={i}
-            initial={{ x: -18, opacity: 0 }}
-            animate={inView ? { x: 0, opacity: 1 } : { x: -18, opacity: 0 }}
-            transition={{ duration: 0.45, delay: 0.25 + i * 0.32, ease: [0.22, 0.6, 0.2, 1] }}
-            style={{
-              display: 'flex', alignItems: 'flex-start', gap: 10,
-              padding: '8px 10px',
-              background: sevColor[e.sev].tint,
-              border: `1px solid ${sevColor[e.sev].border}`,
-              borderRadius: 6,
-            }}
-          >
-            <span style={{ fontSize: 16, lineHeight: 1 }}>{e.icon}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--av-text)' }}>{e.text}</div>
-              <div style={{ fontSize: 11, color: 'var(--av-text-dim)' }}>{e.detail}</div>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
-export function TicketsMockup() {
-  const [ref, inView] = useInViewOnce();
-  const bubbles = [
-    { who: 'member', text: 'Hey team, I cannot access the creator channel after verification.' },
-    { who: 'staff',  text: 'Looking into it. What role did you select on join?' },
-    { who: 'member', text: 'Builder. Followed all the steps.' },
-  ];
   return (
     <div ref={ref} style={mockupCardStyle}>
-      <BotHeader subtitle="Ticket #0214" />
+      <BotHeader subtitle="Protection • Live" accent="#ff8c42" />
+
       <div style={{
-        display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        marginBottom: 12,
       }}>
-        <span style={{
-          padding: '3px 10px', borderRadius: 999,
-          background: 'rgba(200,168,78,0.16)',
-          border: '1px solid rgba(200,168,78,0.35)',
-          color: 'var(--av-gold)',
-          fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
-        }}>Support</span>
-        <span style={{
-          padding: '3px 10px', borderRadius: 999,
-          background: 'rgba(59,165,92,0.16)',
-          border: '1px solid rgba(59,165,92,0.4)',
-          color: '#7adc9a',
-          fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
-        }}>Open</span>
-        <span style={{
-          marginLeft: 'auto', fontSize: 11, color: 'var(--av-text-dim)',
-        }}>3m ago</span>
+        <span style={labelStyle}>Today</span>
+        <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--av-text)' }}>
+          <Counter target={47} inView={inView} duration={1100} />
+          <span style={{ fontSize: 11, color: 'rgba(228,228,231,0.55)', marginLeft: 6, fontWeight: 500 }}>actions</span>
+        </span>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {bubbles.map((b, i) => (
-          <motion.div
-            key={i}
-            initial={{ y: 10, opacity: 0 }}
-            animate={inView ? { y: 0, opacity: 1 } : { y: 10, opacity: 0 }}
-            transition={{ duration: 0.45, delay: 0.3 + i * 0.35 }}
-            style={{
-              alignSelf: b.who === 'member' ? 'flex-start' : 'flex-end',
-              maxWidth: '85%',
-              padding: '8px 12px',
-              borderRadius: 10,
-              background: b.who === 'member' ? 'rgba(255,255,255,0.05)' : 'rgba(200,168,78,0.13)',
-              border: `1px solid ${b.who === 'member' ? 'rgba(255,255,255,0.07)' : 'rgba(200,168,78,0.28)'}`,
-              fontSize: 12,
-              color: b.who === 'member' ? 'var(--av-text-muted)' : 'var(--av-text)',
-              lineHeight: 1.5,
-            }}
-          >
-            {b.text}
-          </motion.div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
-export function FormsMockup() {
-  const [ref, inView] = useInViewOnce();
-  const [stamped, setStamped] = useState(false);
-  useEffect(() => {
-    if (!inView) return;
-    const t = setTimeout(() => setStamped(true), 1100);
-    return () => clearTimeout(t);
-  }, [inView]);
-  const fields = [
-    { label: 'X handle', value: '@nervyesi' },
-    { label: 'Content type', value: 'Threads, video' },
-    { label: 'Why creator', value: 'Building in public, weekly drops.' },
-  ];
-  return (
-    <div ref={ref} style={{ ...mockupCardStyle, overflow: 'hidden' }}>
-      <BotHeader subtitle="Creator application" />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 }}>
-        {fields.map((f) => (
-          <div key={f.label}>
-            <div style={{ ...labelStyle, marginBottom: 3 }}>{f.label}</div>
-            <div style={{
-              padding: '7px 10px',
-              borderRadius: 4,
-              background: '#16181c',
-              border: '1px solid rgba(255,255,255,0.06)',
-              fontSize: 12,
-              color: 'var(--av-text)',
-            }}>{f.value}</div>
-          </div>
-        ))}
-      </div>
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          top: 18, right: 14,
-          padding: '6px 14px',
-          border: '2px solid #3ba55c',
-          borderRadius: 6,
-          color: '#7adc9a',
-          fontSize: 13,
-          fontWeight: 800,
-          letterSpacing: '0.18em',
-          textTransform: 'uppercase',
-          transform: stamped ? 'rotate(-12deg) scale(1)' : 'rotate(-30deg) scale(0.6)',
-          opacity: stamped ? 1 : 0,
-          transition: 'all 0.55s cubic-bezier(0.22, 1.4, 0.4, 1)',
-        }}
-      >
-        Approved
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {events.map((e, i) => {
+          const tone = sevColor[e.sev];
+          return (
+            <motion.div
+              key={i}
+              initial={{ x: -20, opacity: 0 }}
+              animate={inView ? { x: 0, opacity: 1 } : { x: -20, opacity: 0 }}
+              transition={{ duration: 0.45, delay: 0.25 + i * 0.3 }}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10,
+                padding: '9px 11px',
+                background: tone.tint,
+                border: `1px solid ${tone.border}`,
+                borderRadius: 6,
+              }}
+            >
+              <span style={{ fontSize: 16, lineHeight: 1 }}>{e.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: 12, fontWeight: 700, color: 'var(--av-text)',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  <span style={{
+                    width: 5, height: 5, borderRadius: '50%',
+                    background: tone.dot,
+                  }} />
+                  {e.text}
+                </div>
+                <div style={{ fontSize: 11, color: 'rgba(228,228,231,0.55)', marginTop: 1 }}>
+                  {e.detail}
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
       </div>
     </div>
   );
@@ -520,20 +816,52 @@ export function FormsMockup() {
 
 export function LogsMockup() {
   const [ref, inView] = useInViewOnce();
+  const [tab, setTab] = useState(0);
+  const tabs = ['All', 'Admin', 'Protection'];
   const rows = [
-    { sev: 'info', badge: 'INFO', cat: 'admin',      text: 'Admin granted access to @new_mod' },
-    { sev: 'warn', badge: 'WARN', cat: 'protection', text: 'Phishing link removed in #general' },
-    { sev: 'info', badge: 'INFO', cat: 'raid',       text: 'Raid #0042 created by @nervyesi' },
-    { sev: 'warn', badge: 'WARN', cat: 'engage',     text: 'Flagged: @user_92ab on submission #07' },
-    { sev: 'info', badge: 'INFO', cat: 'settings',   text: 'Brand color updated' },
+    { sev: 'info', cat: 'admin',      text: 'Granted access to @new_mod',           time: '14:02' },
+    { sev: 'warn', cat: 'protection', text: 'Phishing link removed in #general',     time: '14:04' },
+    { sev: 'info', cat: 'raid',       text: 'Raid #0042 created by @nervyesi',       time: '14:08' },
+    { sev: 'warn', cat: 'engage',     text: 'Flagged: @user_92ab on submission #07', time: '14:11' },
+    { sev: 'info', cat: 'settings',   text: 'Brand color updated',                   time: '14:15' },
+    { sev: 'info', cat: 'forms',      text: 'Application #014 approved',             time: '14:19' },
   ];
   const sevTone = {
-    info: { fg: '#a1a1aa', bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.08)' },
-    warn: { fg: '#f1d586', bg: 'rgba(241,213,134,0.08)', border: 'rgba(241,213,134,0.3)' },
+    info: { fg: '#a1a1aa', bg: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.07)' },
+    warn: { fg: '#f1d586', bg: 'rgba(241,213,134,0.07)', border: 'rgba(241,213,134,0.28)' },
   };
+
   return (
     <div ref={ref} style={mockupCardStyle}>
       <BotHeader subtitle="Unified activity log" />
+
+      <div style={{
+        display: 'flex', gap: 4,
+        background: 'rgba(255,255,255,0.04)',
+        padding: 3, borderRadius: 6,
+        marginBottom: 14,
+        width: 'fit-content',
+      }}>
+        {tabs.map((l, i) => (
+          <button
+            key={l}
+            onClick={() => setTab(i)}
+            style={{
+              padding: '4px 12px',
+              borderRadius: 4,
+              border: 'none',
+              background: tab === i ? 'rgba(200,168,78,0.18)' : 'transparent',
+              color: tab === i ? 'var(--av-gold)' : 'rgba(228,228,231,0.55)',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontFamily: 'Sora, sans-serif',
+              transition: 'all 0.15s',
+            }}
+          >{l}</button>
+        ))}
+      </div>
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {rows.map((r, i) => {
           const tone = sevTone[r.sev];
@@ -542,12 +870,12 @@ export function LogsMockup() {
               key={i}
               initial={{ x: -14, opacity: 0 }}
               animate={inView ? { x: 0, opacity: 1 } : { x: -14, opacity: 0 }}
-              transition={{ duration: 0.4, delay: 0.2 + i * 0.18 }}
+              transition={{ duration: 0.4, delay: 0.2 + i * 0.14 }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
-                padding: '6px 10px',
+                padding: '7px 10px',
                 background: tone.bg,
                 border: `1px solid ${tone.border}`,
                 borderRadius: 6,
@@ -559,16 +887,21 @@ export function LogsMockup() {
                 padding: '2px 6px',
                 border: `1px solid ${tone.border}`,
                 borderRadius: 3,
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-              }}>{r.badge}</span>
+                fontFamily: monoFont,
+                minWidth: 36, textAlign: 'center',
+              }}>{r.sev.toUpperCase()}</span>
               <span style={{
-                fontSize: 10, color: 'var(--av-text-dim)',
-                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: 10, color: 'rgba(228,228,231,0.5)',
+                fontFamily: monoFont, minWidth: 60,
               }}>{r.cat}</span>
               <span style={{
                 fontSize: 12, color: 'var(--av-text)', flex: 1, minWidth: 0,
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               }}>{r.text}</span>
+              <span style={{
+                fontSize: 10, color: 'rgba(228,228,231,0.35)',
+                fontFamily: monoFont,
+              }}>{r.time}</span>
             </motion.div>
           );
         })}
@@ -583,10 +916,10 @@ export const MODULE_PANELS = [
   { id: 'analytics',  icon: '📊', label: 'Analytics',      headline: 'See your community breathe.',          copy: 'Real time dashboards track member growth, engagement, and module performance. Decisions become obvious when the data is in front of you.', Mockup: AnalyticsMockup },
   { id: 'verify',     icon: '✅', label: 'Verification',   headline: 'Bots stop at the door.',                copy: 'Token gated, role based access. Every member proves they belong through challenges that fit your brand, not a generic captcha.', Mockup: VerifyMockup },
   { id: 'roleselect', icon: '🎭', label: 'Role Selection', headline: 'Members tag themselves.',               copy: 'Beautiful pickers with reaction or button panels. Members claim their roles in a click. Your mods get their afternoons back.', Mockup: RoleSelectMockup },
+  { id: 'forms',      icon: '📝', label: 'Forms',           headline: 'Onboard the right people.',             copy: 'Visual form builder with approval workflows and auto roles. Every application reviewed, every applicant tracked, every decision logged.', Mockup: FormsMockup },
+  { id: 'tickets',    icon: '🎫', label: 'Tickets',         headline: 'Support that scales.',                  copy: 'Categorized threads, status pills, and a full audit trail. Your team handles ten tickets like one without losing context.', Mockup: TicketsMockup },
   { id: 'raid',       icon: '⚔️', label: 'Raid',            headline: 'Amplify your X reach in minutes.',     copy: 'Reward members for engaging with your tweets. Live X verification, anti cheat detection, and a live leaderboard turn organic engagement into a community habit.', Mockup: RaidMockup },
   { id: 'engage',     icon: '🔁', label: 'Engage',          headline: 'A perpetual engine for your community.', copy: 'Members earn points by engaging with each other tweets, then spend those points to submit their own. The flywheel runs itself, no admin work required.', Mockup: EngageMockup },
   { id: 'protection', icon: '🛡️', label: 'Protection',     headline: 'Sleep through the night.',              copy: 'Anti spam, anti raid, and anti scam guardrails work silently. Phishing blocklist, account age gates, and lockdown response all logged for the morning.', Mockup: ProtectionMockup },
-  { id: 'tickets',    icon: '🎫', label: 'Tickets',         headline: 'Support that scales.',                  copy: 'Categorized threads, status pills, and a full audit trail. Your team handles ten tickets like one without losing context.', Mockup: TicketsMockup },
-  { id: 'forms',      icon: '📝', label: 'Forms',           headline: 'Onboard the right people.',             copy: 'Visual form builder with approval workflows and auto roles. Every application reviewed, every applicant tracked, every decision logged.', Mockup: FormsMockup },
   { id: 'logs',       icon: '📋', label: 'Logs',            headline: 'Every action, traceable.',              copy: 'One unified activity log across every module. Admin actions, flagged users, settings changes, and protection events. Full transparency.', Mockup: LogsMockup },
 ];

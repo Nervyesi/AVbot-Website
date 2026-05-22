@@ -5,26 +5,27 @@ import { MODULE_PANELS } from './ModuleMockups';
 /**
  * ScrollJourney.
  *
- * Nine 100vh stations stacked vertically over the fixed BlackHoleVideo.
- * As the user scrolls the camera approaches and orbits the black hole;
- * each station's module mockup is composed off to one side (alternating
- * right then left) so the bright disk has room to breathe. Each station
- * reveals via Framer Motion whileInView amount:0.35 once:true and its
- * mockup's internal IntersectionObserver plays the embedded animation.
+ * Nine module stations stacked vertically. Each station composes its
+ * mockup off to one side, alternating right then left, with a copy block
+ * beside it. Each station reveals via Framer Motion whileInView once and
+ * the mockup's internal IntersectionObserver plays the inner animation.
  *
- * All sections are transparent. The page bg and the video are the only
- * visual layers behind the cards; there are no borders or section fills
- * that could draw a horizontal seam.
+ * All sections are transparent so the page-wide gold hero centerpiece /
+ * background composites continuously beneath every section with no
+ * horizontal seams.
  */
 
-function StationCopy({ panel, onRight }) {
+function StationCopy({ panel, onRight, isMobile }) {
+  const align = isMobile ? 'center' : (onRight ? 'flex-start' : 'flex-end');
+  const textAlign = isMobile ? 'center' : (onRight ? 'left' : 'right');
   return (
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      alignItems: onRight ? 'flex-start' : 'flex-end',
-      textAlign: onRight ? 'left' : 'right',
+      alignItems: align,
+      textAlign,
       marginBottom: '20px',
+      width: '100%',
     }}>
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: '8px',
@@ -73,19 +74,17 @@ function ModuleStation({ panel, index }) {
       style={{
         position: 'relative',
         minHeight: '100vh',
-        padding: '12vh 24px',
+        padding: 'clamp(60px, 10vh, 120px) 24px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        // Transparent so the fixed BlackHoleVideo shows through. No
-        // borders, no shadows, nothing that could draw a horizontal edge.
         backgroundColor: 'transparent',
       }}
     >
       <div
         style={{
           width: '100%',
-          maxWidth: '1200px',
+          maxWidth: '1100px',
           display: 'flex',
           flexDirection: 'row',
           flexWrap: 'wrap',
@@ -97,14 +96,14 @@ function ModuleStation({ panel, index }) {
         <motion.div
           initial={{ y: 36, opacity: 0 }}
           whileInView={{ y: 0, opacity: 1 }}
-          viewport={{ once: true, amount: 0.25 }}
+          viewport={{ once: true, amount: 0.2 }}
           transition={{ duration: 0.85, ease: [0.22, 0.6, 0.2, 1] }}
+          className={`av-station-col av-station-${onRight ? 'right' : 'left'}`}
           style={{
             width: '100%',
             maxWidth: '480px',
             display: 'flex',
             flexDirection: 'column',
-            alignItems: onRight ? 'flex-start' : 'flex-end',
           }}
         >
           <StationCopy panel={panel} onRight={onRight} />
@@ -117,14 +116,12 @@ function ModuleStation({ panel, index }) {
 
 export default function ScrollJourney() {
   return (
-    <div style={{ position: 'relative', backgroundColor: 'transparent' }}>
-      {/* Section heading. Sits as a small dedicated viewport-height slot so
-          the user reads it cleanly before the first module appears. */}
+    <div id="showcase" style={{ position: 'relative', backgroundColor: 'transparent' }}>
       <section
         style={{
           position: 'relative',
           minHeight: '60vh',
-          padding: '12vh 24px 0',
+          padding: 'clamp(60px, 12vh, 120px) 24px 0',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -158,7 +155,7 @@ export default function ScrollJourney() {
             lineHeight: 1.6,
             textShadow: '0 1px 12px rgba(0,0,0,0.7)',
           }}>
-            Scroll. The camera closes on the singularity. Each station lights up another part of what AVbot does.
+            Every system your community needs, working in concert. Scroll, and watch each one light up.
           </p>
         </motion.div>
       </section>
