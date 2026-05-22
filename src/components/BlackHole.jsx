@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
 /**
@@ -114,7 +114,7 @@ const FRAG = /* glsl */`
     else if (radial > 0.3) c = mix(cGold,   cBright, (radial - 0.3) / 0.4);
     else                   c = mix(cDeep * 0.5, cGold, max(0.0, radial / 0.3));
 
-    return c * radial * 1.55;
+    return c * radial * 2.85;
   }
 
   // Lensed starfield. Sample two scales of cell-based stars in spherical
@@ -207,7 +207,7 @@ const FRAG = /* glsl */`
 
       // Photon ring: a thin sphere of light near 1.55 R_s.
       float ringD = r - R_S * 1.55;
-      accum += vec3(1.00, 0.85, 0.52) * exp(-ringD * ringD * 65.0) * DT * 1.25;
+      accum += vec3(1.30, 1.00, 0.62) * exp(-ringD * ringD * 65.0) * DT * 2.20;
     }
 
     vec3 col;
@@ -220,14 +220,16 @@ const FRAG = /* glsl */`
       col += accum;
     }
 
-    // Subtle global vignette so the outer corners settle into darkness.
-    float vig = 1.0 - 0.35 * pow(length(uv) * 0.32, 2.0);
+    // Very subtle outer corner darken. The shader vignette is gentle so it
+    // does not fight the gold disk that extends to the screen edges.
+    float vig = 1.0 - 0.18 * pow(length(uv) * 0.32, 2.0);
     col *= vig;
 
-    // Exposure + ACES filmic + gentle gamma deepening.
-    col *= 0.95 * uIntensity;
+    // Exposure boost + ACES filmic. No deepening gamma here, that crushed
+    // the gold; instead we let ACES handle the roll-off so highlights stay
+    // luminous and blacks stay rich.
+    col *= 1.55 * uIntensity;
     col = aces(col);
-    col = pow(col, vec3(0.92));
 
     gl_FragColor = vec4(col, 1.0);
   }
@@ -235,6 +237,7 @@ const FRAG = /* glsl */`
 
 export default function BlackHole({ intensity = 1.0 }) {
   const containerRef = useRef(null);
+  const [glFailed, setGlFailed] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -246,11 +249,29 @@ export default function BlackHole({ intensity = 1.0 }) {
     const maxPR = isMobile ? 0.85 : 1.4;
     const dpr = Math.min(maxPR, window.devicePixelRatio || 1);
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: false,
-      alpha: true,
-      powerPreference: 'high-performance',
-    });
+    // Guard the WebGLRenderer construction. If the browser cannot create
+    // a context (very old GPUs, blocked GL, headless previews), we fall
+    // back to a pure CSS gold-on-black glow below.
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: false,
+        alpha: true,
+        powerPreference: 'high-performance',
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[BlackHole] WebGL init failed, falling back to CSS glow', err);
+      setGlFailed(true);
+      return;
+    }
+    if (!renderer || !renderer.getContext()) {
+      // eslint-disable-next-line no-console
+      console.warn('[BlackHole] WebGL context unavailable, falling back to CSS glow');
+      try { renderer && renderer.dispose && renderer.dispose(); } catch (_) {}
+      setGlFailed(true);
+      return;
+    }
     renderer.setPixelRatio(dpr);
     container.appendChild(renderer.domElement);
     Object.assign(renderer.domElement.style, {
@@ -294,24 +315,27 @@ export default function BlackHole({ intensity = 1.0 }) {
     const ro = new ResizeObserver(resize);
     ro.observe(container);
 
-    // Pause when offscreen.
-    let visible = true;
-    let frame   = null;
-    const io = new IntersectionObserver(([entry]) => {
-      const was = visible;
-      visible = entry.isIntersecting;
-      if (visible && !was && frame === null) {
-        frame = requestAnimationFrame(tick);
-      }
-    });
-    io.observe(container);
-
+    // Always render to avoid the well-known IntersectionObserver-vs-rAF
+    // race where IO's first callback can flip visible=false before the
+    // first tick runs, permanently halting the loop. The hero is on
+    // screen the majority of the time, and the shader is cheap at the
+    // capped pixel ratio above, so we accept the steady-state cost in
+    // exchange for never being invisible on load.
+    let frame = null;
     const startT = performance.now();
 
     function tick(now) {
-      if (!visible) { frame = null; return; }
       uniforms.uTime.value = (now - startT) * 0.001;
-      renderer.render(scene, camera);
+      try {
+        renderer.render(scene, camera);
+      } catch (err) {
+        // Context loss or similar. Stop the loop; the fallback below
+        // remains in place.
+        // eslint-disable-next-line no-console
+        console.warn('[BlackHole] render failed, halting loop', err);
+        cancelAnimationFrame(frame);
+        return;
+      }
       frame = requestAnimationFrame(tick);
     }
     frame = requestAnimationFrame(tick);
@@ -319,7 +343,6 @@ export default function BlackHole({ intensity = 1.0 }) {
     return () => {
       if (frame !== null) cancelAnimationFrame(frame);
       ro.disconnect();
-      io.disconnect();
       geometry.dispose();
       material.dispose();
       renderer.dispose();
@@ -337,6 +360,17 @@ export default function BlackHole({ intensity = 1.0 }) {
         inset: 0,
         pointerEvents: 'none',
       }}
-    />
+    >
+      {glFailed && (
+        <div
+          style={{
+            position: 'absolute', inset: 0,
+            pointerEvents: 'none',
+            background:
+              'radial-gradient(circle at center, rgba(232,200,105,0.45) 0%, rgba(200,168,78,0.28) 14%, rgba(0,0,0,1) 30%, rgba(0,0,0,1) 60%, rgba(148,115,13,0.18) 78%, rgba(0,0,0,0.95) 100%)',
+          }}
+        />
+      )}
+    </div>
   );
 }

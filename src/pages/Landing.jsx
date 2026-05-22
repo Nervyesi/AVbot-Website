@@ -28,12 +28,14 @@ function usePointerHover() {
 // ── Background atmosphere layers ─────────────────────────────────────────────
 
 function Vignette() {
+  // Whisper-soft corner darken only. The shader has its own subtle vignette,
+  // so this layer just nudges the very edges back without crushing the disk.
   return (
     <div
       aria-hidden="true"
       style={{
         position: 'absolute', inset: 0, pointerEvents: 'none',
-        background: 'radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.55) 80%, rgba(0,0,0,0.85) 100%)',
+        background: 'radial-gradient(ellipse at center, transparent 70%, rgba(0,0,0,0.22) 92%, rgba(0,0,0,0.45) 100%)',
         zIndex: 2,
       }}
     />
@@ -301,16 +303,21 @@ function HeroSection({ inviteUrl }) {
         maxWidth: '1100px',
         width: '100%',
       }}>
-        {/* Localised dark radial scrim behind the content so the copy stays
-            crisp over the bright accretion disk. Confined to the content
-            band; the disk outside this region reads at full brightness. */}
+        {/* Tight dark scrim sitting only behind the headline text band. The
+            bright accretion disk reads at full intensity everywhere outside
+            this narrow ellipse, so the disk dominates the composition while
+            the headline still has the contrast it needs. */}
         <div
           aria-hidden="true"
           style={{
             position: 'absolute',
-            inset: '-12% -8%',
-            background: 'radial-gradient(ellipse at center, rgba(8,8,10,0.62) 0%, rgba(8,8,10,0.34) 45%, transparent 80%)',
-            filter: 'blur(18px)',
+            left: '50%',
+            top:  '52%',
+            width:  'min(720px, 88%)',
+            height: '38%',
+            transform: 'translate(-50%, -50%)',
+            background: 'radial-gradient(ellipse at center, rgba(6,6,8,0.55) 0%, rgba(6,6,8,0.22) 55%, transparent 85%)',
+            filter: 'blur(28px)',
             pointerEvents: 'none',
             zIndex: -1,
           }}
