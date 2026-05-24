@@ -159,8 +159,6 @@ const Analytics = () => {
   const [memberTf, setMemberTf] = useState('week');
   const [jlTf,     setJlTf]     = useState('week');
   const [msgTf,    setMsgTf]    = useState('week');
-  const [voiceTf,  setVoiceTf]  = useState('week');
-  const [ptsTf,    setPtsTf]    = useState('week');
   const [apiData,  setApiData]  = useState(null);
   const [loading,  setLoading]  = useState(false);
 
@@ -187,8 +185,6 @@ const Analytics = () => {
   const memberRaw  = d?.member_growth?.[memberTf] ?? null;
   const jlRaw      = d?.joins_leaves?.[jlTf]     ?? null;
   const msgRaw     = d?.messages?.[msgTf]         ?? null;
-  const voiceData  = d?.voice?.[voiceTf]          ?? null;
-  const pointsData = d?.points?.[ptsTf]           ?? null;
 
   const memberNoData = Array.isArray(memberRaw) && memberRaw.length === 0;
   const jlNoData     = Array.isArray(jlRaw)     && jlRaw.length === 0;
@@ -197,10 +193,37 @@ const Analytics = () => {
   const jlData       = jlNoData     ? null : jlRaw;
   const msgData      = msgNoData    ? null : msgRaw;
 
-  const channelData = d?.channels        ?? null;
-  const voiceChData = d?.voice_channels  ?? null;
-  const topChatters = d?.top_chatters    ?? null;
-  const e4eData     = d?.e4e             ?? null;
+  // Messages per channel: backend sends [{channel_id, name, count}].
+  const channelRaw  = d?.messages_per_channel ?? null;
+  const channelData = (Array.isArray(channelRaw) && channelRaw.length) ? channelRaw : null;
+
+  // Most active hours: backend sends 24 slots [{hour, label, count}].
+  const hoursRaw    = d?.active_hours ?? null;
+  const hoursHasData = Array.isArray(hoursRaw) && hoursRaw.some(h => (h.count || 0) > 0);
+  const hoursData   = hoursHasData ? hoursRaw : null;
+
+  // Top chatters: backend sends [{user_id, username, count}].
+  const chattersRaw = d?.top_chatters ?? null;
+  const topChatters = (Array.isArray(chattersRaw) && chattersRaw.length) ? chattersRaw : null;
+
+  // Voice: structured empty state until voice tracking exists.
+  const voice       = d?.voice ?? null;
+  const voiceAvail  = !!voice?.available;
+
+  // Engagement, split into two independent halves.
+  const community   = d?.community_points    ?? null;
+  const engageEng   = d?.engage_engagement   ?? null;
+
+  // Member-growth Y domain: scale to the real data range (with padding) so
+  // fluctuations at ~10k are visible instead of a flat line pinned to a 0 floor.
+  const memberVals  = (Array.isArray(memberData) ? memberData : [])
+    .map(p => p.value).filter(v => v != null);
+  const memberMin   = memberVals.length ? Math.min(...memberVals) : 0;
+  const memberMax   = memberVals.length ? Math.max(...memberVals) : 0;
+  const memberPad   = Math.max(1, Math.round((memberMax - memberMin) * 0.15));
+  const memberDomain = memberVals.length
+    ? [Math.max(0, memberMin - memberPad), memberMax + memberPad]
+    : [0, 'auto'];
 
   return (
     <div style={{ fontFamily: 'Sora, sans-serif', color: '#fff' }}>
@@ -235,9 +258,9 @@ const Analytics = () => {
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
             <XAxis dataKey="label" tick={axisStyle} />
-            <YAxis tick={axisStyle} />
+            <YAxis tick={axisStyle} domain={memberDomain} allowDecimals={false} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v} />
             <Tooltip content={<CustomTooltip />} />
-            <Area type="monotone" dataKey="value" name="Members" stroke={C.gold} fill="url(#goldGrad)" strokeWidth={2} dot={false} />
+            <Area type="monotone" dataKey="value" name="Members" stroke={C.gold} fill="url(#goldGrad)" strokeWidth={2} dot={false} connectNulls={false} />
           </AreaChart>
         ) : null}
       </ChartCard>
@@ -302,27 +325,27 @@ const Analytics = () => {
           ) : null}
         </ChartCard>
 
-        <ChartCard title="Messages per Channel" height={210}>
+        <ChartCard title="Messages per Channel" height={210} noData={channelRaw != null && !channelData} dataStarted={dataStarted}>
           {channelData ? (
-            <BarChart data={channelData} layout="vertical" margin={{ top: 0, right: 10, left: 20, bottom: 0 }}>
+            <BarChart data={channelData.slice(0, 10)} layout="vertical" margin={{ top: 0, right: 10, left: 20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false} />
-              <XAxis type="number" tick={axisStyle} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
-              <YAxis type="category" dataKey="channel" tick={{ ...axisStyle, fontSize: 10 }} width={72} />
+              <XAxis type="number" tick={axisStyle} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v} />
+              <YAxis type="category" dataKey="name" tick={{ ...axisStyle, fontSize: 10 }} width={84} />
               <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="messages" name="Messages" fill={C.gold} radius={[0, 4, 4, 0]} />
+              <Bar dataKey="count" name="Messages" fill={C.gold} radius={[0, 4, 4, 0]} />
             </BarChart>
           ) : null}
         </ChartCard>
       </div>
 
-      <ChartCard title="Most Active Hours (UTC)" height={190}>
-        {d?.hourly ? (
-          <BarChart data={d.hourly} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+      <ChartCard title="Most Active Hours (UTC)" height={190} noData={hoursRaw != null && !hoursData} dataStarted={dataStarted}>
+        {hoursData ? (
+          <BarChart data={hoursData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
             <XAxis dataKey="label" tick={{ ...axisStyle, fontSize: 9 }} interval={1} />
-            <YAxis tick={axisStyle} />
+            <YAxis tick={axisStyle} allowDecimals={false} />
             <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="messages" name="Messages" fill={C.gold} radius={[3, 3, 0, 0]} />
+            <Bar dataKey="count" name="Messages" fill={C.gold} radius={[3, 3, 0, 0]} />
           </BarChart>
         ) : null}
       </ChartCard>
@@ -331,8 +354,10 @@ const Analytics = () => {
         <Card style={{ marginTop: '16px' }}>
           <CardTitle>Top Chatters</CardTitle>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: '10px' }}>
-            {topChatters.map((u, i) => (
-              <div key={u.name} style={{
+            {topChatters.map((u, i) => {
+              const name = u.username || `User ${u.user_id}`;
+              return (
+              <div key={u.user_id || i} style={{
                 display: 'flex', alignItems: 'center', gap: '10px',
                 padding: '10px 14px', background: 'rgba(0,0,0,0.2)', borderRadius: '10px',
               }}>
@@ -343,19 +368,19 @@ const Analytics = () => {
                   width: '30px', height: '30px', borderRadius: '50%', flexShrink: 0,
                   background: `hsl(${i * 47},40%,28%)`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700,
-                }}>{u.name[0]}</div>
+                }}>{name[0]?.toUpperCase()}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>@{u.name}</div>
-                  <div style={{ fontSize: '11px', color: C.muted }}>{u.msgs?.toLocaleString()} msgs</div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+                  <div style={{ fontSize: '11px', color: C.muted }}>{(u.count || 0).toLocaleString()} msgs</div>
                 </div>
               </div>
-            ))}
+            );})}
           </div>
         </Card>
       ) : (
         <Card style={{ marginTop: '16px' }}>
           <CardTitle>Top Chatters</CardTitle>
-          <LivePending />
+          <div style={{ color: C.muted, fontSize: '13px' }}>No messages tracked yet. This populates as members chat.</div>
         </Card>
       )}
 
@@ -363,88 +388,92 @@ const Analytics = () => {
       <SectionHeading icon="🎙️" title="Voice" />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: '12px', marginBottom: '16px' }}>
-        <NumCard label="Today"      value={d?.voice_today != null ? `${d.voice_today}h` : null}  sub="total voice" color={C.gold} />
-        <NumCard label="This Week"  value={d?.voice_week != null ? `${d.voice_week}h` : null}    sub="voice hours" />
-        <NumCard label="This Month" value={d?.voice_month != null ? `${d.voice_month}h` : null}  sub="voice hours" />
-        <NumCard label="Peak Hour"  value={d?.voice_peak_hour ?? null}  sub="UTC most active" />
+        <NumCard label="Total Hours" value={voiceAvail ? `${Math.round((voice.total_minutes || 0) / 60)}h` : undefined} sub="all time" color={C.gold} />
+        <NumCard label="Sessions"    value={voiceAvail ? (voice.total_sessions || 0).toLocaleString() : undefined} sub="all time" />
+        <NumCard label="Channels"    value={voiceAvail ? (voice.top_channels?.length || 0) : undefined} sub="with activity" />
+        <NumCard label="Members"     value={voiceAvail ? (voice.top_users?.length || 0) : undefined} sub="in voice" />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-        <ChartCard title="Voice Activity Over Time" timeframe={voiceTf} onTimeframe={setVoiceTf} height={210}>
-          {voiceData ? (
-            <AreaChart data={voiceData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="greenGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={C.green} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={C.green} stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-              <XAxis dataKey="label" tick={axisStyle} />
-              <YAxis tick={axisStyle} unit="h" />
-              <Tooltip content={<CustomTooltip />} />
-              <Area type="monotone" dataKey="voice" name="Voice (h)" stroke={C.green} fill="url(#greenGrad)" strokeWidth={2} dot={false} />
-            </AreaChart>
-          ) : null}
-        </ChartCard>
+      {!voiceAvail && (
+        <Card>
+          <CardTitle>Voice Activity</CardTitle>
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', gap: '10px', color: C.muted, textAlign: 'center', padding: '24px',
+          }}>
+            <div style={{ fontSize: '26px' }}>🎙️</div>
+            <div style={{ fontSize: '13px', fontWeight: 600 }}>No voice data yet.</div>
+            <div style={{ fontSize: '12px', opacity: 0.7, maxWidth: '420px' }}>
+              Voice activity will appear here once members start using voice channels. Tracking is ready and will populate automatically.
+            </div>
+          </div>
+        </Card>
+      )}
 
-        <ChartCard title="Most Used Voice Channels" height={210}>
-          {voiceChData ? (
-            <BarChart data={voiceChData} layout="vertical" margin={{ top: 0, right: 10, left: 20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false} />
-              <XAxis type="number" tick={axisStyle} unit="h" />
-              <YAxis type="category" dataKey="name" tick={{ ...axisStyle, fontSize: 10 }} width={90} />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="hours" name="Hours" fill={C.green} radius={[0, 4, 4, 0]} />
-            </BarChart>
-          ) : null}
-        </ChartCard>
-      </div>
-
-      {/* ── Engagement ── */}
-      <SectionHeading icon="⚡" title="Engagement" />
+      {/* ── Community Points engagement (raids + community points) ── */}
+      <SectionHeading icon="⚔️" title="Community Points" />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: '12px', marginBottom: '16px' }}>
-        <NumCard label="Total Points"    value={d?.points_total?.toLocaleString()}   sub="all time" color={C.gold} />
-        <NumCard label="This Week"       value={d?.points_week?.toLocaleString()}    sub="points" />
-        <NumCard label="Raids Done"      value={d?.raids_total?.toLocaleString()}    sub="total" />
-        <NumCard label="Active Raids"    value={d?.raids_active?.toLocaleString()}   sub="right now" color={C.orange} />
-        <NumCard label="E4E Engagements" value={d?.e4e_week?.toLocaleString()}       sub="this week" />
+        <NumCard label="Points Awarded" value={community != null ? (community.points_awarded || 0).toLocaleString() : null} sub="from raids" color={C.gold} />
+        <NumCard label="Points Offered" value={community != null ? (community.points_offered || 0).toLocaleString() : null} sub="all raids" />
+        <NumCard label="Raids Done"     value={community != null ? (community.total_raids || 0).toLocaleString() : null}   sub="total" />
+        <NumCard label="Active Raids"   value={community != null ? (community.active_raids || 0).toLocaleString() : null}  sub="right now" color={C.orange} />
+        <NumCard label="Participants"   value={community != null ? (community.participants || 0).toLocaleString() : null}  sub="unique" color={C.green} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-        <ChartCard title="Points Distributed" timeframe={ptsTf} onTimeframe={setPtsTf} height={210}>
-          {pointsData ? (
-            <AreaChart data={pointsData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-              <defs>
-                <linearGradient id="orangeGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={C.orange} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={C.orange} stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-              <XAxis dataKey="label" tick={axisStyle} />
-              <YAxis tick={axisStyle} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
+      <Card>
+        <CardTitle>Top Community Point Holders</CardTitle>
+        {community?.top_holders?.length ? (
+          <ResponsiveContainer width="100%" height={Math.max(120, community.top_holders.length * 34)}>
+            <BarChart data={community.top_holders.map(h => ({ name: h.username || `User ${h.user_id}`, points: h.points }))}
+              layout="vertical" margin={{ top: 0, right: 16, left: 20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false} />
+              <XAxis type="number" tick={axisStyle} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v} />
+              <YAxis type="category" dataKey="name" tick={{ ...axisStyle, fontSize: 10 }} width={110} />
               <Tooltip content={<CustomTooltip />} />
-              <Area type="monotone" dataKey="points" name="Points" stroke={C.orange} fill="url(#orangeGrad)" strokeWidth={2} dot={false} />
-            </AreaChart>
-          ) : null}
-        </ChartCard>
-
-        <ChartCard title="Engage-for-Engage Activity" height={210}>
-          {e4eData ? (
-            <BarChart data={e4eData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-              <XAxis dataKey="label" tick={axisStyle} />
-              <YAxis tick={axisStyle} />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend wrapperStyle={{ fontSize: '11px', color: C.muted }} />
-              <Bar dataKey="engagements" name="Engagements" fill={C.gold} radius={[3, 3, 0, 0]} />
-              <Bar dataKey="submitted"   name="Submitted"   fill={C.blue} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="points" name="Points" fill={C.gold} radius={[0, 4, 4, 0]} />
             </BarChart>
-          ) : null}
-        </ChartCard>
+          </ResponsiveContainer>
+        ) : (
+          <div style={{ color: C.muted, fontSize: '13px' }}>No community points awarded yet. Run a raid to get started.</div>
+        )}
+      </Card>
+
+      {/* ── Engage-for-Engage engagement (engage module, separate) ── */}
+      <SectionHeading icon="🔁" title="Engage for Engage" />
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: '12px', marginBottom: '16px' }}>
+        <NumCard label="Engage Points"  value={engageEng != null ? (engageEng.total_points || 0).toLocaleString() : null} sub="all time" color={C.gold} />
+        <NumCard label="Engagements"    value={engageEng != null ? (engageEng.total_engagements || 0).toLocaleString() : null} sub="confirmed" />
+        <NumCard label="Active Links"   value={engageEng != null ? (engageEng.active_links || 0).toLocaleString() : null}  sub="in pool" color={C.orange} />
+        <NumCard label="Total Links"    value={engageEng != null ? (engageEng.total_links || 0).toLocaleString() : null}   sub="all time" />
+        <NumCard label="Participants"   value={engageEng != null ? (engageEng.participants || 0).toLocaleString() : null}  sub="unique" color={C.green} />
       </div>
+
+      <Card>
+        <CardTitle>Engage for Engage Overview</CardTitle>
+        {engageEng && (engageEng.total_links || engageEng.total_engagements) ? (
+          <ResponsiveContainer width="100%" height={210}>
+            <BarChart
+              data={[
+                { label: 'Links',       value: engageEng.total_links || 0 },
+                { label: 'Active',      value: engageEng.active_links || 0 },
+                { label: 'Engagements', value: engageEng.total_engagements || 0 },
+                { label: 'Participants',value: engageEng.participants || 0 },
+              ]}
+              margin={{ top: 5, right: 10, left: -10, bottom: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
+              <XAxis dataKey="label" tick={axisStyle} />
+              <YAxis tick={axisStyle} allowDecimals={false} />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar dataKey="value" name="Engage" fill={C.blue} radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div style={{ color: C.muted, fontSize: '13px' }}>No engage-for-engage activity yet.</div>
+        )}
+      </Card>
 
       <div style={{ height: '40px' }} />
     </div>

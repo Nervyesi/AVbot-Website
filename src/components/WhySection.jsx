@@ -16,9 +16,11 @@ const STACK = [
   'Ticket bot',
   'Raid coordinator',
   'Engage bot',
-  'Anti-spam bot',
+  'Anti spam bot',
   'Mod log bot',
   'Analytics bot',
+  'Welcome bot',
+  'Giveaway bot',
 ];
 
 const COMPARISON_ROWS = [
@@ -79,7 +81,7 @@ function CellMark({ value }) {
   if (value === 'free') {
     return (
       <span style={{ color: 'var(--av-gold)', fontSize: '13px', fontWeight: 700 }}>
-        Free to start
+        Free
       </span>
     );
   }
@@ -220,7 +222,7 @@ export default function WhySection() {
             marginRight: 'auto',
             textShadow: '0 1px 12px rgba(0,0,0,0.7)',
           }}>
-            Most Web3 communities run a Frankenstein stack of single-purpose bots that never quite talk to each other. AVbot replaces all of it.
+            Most Web3 communities run a Frankenstein stack of single purpose bots that never quite talk to each other. AVbot replaces all of it, free.
           </p>
         </motion.div>
 
@@ -263,7 +265,7 @@ export default function WhySection() {
               marginBottom: '18px',
               lineHeight: 1.3,
             }}>
-              Nine separate bots. Nine dashboards. Nine integrations to maintain.
+              10+ separate bots. 10+ dashboards. Multiple subscriptions to maintain.
             </div>
             <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {STACK.map((s) => (
@@ -334,7 +336,7 @@ export default function WhySection() {
               marginBottom: '18px',
               lineHeight: 1.3,
             }}>
-              One bot. Nine modules. One dashboard. One bill that never grows.
+              One bot. Nine modules. One dashboard. Free.
             </div>
             <div style={{
               display: 'grid',

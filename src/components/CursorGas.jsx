@@ -1,28 +1,21 @@
 import React, { useEffect, useRef } from 'react';
 
 /**
- * CursorGas.
+ * CursorGas. WebGL2 stable-fluid cursor fog.
  *
- * Continuous, heavy, cinematic gold fog that follows the cursor.
+ * A real GPU fluid simulation (velocity field + dye/density field, semi-
+ * Lagrangian advection, divergence-free projection via Jacobi pressure
+ * iterations, vorticity confinement for swirl) rendered to low-res float
+ * framebuffers and upscaled with bilinear smoothing for soft volumetric
+ * edges. The cursor INJECTS velocity + gold dye along the interpolated path
+ * between frames, so the fog reads as one continuous connected body rather
+ * than stamped particles. Dissipation is tuned HIGH so the fog stays
+ * localized and short-lived (no page flood) and emission only happens while
+ * the cursor is moving.
  *
- * Goals.
- *   1. Reads as ONE flowing ribbon of gas, not stamped dots. Achieved
- *      by emitting many overlapping soft sprites along the interpolated
- *      path between the previous and current cursor positions, with
- *      additive ('lighter') compositing so adjacent volumes merge.
- *   2. Emits ONLY while the cursor is moving. When the cursor stops,
- *      no new puffs spawn; existing puffs finish their physics and
- *      fade. The per-frame movedThisFrame flag is the gate.
- *   3. SHORT lived (0.6s to 1.4s) and LOCALISED, so the page never
- *      floods. Tight radius range, short distance travel.
- *   4. Speed driven. Faster sweeps emit more dense, slightly stronger
- *      puffs along a longer path. Slow drifts emit a soft glow.
- *   5. Directional inertia plus curl noise on velocity, so the body
- *      swirls and billows like real fog rather than reading as a
- *      rigid streak.
- *
- * Canvas 2D only. Pooled flat arrays. No per-frame allocations. dPR
- * capped at 2. Disabled on touch / no-hover devices.
+ * Technique: Pavel Dobryakov / GPU Gems "stable fluids". Raw WebGL2, no
+ * three.js. Touch / no-hover devices and browsers without WebGL2 render
+ * nothing (graceful no-op). pointer-events: none, behind nothing it blocks.
  */
 export default function CursorGas() {
   const canvasRef = useRef(null);
@@ -31,227 +24,507 @@ export default function CursorGas() {
     const hasHover = typeof window !== 'undefined' && window.matchMedia
       ? window.matchMedia('(hover: hover)').matches
       : true;
-    if (!hasHover) return;
+    if (!hasHover) return; // touch / no cursor → no fog
 
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+
+    const gl = canvas.getContext('webgl2', {
+      alpha: true, premultipliedAlpha: false, antialias: false,
+      depth: false, stencil: false, preserveDrawingBuffer: false,
+    });
+    if (!gl) return; // WebGL2 unavailable → graceful no-op (no fog)
+
+    // Float render targets. EXT_color_buffer_float is required to render to
+    // RGBA16F/RG16F/R16F in WebGL2. If unavailable, bail gracefully.
+    const floatExt = gl.getExtension('EXT_color_buffer_float');
+    const halfFloatExt = gl.getExtension('EXT_color_buffer_half_float');
+    if (!floatExt && !halfFloatExt) return;
+    gl.getExtension('OES_texture_float_linear'); // best-effort linear filtering
+
+    // ── Tunables ────────────────────────────────────────────────────────────
+    const SIM_RESOLUTION       = 128;   // velocity grid (coarse = fast)
+    const DYE_RESOLUTION       = 512;   // dye grid (fine + bilinear = soft)
+    const DENSITY_DISSIPATION  = 3.2;   // HIGH → fog is short-lived, no flood
+    const VELOCITY_DISSIPATION = 2.0;   // momentum bleeds off quickly → local
+    const PRESSURE             = 0.8;
+    const PRESSURE_ITERATIONS  = 18;
+    const CURL                 = 30;    // vorticity confinement → swirl/billow
+    const SPLAT_RADIUS         = 0.0022;// small → localized near cursor
+    const SPLAT_FORCE          = 5800;  // cursor velocity → fluid momentum
+    const DISPLAY_ALPHA        = 0.9;   // overall fog opacity (subtle/premium)
+    const MAX_DT               = 0.0166666;
+
+    // Brand gold. Body is the deep gold, with luminous highlights mixed in per
+    // splat so the densest cores glow brighter.
+    const GOLD_BODY      = [0.58, 0.45, 0.05];  // ~#94730D
+    const GOLD_HIGHLIGHT = [0.91, 0.78, 0.41];  // ~#e8c869
+
     const dpr = Math.min(2, window.devicePixelRatio || 1);
 
-    let viewportW = window.innerWidth;
-    let viewportH = window.innerHeight;
-    const resize = () => {
-      viewportW = window.innerWidth;
-      viewportH = window.innerHeight;
-      canvas.width  = Math.round(viewportW * dpr);
-      canvas.height = Math.round(viewportH * dpr);
-      canvas.style.width  = `${viewportW}px`;
-      canvas.style.height = `${viewportH}px`;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // ── Shaders ───────────────────────────────────────────────────────────
+    const baseVertex = `#version 300 es
+      precision highp float;
+      in vec2 aPos;
+      out vec2 vUv; out vec2 vL; out vec2 vR; out vec2 vT; out vec2 vB;
+      uniform vec2 texelSize;
+      void main () {
+        vUv = aPos * 0.5 + 0.5;
+        vL = vUv - vec2(texelSize.x, 0.0);
+        vR = vUv + vec2(texelSize.x, 0.0);
+        vT = vUv + vec2(0.0, texelSize.y);
+        vB = vUv - vec2(0.0, texelSize.y);
+        gl_Position = vec4(aPos, 0.0, 1.0);
+      }`;
+
+    const clearShader = `#version 300 es
+      precision highp float;
+      in vec2 vUv; out vec4 fragColor;
+      uniform sampler2D uTexture; uniform float value;
+      void main () { fragColor = value * texture(uTexture, vUv); }`;
+
+    const splatShader = `#version 300 es
+      precision highp float;
+      in vec2 vUv; out vec4 fragColor;
+      uniform sampler2D uTarget;
+      uniform float aspectRatio;
+      uniform vec3 color;
+      uniform vec2 point;
+      uniform float radius;
+      void main () {
+        vec2 p = vUv - point.xy;
+        p.x *= aspectRatio;
+        vec3 splat = exp(-dot(p, p) / radius) * color;
+        vec3 base = texture(uTarget, vUv).xyz;
+        fragColor = vec4(base + splat, 1.0);
+      }`;
+
+    const advectionShader = `#version 300 es
+      precision highp float;
+      in vec2 vUv; out vec4 fragColor;
+      uniform sampler2D uVelocity;
+      uniform sampler2D uSource;
+      uniform vec2 texelSize;
+      uniform float dt;
+      uniform float dissipation;
+      void main () {
+        vec2 coord = vUv - dt * texture(uVelocity, vUv).xy * texelSize;
+        vec4 result = texture(uSource, coord);
+        float decay = 1.0 + dissipation * dt;
+        fragColor = result / decay;
+      }`;
+
+    const divergenceShader = `#version 300 es
+      precision highp float;
+      in vec2 vUv; in vec2 vL; in vec2 vR; in vec2 vT; in vec2 vB;
+      out vec4 fragColor;
+      uniform sampler2D uVelocity;
+      void main () {
+        float L = texture(uVelocity, vL).x;
+        float R = texture(uVelocity, vR).x;
+        float T = texture(uVelocity, vT).y;
+        float B = texture(uVelocity, vB).y;
+        vec2 C = texture(uVelocity, vUv).xy;
+        if (vL.x < 0.0) { L = -C.x; }
+        if (vR.x > 1.0) { R = -C.x; }
+        if (vT.y > 1.0) { T = -C.y; }
+        if (vB.y < 0.0) { B = -C.y; }
+        float div = 0.5 * (R - L + T - B);
+        fragColor = vec4(div, 0.0, 0.0, 1.0);
+      }`;
+
+    const curlShader = `#version 300 es
+      precision highp float;
+      in vec2 vUv; in vec2 vL; in vec2 vR; in vec2 vT; in vec2 vB;
+      out vec4 fragColor;
+      uniform sampler2D uVelocity;
+      void main () {
+        float L = texture(uVelocity, vL).y;
+        float R = texture(uVelocity, vR).y;
+        float T = texture(uVelocity, vT).x;
+        float B = texture(uVelocity, vB).x;
+        float vorticity = R - L - T + B;
+        fragColor = vec4(0.5 * vorticity, 0.0, 0.0, 1.0);
+      }`;
+
+    const vorticityShader = `#version 300 es
+      precision highp float;
+      in vec2 vUv; in vec2 vL; in vec2 vR; in vec2 vT; in vec2 vB;
+      out vec4 fragColor;
+      uniform sampler2D uVelocity;
+      uniform sampler2D uCurl;
+      uniform float curl;
+      uniform float dt;
+      void main () {
+        float L = texture(uCurl, vL).x;
+        float R = texture(uCurl, vR).x;
+        float T = texture(uCurl, vT).x;
+        float B = texture(uCurl, vB).x;
+        float C = texture(uCurl, vUv).x;
+        vec2 force = 0.5 * vec2(abs(T) - abs(B), abs(R) - abs(L));
+        force /= length(force) + 0.0001;
+        force *= curl * C;
+        force.y *= -1.0;
+        vec2 vel = texture(uVelocity, vUv).xy;
+        vel += force * dt;
+        vel = clamp(vel, -1000.0, 1000.0);
+        fragColor = vec4(vel, 0.0, 1.0);
+      }`;
+
+    const pressureShader = `#version 300 es
+      precision highp float;
+      in vec2 vUv; in vec2 vL; in vec2 vR; in vec2 vT; in vec2 vB;
+      out vec4 fragColor;
+      uniform sampler2D uPressure;
+      uniform sampler2D uDivergence;
+      void main () {
+        float L = texture(uPressure, vL).x;
+        float R = texture(uPressure, vR).x;
+        float T = texture(uPressure, vT).x;
+        float B = texture(uPressure, vB).x;
+        float divergence = texture(uDivergence, vUv).x;
+        float pressure = (L + R + B + T - divergence) * 0.25;
+        fragColor = vec4(pressure, 0.0, 0.0, 1.0);
+      }`;
+
+    const gradientSubtractShader = `#version 300 es
+      precision highp float;
+      in vec2 vUv; in vec2 vL; in vec2 vR; in vec2 vT; in vec2 vB;
+      out vec4 fragColor;
+      uniform sampler2D uPressure;
+      uniform sampler2D uVelocity;
+      void main () {
+        float L = texture(uPressure, vL).x;
+        float R = texture(uPressure, vR).x;
+        float T = texture(uPressure, vT).x;
+        float B = texture(uPressure, vB).x;
+        vec2 velocity = texture(uVelocity, vUv).xy;
+        velocity.xy -= vec2(R - L, T - B);
+        fragColor = vec4(velocity, 0.0, 1.0);
+      }`;
+
+    const displayShader = `#version 300 es
+      precision highp float;
+      in vec2 vUv; out vec4 fragColor;
+      uniform sampler2D uTexture;
+      uniform float alpha;
+      void main () {
+        vec3 c = texture(uTexture, vUv).rgb;
+        float a = clamp(max(c.r, max(c.g, c.b)), 0.0, 1.0);
+        fragColor = vec4(c, a * alpha);
+      }`;
+
+    // ── GL helpers ──────────────────────────────────────────────────────────
+    function compile(type, src) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        console.error('[CursorGas] shader error:', gl.getShaderInfoLog(s));
+        return null;
+      }
+      return s;
+    }
+
+    const vs = compile(gl.VERTEX_SHADER, baseVertex);
+    if (!vs) return;
+
+    function program(fragSrc) {
+      const fs = compile(gl.FRAGMENT_SHADER, fragSrc);
+      if (!fs) return null;
+      const p = gl.createProgram();
+      gl.attachShader(p, vs);
+      gl.attachShader(p, fs);
+      gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+        console.error('[CursorGas] link error:', gl.getProgramInfoLog(p));
+        return null;
+      }
+      const uniforms = {};
+      const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+      for (let i = 0; i < n; i++) {
+        const name = gl.getActiveUniform(p, i).name;
+        uniforms[name] = gl.getUniformLocation(p, name);
+      }
+      return { program: p, uniforms };
+    }
+
+    const progs = {
+      clear:    program(clearShader),
+      splat:    program(splatShader),
+      advect:   program(advectionShader),
+      div:      program(divergenceShader),
+      curl:     program(curlShader),
+      vort:     program(vorticityShader),
+      pressure: program(pressureShader),
+      grad:     program(gradientSubtractShader),
+      display:  program(displayShader),
     };
+    for (const k in progs) if (!progs[k]) return; // a shader failed → bail safely
+
+    // Full-screen quad.
+    const quad = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, -1, 1, 1, 1, 1, -1]), gl.STATIC_DRAW);
+    const idx = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idx);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0, 1, 2, 0, 2, 3]), gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(0);
+
+    function blit(target) {
+      if (target == null) {
+        gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      } else {
+        gl.viewport(0, 0, target.width, target.height);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
+      }
+      gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+    }
+
+    const texType = gl.HALF_FLOAT;
+    const filtering = gl.LINEAR;
+
+    function createFBO(w, h, internalFormat, format) {
+      gl.activeTexture(gl.TEXTURE0);
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filtering);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filtering);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, w, h, 0, format, texType, null);
+      const fbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+      gl.viewport(0, 0, w, h);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      return {
+        texture, fbo, width: w, height: h,
+        texelSizeX: 1 / w, texelSizeY: 1 / h,
+        attach(id) { gl.activeTexture(gl.TEXTURE0 + id); gl.bindTexture(gl.TEXTURE_2D, texture); return id; },
+      };
+    }
+
+    function createDoubleFBO(w, h, internalFormat, format) {
+      let fbo1 = createFBO(w, h, internalFormat, format);
+      let fbo2 = createFBO(w, h, internalFormat, format);
+      return {
+        width: w, height: h, texelSizeX: 1 / w, texelSizeY: 1 / h,
+        get read() { return fbo1; },
+        set read(v) { fbo1 = v; },
+        get write() { return fbo2; },
+        set write(v) { fbo2 = v; },
+        swap() { const t = fbo1; fbo1 = fbo2; fbo2 = t; },
+      };
+    }
+
+    let dye, velocity, divergence, curlFBO, pressure;
+
+    function getResolution(resolution) {
+      let aspect = gl.drawingBufferWidth / gl.drawingBufferHeight;
+      if (aspect < 1) aspect = 1 / aspect;
+      const min = Math.round(resolution);
+      const max = Math.round(resolution * aspect);
+      if (gl.drawingBufferWidth > gl.drawingBufferHeight) return { width: max, height: min };
+      return { width: min, height: max };
+    }
+
+    function initFramebuffers() {
+      const simRes = getResolution(SIM_RESOLUTION);
+      const dyeRes = getResolution(DYE_RESOLUTION);
+      // WebGL2 sized internal formats.
+      const RGBA = gl.RGBA16F, RG = gl.RG16F, R = gl.R16F;
+      dye        = createDoubleFBO(dyeRes.width, dyeRes.height, RGBA, gl.RGBA);
+      velocity   = createDoubleFBO(simRes.width, simRes.height, RG, gl.RG);
+      divergence = createFBO(simRes.width, simRes.height, R, gl.RED);
+      curlFBO    = createFBO(simRes.width, simRes.height, R, gl.RED);
+      pressure   = createDoubleFBO(simRes.width, simRes.height, R, gl.RED);
+    }
+
+    function resize() {
+      const w = Math.round(window.innerWidth * dpr);
+      const h = Math.round(window.innerHeight * dpr);
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w; canvas.height = h;
+        canvas.style.width = `${window.innerWidth}px`;
+        canvas.style.height = `${window.innerHeight}px`;
+        initFramebuffers();
+      }
+    }
     resize();
+
+    // Verify the float render targets are actually usable on this GPU/driver.
+    // If not (rare on modern browsers), render nothing rather than break.
+    gl.bindFramebuffer(gl.FRAMEBUFFER, dye.read.fbo);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      return;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
     window.addEventListener('resize', resize);
 
-    // Soft gaussian gold sprite. Highlights peak inside, body is the
-    // mid gold, edges fade to fully transparent. Re-used for every
-    // particle draw so the body of fog is a composite of overlapping
-    // copies of this single image.
-    const SPRITE_SIZE = 192;
-    const sprite = document.createElement('canvas');
-    sprite.width = sprite.height = SPRITE_SIZE;
-    {
-      const sctx = sprite.getContext('2d');
-      const c = SPRITE_SIZE / 2;
-      const grad = sctx.createRadialGradient(c, c, 0, c, c, c);
-      grad.addColorStop(0.00, 'rgba(248,225,138,1.00)');
-      grad.addColorStop(0.18, 'rgba(220,178,86,0.62)');
-      grad.addColorStop(0.45, 'rgba(168,124,28,0.22)');
-      grad.addColorStop(0.75, 'rgba(148,115,13,0.05)');
-      grad.addColorStop(1.00, 'rgba(148,115,13,0.00)');
-      sctx.fillStyle = grad;
-      sctx.fillRect(0, 0, SPRITE_SIZE, SPRITE_SIZE);
-    }
-
-    // Particle pool.
-    const MAX = 384;
-    const px    = new Float32Array(MAX);
-    const py    = new Float32Array(MAX);
-    const pvx   = new Float32Array(MAX);
-    const pvy   = new Float32Array(MAX);
-    const page  = new Float32Array(MAX);
-    const plife = new Float32Array(MAX);
-    const psize = new Float32Array(MAX);
-    const palpha = new Float32Array(MAX);
-    const pseed = new Float32Array(MAX);
-    const alive = new Uint8Array(MAX);
-    let nextSlot = 0;
-
-    function spawn(x, y, vx, vy, intensity) {
-      const slot = nextSlot;
-      nextSlot = (nextSlot + 1) % MAX;
-      const ang = Math.random() * Math.PI * 2;
-      const r = Math.random() * 3;
-      px[slot]    = x + Math.cos(ang) * r;
-      py[slot]    = y + Math.sin(ang) * r;
-      // Inherit a good chunk of cursor velocity so a sweep produces a
-      // jet of fog with momentum. Small randomised kick spreads the
-      // ribbon laterally so it does not read as a knife-thin streak.
-      pvx[slot]   = vx * 0.50 + (Math.random() - 0.5) * 22;
-      pvy[slot]   = vy * 0.50 + (Math.random() - 0.5) * 22;
-      page[slot]  = 0;
-      // Short life: keeps the ribbon localised and prevents flooding.
-      plife[slot] = 0.6 + Math.random() * 0.8;
-      psize[slot] = 0.75 + Math.random() * 0.45;
-      // Per-puff alpha scaled by speed intensity for a denser ribbon
-      // on fast sweeps and a softer glow on slow drags.
-      palpha[slot] = (0.085 + intensity * 0.07) * (0.85 + Math.random() * 0.3);
-      pseed[slot] = Math.random() * 1000;
-      alive[slot] = 1;
-    }
-
-    // Pointer state.
-    let mouseX = -1e6, mouseY = -1e6;
-    let prevX  = mouseX, prevY = mouseY;
-    let cursorVx = 0, cursorVy = 0;
-    let initialised = false;
-    let movedThisFrame = false;
+    // ── Pointer state ───────────────────────────────────────────────────────
+    // Normalized coords (0..1), y flipped for texture space.
+    let pointerX = 0, pointerY = 0, prevX = 0, prevY = 0;
+    let moved = false, initialised = false;
 
     const onMove = (e) => {
-      if (!initialised) {
-        mouseX = prevX = e.clientX;
-        mouseY = prevY = e.clientY;
-        initialised = true;
-        return;
-      }
-      mouseX = e.clientX;
-      mouseY = e.clientY;
-      movedThisFrame = true;
+      const nx = e.clientX / window.innerWidth;
+      const ny = 1.0 - e.clientY / window.innerHeight;
+      if (!initialised) { pointerX = prevX = nx; pointerY = prevY = ny; initialised = true; return; }
+      prevX = pointerX; prevY = pointerY;
+      pointerX = nx; pointerY = ny;
+      moved = true;
     };
     window.addEventListener('pointermove', onMove, { passive: true });
 
-    let frame;
-    let lastT = performance.now();
+    // ── Splat (inject velocity + dye) ────────────────────────────────────────
+    function splat(x, y, dx, dy, color) {
+      // velocity
+      gl.useProgram(progs.splat.program);
+      gl.uniform1i(progs.splat.uniforms.uTarget, velocity.read.attach(0));
+      gl.uniform1f(progs.splat.uniforms.aspectRatio, canvas.width / canvas.height);
+      gl.uniform2f(progs.splat.uniforms.point, x, y);
+      gl.uniform3f(progs.splat.uniforms.color, dx, dy, 0.0);
+      gl.uniform1f(progs.splat.uniforms.radius, SPLAT_RADIUS);
+      gl.uniform2f(progs.splat.uniforms.texelSize, velocity.texelSizeX, velocity.texelSizeY);
+      blit(velocity.write); velocity.swap();
+      // dye
+      gl.uniform1i(progs.splat.uniforms.uTarget, dye.read.attach(0));
+      gl.uniform2f(progs.splat.uniforms.texelSize, dye.texelSizeX, dye.texelSizeY);
+      gl.uniform3f(progs.splat.uniforms.color, color[0], color[1], color[2]);
+      blit(dye.write); dye.swap();
+    }
 
-    // Step constants for the physics loop.
-    const GRAVITY = 18;     // gentle settling
-    const DAMPING = 0.93;   // fast velocity decay so puffs stay local
-    const CURL    = 42;     // curl noise force on velocity
+    // Emit along the interpolated path so the trail is continuous, not stamped.
+    function applyPointerSplats() {
+      if (!moved) return;
+      moved = false;
+      const dxN = pointerX - prevX;
+      const dyN = pointerY - prevY;
+      const dist = Math.hypot(dxN, dyN);
+      const vx = dxN * SPLAT_FORCE;
+      const vy = dyN * SPLAT_FORCE;
+      const speed = Math.min(1.0, dist * 12.0);
+      // Brighter, denser cores on faster sweeps; soft glow on slow drags.
+      const lift = 0.10 + speed * 0.22;
+      const color = [
+        (GOLD_BODY[0] * (1 - speed) + GOLD_HIGHLIGHT[0] * speed) * lift,
+        (GOLD_BODY[1] * (1 - speed) + GOLD_HIGHLIGHT[1] * speed) * lift,
+        (GOLD_BODY[2] * (1 - speed) + GOLD_HIGHLIGHT[2] * speed) * lift,
+      ];
+      // Number of splats along the path, filling the gap between frames so the
+      // body is connected regardless of pointer event rate. Capped for safety.
+      const steps = Math.min(24, Math.max(1, Math.ceil(dist / 0.006)));
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        splat(prevX + dxN * t, prevY + dyN * t, vx, vy, color);
+      }
+    }
 
-    // Maximum number of puffs spawned in a single frame, protects the
-    // pool from pathological cursor teleports.
-    const FRAME_SPAWN_CAP = 28;
+    // ── Simulation step ───────────────────────────────────────────────────────
+    function step(dt) {
+      gl.disable(gl.BLEND);
 
-    // Stride along the cursor path. A puff every ~3.5 pixels is dense
-    // enough that overlapping additive sprites merge into one body.
-    const PATH_STRIDE = 3.5;
+      // curl
+      gl.useProgram(progs.curl.program);
+      gl.uniform2f(progs.curl.uniforms.texelSize, velocity.texelSizeX, velocity.texelSizeY);
+      gl.uniform1i(progs.curl.uniforms.uVelocity, velocity.read.attach(0));
+      blit(curlFBO);
 
-    const tick = (now) => {
-      const dt = Math.min(0.05, (now - lastT) * 0.001);
-      lastT = now;
+      // vorticity confinement
+      gl.useProgram(progs.vort.program);
+      gl.uniform2f(progs.vort.uniforms.texelSize, velocity.texelSizeX, velocity.texelSizeY);
+      gl.uniform1i(progs.vort.uniforms.uVelocity, velocity.read.attach(0));
+      gl.uniform1i(progs.vort.uniforms.uCurl, curlFBO.attach(1));
+      gl.uniform1f(progs.vort.uniforms.curl, CURL);
+      gl.uniform1f(progs.vort.uniforms.dt, dt);
+      blit(velocity.write); velocity.swap();
 
-      if (movedThisFrame) {
-        const dx = mouseX - prevX;
-        const dy = mouseY - prevY;
-        const dist = Math.hypot(dx, dy);
+      // divergence
+      gl.useProgram(progs.div.program);
+      gl.uniform2f(progs.div.uniforms.texelSize, velocity.texelSizeX, velocity.texelSizeY);
+      gl.uniform1i(progs.div.uniforms.uVelocity, velocity.read.attach(0));
+      blit(divergence);
 
-        // Smoothed cursor velocity used as inherited momentum.
-        cursorVx = cursorVx * 0.30 + dx * 60 * 0.70;
-        cursorVy = cursorVy * 0.30 + dy * 60 * 0.70;
+      // clear pressure (decay)
+      gl.useProgram(progs.clear.program);
+      gl.uniform1i(progs.clear.uniforms.uTexture, pressure.read.attach(0));
+      gl.uniform1f(progs.clear.uniforms.value, PRESSURE);
+      blit(pressure.write); pressure.swap();
 
-        const count = Math.min(
-          FRAME_SPAWN_CAP,
-          Math.max(1, Math.ceil(dist / PATH_STRIDE)),
-        );
-        const intensity = Math.min(1.0, dist / 60);
-
-        // Emit at evenly spaced points along the interpolated path so
-        // the ribbon is continuous regardless of pointer event rate.
-        for (let k = 0; k < count; k++) {
-          const u = (k + 0.5) / count;
-          const sx = prevX + dx * u;
-          const sy = prevY + dy * u;
-          spawn(sx, sy, cursorVx, cursorVy, intensity);
-        }
-
-        prevX = mouseX;
-        prevY = mouseY;
-        movedThisFrame = false;
-      } else {
-        // Decay cached velocity so any tail-end spawns settle quickly
-        // when the cursor stops. We do NOT spawn here.
-        cursorVx *= 0.6;
-        cursorVy *= 0.6;
+      // pressure solve (Jacobi)
+      gl.useProgram(progs.pressure.program);
+      gl.uniform2f(progs.pressure.uniforms.texelSize, velocity.texelSizeX, velocity.texelSizeY);
+      gl.uniform1i(progs.pressure.uniforms.uDivergence, divergence.attach(0));
+      for (let i = 0; i < PRESSURE_ITERATIONS; i++) {
+        gl.uniform1i(progs.pressure.uniforms.uPressure, pressure.read.attach(1));
+        blit(pressure.write); pressure.swap();
       }
 
-      // Full clear every frame so the canvas is always exactly the
-      // current live particles, no persistent accumulation that would
-      // gradually flood the page.
-      ctx.clearRect(0, 0, viewportW, viewportH);
-      ctx.globalCompositeOperation = 'lighter';
+      // gradient subtract → divergence-free velocity
+      gl.useProgram(progs.grad.program);
+      gl.uniform2f(progs.grad.uniforms.texelSize, velocity.texelSizeX, velocity.texelSizeY);
+      gl.uniform1i(progs.grad.uniforms.uPressure, pressure.read.attach(0));
+      gl.uniform1i(progs.grad.uniforms.uVelocity, velocity.read.attach(1));
+      blit(velocity.write); velocity.swap();
 
-      for (let i = 0; i < MAX; i++) {
-        if (!alive[i]) continue;
-        page[i] += dt;
-        if (page[i] >= plife[i]) { alive[i] = 0; continue; }
+      // advect velocity
+      gl.useProgram(progs.advect.program);
+      gl.uniform2f(progs.advect.uniforms.texelSize, velocity.texelSizeX, velocity.texelSizeY);
+      gl.uniform1i(progs.advect.uniforms.uVelocity, velocity.read.attach(0));
+      gl.uniform1i(progs.advect.uniforms.uSource, velocity.read.attach(0));
+      gl.uniform1f(progs.advect.uniforms.dt, dt);
+      gl.uniform1f(progs.advect.uniforms.dissipation, VELOCITY_DISSIPATION);
+      blit(velocity.write); velocity.swap();
 
-        const tn = page[i] / plife[i];
+      // advect dye
+      gl.uniform2f(progs.advect.uniforms.texelSize, dye.texelSizeX, dye.texelSizeY);
+      gl.uniform1i(progs.advect.uniforms.uVelocity, velocity.read.attach(0));
+      gl.uniform1i(progs.advect.uniforms.uSource, dye.read.attach(1));
+      gl.uniform1f(progs.advect.uniforms.dissipation, DENSITY_DISSIPATION);
+      blit(dye.write); dye.swap();
+    }
 
-        // Cheap curl-noise approximation. Adjacent particles share a
-        // smoothly varying flow direction because the noise samples
-        // their world position, so the body of fog swirls as a fluid
-        // instead of each puff moving independently.
-        const s = pseed[i];
-        const nx = Math.sin(px[i] * 0.011 + s + page[i] * 1.4)
-                 + Math.cos(py[i] * 0.013 + s * 0.7);
-        const ny = Math.cos(px[i] * 0.012 - s + page[i] * 1.1)
-                 - Math.sin(py[i] * 0.010 + s * 0.9);
+    function render() {
+      // Composite the dye over the page with straight alpha.
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.useProgram(progs.display.program);
+      gl.uniform1i(progs.display.uniforms.uTexture, dye.read.attach(0));
+      gl.uniform1f(progs.display.uniforms.alpha, DISPLAY_ALPHA);
+      blit(null);
+    }
 
-        pvx[i] = (pvx[i] + nx * CURL * dt) * DAMPING;
-        pvy[i] = (pvy[i] + (ny * CURL + GRAVITY) * dt) * DAMPING;
-
-        px[i] += pvx[i] * dt;
-        py[i] += pvy[i] * dt;
-
-        // Off-screen kill. Conservative margins because puffs stay
-        // small and short-lived; they should never roam far.
-        if (px[i] < -220 || px[i] > viewportW + 220 ||
-            py[i] > viewportH + 220 || py[i] < -260) {
-          alive[i] = 0;
-          continue;
-        }
-
-        // Opacity envelope. Quick fade in over the first 14% so the
-        // ribbon appears instantly under the cursor, then an eased
-        // fade out over the remainder so it dissipates softly.
-        let op;
-        if (tn < 0.14) {
-          op = tn / 0.14;
-        } else {
-          const k = (tn - 0.14) / 0.86;
-          op = 1 - k * k;
-        }
-        op *= palpha[i];
-
-        // Tight radius range. Starts small at the cursor, grows
-        // modestly with age. This is what stops the fog from
-        // blooming into a page-wide cloud.
-        const radius = (22 + psize[i] * 18) + tn * 28;
-        const size = radius * 2;
-
-        ctx.globalAlpha = op;
-        ctx.drawImage(sprite, px[i] - radius, py[i] - radius, size, size);
-      }
-
-      ctx.globalAlpha = 1;
-      ctx.globalCompositeOperation = 'source-over';
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
+    // ── Main loop ─────────────────────────────────────────────────────────────
+    let raf;
+    let last = performance.now();
+    function frame(now) {
+      const dt = Math.min(MAX_DT, (now - last) / 1000) || MAX_DT;
+      last = now;
+      gl.disable(gl.BLEND); // splats + sim passes overwrite; only display blends
+      applyPointerSplats(); // emit ONLY when the cursor moved
+      step(dt);             // always advect + dissipate so existing fog settles
+      render();
+      raf = requestAnimationFrame(frame);
+    }
+    raf = requestAnimationFrame(frame);
 
     return () => {
-      cancelAnimationFrame(frame);
+      cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
       window.removeEventListener('pointermove', onMove);
+      // Release GL resources.
+      const lose = gl.getExtension('WEBGL_lose_context');
+      if (lose) lose.loseContext();
     };
   }, []);
 
@@ -262,8 +535,7 @@ export default function CursorGas() {
       style={{
         position: 'fixed',
         top: 0, left: 0,
-        width: '100vw',
-        height: '100vh',
+        width: '100vw', height: '100vh',
         pointerEvents: 'none',
         zIndex: 60,
       }}

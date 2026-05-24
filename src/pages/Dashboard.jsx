@@ -20,6 +20,7 @@ import {
   fetchEngagePools, updateEngagePool,
   fetchSettings, updateBrand, updateAccess, updateLevels,
   fetchLogs, downloadLogs, fetchFlags, resolveFlag,
+  fetchUserPoints, adjustPoints, fetchLeaderboard,
 } from '../api';
 import { DISCORD_INVITE_URL, ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 
@@ -605,7 +606,7 @@ const ComingSoonModal = ({ onClose }) => (
   </div>
 );
 
-const AssetPickerModal = ({ serverId, onPick, onClose }) => {
+const AssetPickerModal = ({ serverId, onPick, onClose, hasCurrent = false }) => {
   const [tab, setTab]           = useState('library');
   const [assets, setAssets]     = useState([]);
   const [libLoading, setLibLoading] = useState(true);
@@ -661,7 +662,17 @@ const AssetPickerModal = ({ serverId, onPick, onClose }) => {
       <div style={{ background: '#13131a', border: `1px solid ${C.border}`, borderRadius: '16px', padding: '24px', maxWidth: '600px', width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <div style={{ fontSize: '15px', fontWeight: 700 }}>Asset Library</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: '22px', lineHeight: 1 }}>×</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {hasCurrent && (
+              <button
+                onClick={() => onPick('')}
+                title="Remove the current image from this embed"
+                style={{ background: 'rgba(237,66,69,0.12)', border: `1px solid rgba(237,66,69,0.4)`, borderRadius: '8px', padding: '7px 14px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 600 }}>
+                Remove image
+              </button>
+            )}
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: '22px', lineHeight: 1 }}>×</button>
+          </div>
         </div>
         <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, marginBottom: '16px' }}>
           <button style={tabBtn(tab === 'library')} onClick={() => setTab('library')}>My Library</button>
@@ -861,6 +872,7 @@ const EmbedPreview = ({
 
       {assetModal && (
         <AssetPickerModal serverId={serverId}
+          hasCurrent={assetModal === 'thumbnail' ? !!thumbnailUrl : !!imageUrl}
           onPick={(url) => { assetModal === 'thumbnail' ? onThumbnailChange?.(url) : onImageChange?.(url); setAssetModal(null); }}
           onClose={() => setAssetModal(null)} />
       )}
@@ -4056,6 +4068,165 @@ const AIHelpButton = () => {
   );
 };
 
+// ── Points admin (Community Points + Engage Points) ────────────────────────────
+//
+// Shared panel powering both the "Community Points" and "Engage Points" settings
+// sections. mode='community' targets raid/community points; mode='engage' targets
+// the engage-for-engage pool points. Provides a data view (leaderboard / pools)
+// plus award/remove admin controls wired to the existing admin endpoints. The
+// backend enforces auth, bounds the amount, and audit-logs every mutation.
+
+const PointsAdmin = ({ sid, mode }) => {
+  const isCommunity = mode === 'community';
+  const [board, setBoard]   = useState(null);   // community leaderboard
+  const [pools, setPools]   = useState(null);   // engage pools
+  const [loading, setLoading] = useState(true);
+
+  const [uid, setUid]       = useState('');
+  const [lookup, setLookup] = useState(null);   // looked-up user points
+  const [poolId, setPoolId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [busy, setBusy]     = useState(false);
+  const [msg, setMsg]       = useState('');
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      if (isCommunity) {
+        const b = await fetchLeaderboard(sid, 25);
+        setBoard(Array.isArray(b) ? b : (b?.leaderboard || []));
+      } else {
+        const p = await fetchEngagePools(sid);
+        const list = Array.isArray(p) ? p : (p?.pools || []);
+        setPools(list);
+        if (list.length === 1) setPoolId(String(list[0].pool_id));
+      }
+    } catch (e) { setMsg('Load error: ' + (e.message || e)); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { if (sid) loadData(); /* eslint-disable-line */ }, [sid, mode]);
+
+  const doLookup = async () => {
+    if (!uid.trim()) return;
+    setMsg(''); setLookup(null);
+    try {
+      const r = await fetchUserPoints(sid, uid.trim());
+      setLookup(r);
+    } catch (e) { setMsg('✗ ' + (e.message || 'Lookup failed')); }
+  };
+
+  const doAdjust = async (action) => {
+    if (busy) return;
+    const n = parseInt(amount, 10);
+    if (!uid.trim()) { setMsg('✗ Enter a user ID first'); return; }
+    if (!Number.isFinite(n) || n < 1) { setMsg('✗ Amount must be a positive whole number'); return; }
+    if (!isCommunity && pools && pools.length > 1 && !poolId) { setMsg('✗ Select a pool'); return; }
+    setBusy(true); setMsg('');
+    try {
+      const body = { action, type: mode, user_id: uid.trim(), amount: n };
+      if (!isCommunity && poolId) body.pool_id = Number(poolId);
+      const res = await adjustPoints(sid, body);
+      setMsg(`✓ ${action === 'add' ? 'Awarded' : 'Removed'} ${n} points. New balance: ${res.new_points ?? '—'}`);
+      await doLookup();
+      await loadData();
+    } catch (e) { setMsg('✗ ' + (e.message || 'Adjustment failed')); }
+    finally { setBusy(false); }
+  };
+
+  const inputStyle = {
+    background: 'rgba(0,0,0,0.3)', border: `1px solid ${C.border}`, borderRadius: '8px',
+    padding: '9px 12px', color: '#fff', fontFamily: 'Sora, sans-serif', fontSize: '13px', outline: 'none',
+  };
+  const btn = (bg, fg) => ({
+    background: bg, border: 'none', borderRadius: '8px', padding: '9px 16px', color: fg,
+    cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px',
+    fontWeight: 700, opacity: busy ? 0.6 : 1,
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '14px', padding: '22px' }}>
+        <div style={{ fontSize: '15px', fontWeight: 800, marginBottom: '4px' }}>
+          {isCommunity ? 'Community Points' : 'Engage Points'}
+        </div>
+        <div style={{ color: C.muted, fontSize: '13px', marginBottom: '18px' }}>
+          {isCommunity
+            ? 'Points earned through raids and community participation. Look up a member and award or remove points.'
+            : 'Points earned through the engage-for-engage module. Managed separately from community points.'}
+        </div>
+
+        {/* Admin controls */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+          <input value={uid} onChange={e => setUid(e.target.value.replace(/[^0-9]/g, ''))}
+            placeholder="User ID" style={{ ...inputStyle, width: '170px' }} />
+          <button onClick={doLookup} style={btn('rgba(255,255,255,0.08)', '#fff')}>Look up</button>
+          {!isCommunity && pools && pools.length > 1 && (
+            <select value={poolId} onChange={e => setPoolId(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+              <option value="">Select pool…</option>
+              {pools.map(p => <option key={p.pool_id} value={p.pool_id}>{p.display_name || p.name}</option>)}
+            </select>
+          )}
+          <input value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, ''))}
+            placeholder="Amount" style={{ ...inputStyle, width: '110px' }} />
+          <button onClick={() => doAdjust('add')}    style={btn(`linear-gradient(135deg,${C.gold},${C.goldDark})`, '#0A0A0F')}>Award</button>
+          <button onClick={() => doAdjust('remove')} style={btn('rgba(237,66,69,0.15)', C.red)}>Remove</button>
+        </div>
+        {msg && <div style={{ marginTop: '12px', fontSize: '13px', color: msg.startsWith('✓') ? C.green : C.red }}>{msg}</div>}
+
+        {lookup && (
+          <div style={{ marginTop: '14px', padding: '12px 14px', background: 'rgba(0,0,0,0.25)', borderRadius: '10px', fontSize: '13px' }}>
+            <div style={{ color: C.muted, marginBottom: '6px' }}>User {lookup.user_id}</div>
+            {isCommunity ? (
+              <div>Community points: <strong style={{ color: C.gold }}>{(lookup.community_points || 0).toLocaleString()}</strong></div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {(lookup.engage_pools || []).length
+                  ? lookup.engage_pools.map(p => (
+                      <div key={p.pool_id}>{p.display_name || p.name}: <strong style={{ color: C.gold }}>{(p.points || 0).toLocaleString()}</strong></div>
+                    ))
+                  : <div style={{ color: C.muted }}>No engage pools configured.</div>}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Data view */}
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '14px', padding: '22px' }}>
+        <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '14px' }}>
+          {isCommunity ? 'Top community point holders' : 'Engage pools'}
+        </div>
+        {loading ? (
+          <div style={{ color: C.muted, fontSize: '13px' }}>Loading…</div>
+        ) : isCommunity ? (
+          (board && board.length) ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {board.map((r, i) => (
+                <div key={r.user_id || i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', fontSize: '13px' }}>
+                  <span style={{ width: '26px', color: C.muted, fontWeight: 700 }}>#{i + 1}</span>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.username || `User ${r.user_id}`}</span>
+                  <strong style={{ color: C.gold }}>{(r.total_points ?? r.points ?? 0).toLocaleString()}</strong>
+                </div>
+              ))}
+            </div>
+          ) : <div style={{ color: C.muted, fontSize: '13px' }}>No community points awarded yet.</div>
+        ) : (
+          (pools && pools.length) ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {pools.map(p => (
+                <div key={p.pool_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', fontSize: '13px' }}>
+                  <span style={{ flex: 1 }}>{p.display_name || p.name}</span>
+                  <span style={{ color: C.muted, fontSize: '11px' }}>pool #{p.pool_id}</span>
+                </div>
+              ))}
+            </div>
+          ) : <div style={{ color: C.muted, fontSize: '13px' }}>No engage pools configured.</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ── Settings module ───────────────────────────────────────────────────────────
 
 const SettingsModule = () => {
@@ -4150,7 +4321,7 @@ const SettingsModule = () => {
       <PageHeader icon="⚙️" title="Server Settings" badge="SERVER" desc="Bot-wide brand defaults and per-module access control." />
 
       <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${C.border}`, marginBottom: '20px' }}>
-        {[['brand', '🎨 Brand'], ['levels', '⭐ Levels'], ['access', '🔒 Access Control']].map(([id, label]) => (
+        {[['brand', '🎨 Brand'], ['levels', '⭐ Levels'], ['community_points', '⚔️ Community Points'], ['engage_points', '🔁 Engage Points'], ['access', '🔒 Access Control']].map(([id, label]) => (
           <button key={id} onClick={() => setSubTab(id)} style={{
             padding: '8px 16px', fontSize: '13px', fontWeight: 600,
             fontFamily: 'Sora, sans-serif', cursor: 'pointer', background: 'none', border: 'none',
@@ -4219,6 +4390,7 @@ const SettingsModule = () => {
             {assetTarget && (
               <AssetPickerModal
                 serverId={sid}
+                hasCurrent={!!brand[assetTarget]}
                 onPick={handleImageSelect}
                 onClose={() => setAssetTarget(null)}
               />
@@ -4279,6 +4451,10 @@ const SettingsModule = () => {
           </div>
         </>
       )}
+
+      {subTab === 'community_points' && <PointsAdmin sid={sid} mode="community" />}
+
+      {subTab === 'engage_points' && <PointsAdmin sid={sid} mode="engage" />}
 
       {subTab === 'access' && data && (
         <SettingsCard title="Module Access by Role">
@@ -4396,7 +4572,7 @@ const Dashboard = () => {
     <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'Sora, sans-serif', padding: '2rem', position: 'relative' }}>
       <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: '500px', height: '500px', background: 'radial-gradient(circle, rgba(200,168,78,0.06) 0%, transparent 70%)', pointerEvents: 'none' }} />
       <Link to="/" style={{ position: 'absolute', top: '24px', left: '24px', display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
-        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '13px', color: '#0A0A0F' }}>AV</div>
+        <img src="https://cdn.avbot.app/1199707792706117642/2e6734d8c9fc47fab6b8525a57374de3.png" alt="AVbot" style={{ height: '32px', width: 'auto', objectFit: 'contain', display: 'block' }} />
         <span style={{ fontWeight: 700, color: '#fff', fontSize: '16px' }}>AVbot</span>
       </Link>
       <div style={{ background: C.surface, border: '1px solid rgba(200,168,78,0.15)', borderRadius: '20px', padding: '48px 40px', textAlign: 'center', maxWidth: '420px', width: '100%' }}>
@@ -4448,7 +4624,7 @@ const Dashboard = () => {
         {/* ── Sidebar ── */}
         <aside style={{ width: '224px', flexShrink: 0, background: 'rgba(255,255,255,0.02)', borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh', overflowY: 'auto' }}>
           <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', padding: '20px 18px', borderBottom: `1px solid ${C.border}` }}>
-            <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '14px', color: '#0A0A0F' }}>AV</div>
+            <img src="https://cdn.avbot.app/1199707792706117642/2e6734d8c9fc47fab6b8525a57374de3.png" alt="AVbot" style={{ height: '34px', width: 'auto', objectFit: 'contain', display: 'block' }} />
             <span style={{ fontWeight: 700, fontSize: '15px' }}>AVbot</span>
           </Link>
 

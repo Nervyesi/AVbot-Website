@@ -133,7 +133,7 @@ function HeroSection({ inviteUrl }) {
               textAlign: 'center',
             }}
           >
-            From Web3, for Web3.
+            Web3 deserved a real engine, so we built one.
           </motion.div>
           <motion.div
             initial={{ y: 8, opacity: 0 }}
@@ -148,7 +148,7 @@ function HeroSection({ inviteUrl }) {
               textAlign: 'center',
             }}
           >
-            Until AVbot, no bot in Web3 was complete.
+            From Web3, for Web3.
           </motion.div>
         </div>
 
