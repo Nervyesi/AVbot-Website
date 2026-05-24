@@ -411,7 +411,9 @@ export default function CursorGas() {
       const vy = dyN * SPLAT_FORCE;
       const speed = Math.min(1.0, dist * 12.0);
       // Brighter, denser cores on faster sweeps; soft glow on slow drags.
-      const lift = 0.10 + speed * 0.22;
+      // Injected density trimmed ~30% from (0.10 + speed*0.22) for a more
+      // subtle, elegant read. Physics (velocity, dissipation, curl) unchanged.
+      const lift = 0.07 + speed * 0.154;
       const color = [
         (GOLD_BODY[0] * (1 - speed) + GOLD_HIGHLIGHT[0] * speed) * lift,
         (GOLD_BODY[1] * (1 - speed) + GOLD_HIGHLIGHT[1] * speed) * lift,
