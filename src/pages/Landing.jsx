@@ -133,7 +133,7 @@ function HeroSection({ inviteUrl }) {
               textAlign: 'center',
             }}
           >
-            Web3 deserved a real engine.
+            From Web3, for Web3.
           </motion.div>
           <motion.div
             initial={{ y: 8, opacity: 0 }}
@@ -148,7 +148,7 @@ function HeroSection({ inviteUrl }) {
               textAlign: 'center',
             }}
           >
-            So we built one. From Web3, for Web3.
+            Until AVbot, no bot in Web3 was complete.
           </motion.div>
         </div>
 
@@ -219,7 +219,7 @@ function HeroSection({ inviteUrl }) {
               filter: 'drop-shadow(0 0 36px rgba(148,115,13,0.18))',
             }}
           >
-            deserves better.
+            deserves better
           </motion.span>
         </h1>
 

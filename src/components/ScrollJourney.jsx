@@ -73,8 +73,7 @@ function ModuleStation({ panel, index }) {
     <section
       style={{
         position: 'relative',
-        minHeight: '100vh',
-        padding: 'clamp(60px, 10vh, 120px) 24px',
+        padding: 'clamp(36px, 5vh, 64px) 24px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -96,8 +95,8 @@ function ModuleStation({ panel, index }) {
         <motion.div
           initial={{ y: 36, opacity: 0 }}
           whileInView={{ y: 0, opacity: 1 }}
-          viewport={{ once: true, amount: 0.2 }}
-          transition={{ duration: 0.85, ease: [0.22, 0.6, 0.2, 1] }}
+          viewport={{ once: true, amount: 0.15 }}
+          transition={{ duration: 0.7, ease: [0.22, 0.6, 0.2, 1] }}
           className={`av-station-col av-station-${onRight ? 'right' : 'left'}`}
           style={{
             width: '100%',
@@ -120,8 +119,7 @@ export default function ScrollJourney() {
       <section
         style={{
           position: 'relative',
-          minHeight: '60vh',
-          padding: 'clamp(60px, 12vh, 120px) 24px 0',
+          padding: 'clamp(64px, 10vh, 120px) 24px clamp(20px, 3vh, 40px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -134,7 +132,7 @@ export default function ScrollJourney() {
           whileInView={{ y: 0, opacity: 1 }}
           viewport={{ once: true, amount: 0.4 }}
           transition={{ duration: 0.8, ease: [0.22, 0.6, 0.2, 1] }}
-          style={{ maxWidth: '780px' }}
+          style={{ maxWidth: '780px', width: '100%' }}
         >
           <h2 style={{
             margin: 0,
@@ -153,9 +151,13 @@ export default function ScrollJourney() {
             fontSize: '1.08rem',
             color: 'rgba(228,228,231,0.78)',
             lineHeight: 1.6,
+            maxWidth: '560px',
+            marginLeft: 'auto',
+            marginRight: 'auto',
+            textWrap: 'balance',
             textShadow: '0 1px 12px rgba(0,0,0,0.7)',
           }}>
-            Every system your community needs, working in concert. Scroll, and watch each one light up.
+            {'Every system your community needs, working in concert. Scroll, and watch each one light up.'}
           </p>
         </motion.div>
       </section>

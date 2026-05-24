@@ -102,6 +102,49 @@
   }
 }
 
+/* Comparison table. Desktop is a grid; mobile collapses each row to a
+   card with inline "label: value" pairs so it never overflows. */
+.av-cmp-cell-label { display: none; }
+@media (max-width: 860px) {
+  .av-cmp-header { display: none !important; }
+  .av-cmp-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    padding: 18px 18px !important;
+    align-items: stretch !important;
+  }
+  .av-cmp-row .av-cmp-feature {
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    color: var(--av-gold) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.18em !important;
+    margin-bottom: 4px !important;
+  }
+  .av-cmp-row .av-cmp-cell {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 8px 10px !important;
+    margin: 0 !important;
+    border: 1px solid rgba(255,255,255,0.04) !important;
+    border-radius: 8px !important;
+    background: transparent !important;
+  }
+  .av-cmp-row .av-cmp-cell-avbot {
+    background: rgba(200,168,78,0.07) !important;
+    border: 1px solid rgba(200,168,78,0.22) !important;
+  }
+  .av-cmp-cell-label {
+    display: inline !important;
+    font-size: 12px !important;
+    color: rgba(228,228,231,0.55) !important;
+    font-weight: 500 !important;
+  }
+}
+
 /* ScrollJourney station nodes. Inline JSX writes data-lit="0|1" on the
    group; CSS handles the visual transition. Off state is a faint hint,
    lit state is a fully glowing gold node with a small pulse. */

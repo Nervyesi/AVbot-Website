@@ -177,7 +177,7 @@ export default function Footer() {
                 Community
               </div>
               <FooterLink href={DISCORD_INVITE_URL} external>Discord</FooterLink>
-              <FooterLink href="https://x.com/avbot_app" external>X</FooterLink>
+              <FooterLink href="https://x.com/ameretaverse" external>X</FooterLink>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <div
