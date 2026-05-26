@@ -4545,8 +4545,14 @@ function OwnerBackupPanel({ user }) {
   const [status, setStatus] = useState('');
   const [busy, setBusy]     = useState(false);
 
-  const uid = String(user?.user_id || user?.id || '');
-  if (uid !== OWNER_DISCORD_ID) return null;
+  // Discord ids exceed JS Number.MAX_SAFE_INTEGER, so a numeric `user_id` from
+  // JSON is silently corrupted (and still truthy) — `user_id || id` would never
+  // fall through to the safe string `id`. Coerce every plausible id field to a
+  // string and match against any of them. /auth/me exposes `id` as a string.
+  const ids = [user?.id, user?.user_id, user?.sub, user?.discord_id]
+    .map(v => (v != null ? String(v) : null));
+  const isOwner = ids.includes(OWNER_DISCORD_ID);
+  if (!isOwner) return null;
 
   async function handleDownload() {
     if (busy) return;
