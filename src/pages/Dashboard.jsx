@@ -21,6 +21,7 @@ import {
   fetchSettings, updateBrand, updateAccess, updateLevels,
   fetchLogs, downloadLogs, fetchFlags, resolveFlag,
   fetchUserPoints, adjustPoints, fetchLeaderboard,
+  downloadBackup, runBackupNow,
 } from '../api';
 import { DISCORD_INVITE_URL, ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 
@@ -4535,6 +4536,67 @@ const NavBtn = ({ item, active, setActive }) => (
   </button>
 );
 
+// ── Owner-only DB backup controls ─────────────────────────────────────────────
+// Visible ONLY to the bot owner (Discord id 461460143343927306). The endpoints
+// themselves enforce owner-only server-side; this is just the UI gate.
+const OWNER_DISCORD_ID = '461460143343927306';
+
+function OwnerBackupPanel({ user }) {
+  const [status, setStatus] = useState('');
+  const [busy, setBusy]     = useState(false);
+
+  const uid = String(user?.user_id || user?.id || '');
+  if (uid !== OWNER_DISCORD_ID) return null;
+
+  async function handleDownload() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      setStatus('Preparing backup…');
+      const filename = await downloadBackup();
+      setStatus(`Downloaded ${filename}`);
+      setTimeout(() => setStatus(''), 4000);
+    } catch (e) {
+      setStatus(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRunNow() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      setStatus('Uploading backup to R2…');
+      const res = await runBackupNow();
+      setStatus(`Backed up to ${res.key}`);
+      setTimeout(() => setStatus(''), 6000);
+    } catch (e) {
+      setStatus(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const btn = {
+    width: '100%', textAlign: 'left', cursor: busy ? 'default' : 'pointer',
+    background: 'rgba(200,168,78,0.08)', border: '1px solid rgba(200,168,78,0.2)',
+    color: C.gold, fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600,
+    padding: '7px 10px', borderRadius: '7px', opacity: busy ? 0.6 : 1,
+  };
+
+  return (
+    <div style={{ marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.muted, marginBottom: '2px' }}>Owner</div>
+      <button onClick={handleDownload} disabled={busy} style={btn}>⬇ Download Database Backup</button>
+      <button onClick={handleRunNow} disabled={busy} style={btn}>☁ Run R2 Backup Now</button>
+      {status && (
+        <div style={{ fontSize: '11px', color: C.muted, lineHeight: 1.4, wordBreak: 'break-all' }}>{status}</div>
+      )}
+    </div>
+  );
+}
+
 // ── Dashboard shell ───────────────────────────────────────────────────────────
 
 const Dashboard = () => {
@@ -4639,6 +4701,7 @@ const Dashboard = () => {
           </nav>
 
           <div style={{ padding: '14px 16px', borderTop: `1px solid ${C.border}` }}>
+            <OwnerBackupPanel user={user} />
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', position: 'relative' }}>
               <img
                 src={avatarUrl}

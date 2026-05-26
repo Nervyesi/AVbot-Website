@@ -336,6 +336,38 @@ export async function downloadLogs(sid, params = {}) {
   setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 }
 
+// ── Owner-only DB backups ────────────────────────────────────────────────────
+// These hit owner-gated endpoints (server enforces Discord id 461460143343927306).
+// Like downloadLogs, the download needs the bearer token + a binary blob, so we
+// use a raw fetch (not apiFetch) and pull the token from the same place.
+
+export async function downloadBackup() {
+  const token = getToken();
+  const res = await fetch(`${API_BASE_URL}/api/admin/backup/download`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `HTTP ${res.status}`);
+  }
+  const blob = await res.blob();
+  const cd = res.headers.get('Content-Disposition') || '';
+  const match = cd.match(/filename="?([^"]+)"?/);
+  const filename = match ? match[1] : `ameretaverse-backup-${new Date().toISOString().slice(0, 10)}.db`;
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  return filename;
+}
+
+export const runBackupNow = () =>
+  apiFetch('/api/admin/backup/run-now', { method: 'POST' });
+
 export const fetchFlags = (sid, params = {}) => {
   const qs = buildQuery(params);
   return apiFetch(`/api/servers/${sid}/flags${qs ? '?' + qs : ''}`);
