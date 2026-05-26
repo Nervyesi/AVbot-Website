@@ -368,6 +368,11 @@ export async function downloadBackup() {
 export const runBackupNow = () =>
   apiFetch('/api/admin/backup/run-now', { method: 'POST' });
 
+// Owner-only cross-tenant overview. Server enforces require_global_admin; a
+// non-owner gets a 403 here regardless of any client-side gate. Uses apiFetch
+// so the bearer token from the existing auth flow is sent automatically.
+export const fetchGlobalOverview = () => apiFetch('/api/admin/overview');
+
 export const fetchFlags = (sid, params = {}) => {
   const qs = buildQuery(params);
   return apiFetch(`/api/servers/${sid}/flags${qs ? '?' + qs : ''}`);

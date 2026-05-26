@@ -45,5 +45,14 @@
       To begin the development, run `npm start` or `yarn start`.
       To create a production bundle, use `npm run build` or `yarn build`.
     -->
+    <!--
+      Cloudflare Web Analytics (privacy friendly, no cookies). The token is
+      injected at build time from the REACT_APP_CF_BEACON env var; set it in the
+      hosting environment. If it is empty the beacon simply does nothing.
+      Visitor stats (views, countries, referrers) are viewed in the Cloudflare
+      dashboard, not in this app.
+    -->
+    <script defer src="https://static.cloudflareinsights.com/beacon.min.js"
+            data-cf-beacon='{"token": "%REACT_APP_CF_BEACON%"}'></script>
   </body>
 </html>

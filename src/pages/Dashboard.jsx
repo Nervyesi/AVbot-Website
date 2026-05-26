@@ -21,7 +21,7 @@ import {
   fetchSettings, updateBrand, updateAccess, updateLevels,
   fetchLogs, downloadLogs, fetchFlags, resolveFlag,
   fetchUserPoints, adjustPoints, fetchLeaderboard,
-  downloadBackup, runBackupNow,
+  downloadBackup, runBackupNow, fetchGlobalOverview,
 } from '../api';
 import { DISCORD_INVITE_URL, ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 
@@ -4522,6 +4522,7 @@ const NAV = [
   { id: 'protection',   icon: '🛡️', label: 'Protection',     group: 'Settings' },
   { id: 'settings',    icon: '⚙️', label: 'Server Settings', group: 'Settings' },
   { id: 'logs',         icon: '📋', label: 'Logs',           group: 'Admin Panel' },
+  { id: 'owner',        icon: '🌐', label: 'Global',          group: 'Owner' },
 ];
 
 // ── NavBtn ────────────────────────────────────────────────────────────────────
@@ -4541,18 +4542,23 @@ const NavBtn = ({ item, active, setActive }) => (
 // themselves enforce owner-only server-side; this is just the UI gate.
 const OWNER_DISCORD_ID = '461460143343927306';
 
+// Discord ids exceed JS Number.MAX_SAFE_INTEGER, so a numeric `user_id` from
+// JSON is silently corrupted (and still truthy) — `user_id || id` would never
+// fall through to the safe string `id`. Coerce every plausible id field to a
+// string and match against any of them. /auth/me exposes `id` as a string.
+// This is a cosmetic visibility gate only; the real protection is the
+// server-side require_global_admin check on every owner endpoint.
+function isOwnerUser(user) {
+  const ids = [user?.id, user?.user_id, user?.sub, user?.discord_id]
+    .map(v => (v != null ? String(v) : null));
+  return ids.includes(OWNER_DISCORD_ID);
+}
+
 function OwnerBackupPanel({ user }) {
   const [status, setStatus] = useState('');
   const [busy, setBusy]     = useState(false);
 
-  // Discord ids exceed JS Number.MAX_SAFE_INTEGER, so a numeric `user_id` from
-  // JSON is silently corrupted (and still truthy) — `user_id || id` would never
-  // fall through to the safe string `id`. Coerce every plausible id field to a
-  // string and match against any of them. /auth/me exposes `id` as a string.
-  const ids = [user?.id, user?.user_id, user?.sub, user?.discord_id]
-    .map(v => (v != null ? String(v) : null));
-  const isOwner = ids.includes(OWNER_DISCORD_ID);
-  if (!isOwner) return null;
+  if (!isOwnerUser(user)) return null;
 
   async function handleDownload() {
     if (busy) return;
@@ -4598,6 +4604,153 @@ function OwnerBackupPanel({ user }) {
       <button onClick={handleRunNow} disabled={busy} style={btn}>☁ Run R2 Backup Now</button>
       {status && (
         <div style={{ fontSize: '11px', color: C.muted, lineHeight: 1.4, wordBreak: 'break-all' }}>{status}</div>
+      )}
+    </div>
+  );
+}
+
+// ── Owner-only global tenant overview (dashboard tab, owner only) ─────────────
+function OwnerOverview({ user }) {
+  const [data, setData]       = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState('');
+  const [sortKey, setSortKey] = useState('members');
+  const [sortDir, setSortDir] = useState('desc');
+
+  // Second layer of defence behind the server gate: never even call the
+  // endpoint if the viewer is not the owner.
+  const owner = isOwnerUser(user);
+
+  useEffect(() => {
+    if (!owner) return;
+    let alive = true;
+    setLoading(true);
+    fetchGlobalOverview()
+      .then(d => { if (alive) { setData(d); setError(''); } })
+      .catch(e => { if (alive) setError(String(e.message || e)); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [owner]);
+
+  if (!owner) return null;
+
+  const fmt = n => (n == null ? '0' : Number(n).toLocaleString());
+  const fmtDate = s => {
+    if (!s) return '—';
+    const d = new Date(s);
+    return isNaN(d) ? '—' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+
+  const setSort = key => {
+    if (key === sortKey) { setSortDir(d => (d === 'desc' ? 'asc' : 'desc')); }
+    else { setSortKey(key); setSortDir('desc'); }
+  };
+
+  const guilds = (data?.guilds || []).slice().sort((a, b) => {
+    let av = a[sortKey], bv = b[sortKey];
+    if (sortKey === 'name') { av = (av || '').toLowerCase(); bv = (bv || '').toLowerCase(); }
+    if (sortKey === 'last_active' || sortKey === 'added_at') {
+      av = av ? new Date(av).getTime() : 0; bv = bv ? new Date(bv).getTime() : 0;
+    }
+    if (av < bv) return sortDir === 'asc' ? -1 : 1;
+    if (av > bv) return sortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const totals = data?.totals || {};
+  const cards = [
+    { label: 'Guilds',            value: fmt(totals.guilds) },
+    { label: 'Members',           value: fmt(totals.members) },
+    { label: 'Raids',             value: fmt(totals.raids) },
+    { label: 'Points awarded',    value: fmt(totals.points) },
+    { label: 'Engage submissions',value: fmt(totals.engage_subs) },
+  ];
+
+  const th = (key, label, align = 'left') => (
+    <th
+      onClick={() => setSort(key)}
+      style={{ textAlign: align, padding: '10px 12px', cursor: 'pointer', color: C.muted,
+               fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+               whiteSpace: 'nowrap', userSelect: 'none' }}
+    >
+      {label}{sortKey === key ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''}
+    </th>
+  );
+
+  return (
+    <div>
+      <div style={{ marginBottom: '8px' }}>
+        <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, letterSpacing: '-0.02em' }}>Global Overview</h1>
+        <p style={{ margin: '6px 0 0', color: C.muted, fontSize: '13px' }}>
+          Private owner view of every server using AVbot and how much they use it.
+        </p>
+      </div>
+
+      {loading && <div style={{ color: C.muted, fontSize: '14px', padding: '24px 0' }}>Loading…</div>}
+      {error && !loading && (
+        <div style={{ background: 'rgba(237,66,69,0.1)', border: '1px solid rgba(237,66,69,0.3)',
+                      borderRadius: '8px', padding: '16px', color: '#ed4245', fontSize: '14px' }}>
+          {error}
+        </div>
+      )}
+
+      {!loading && !error && data && (
+        <>
+          {/* Top-line totals */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                        gap: '12px', margin: '20px 0 28px' }}>
+            {cards.map(c => (
+              <div key={c.label} style={{ background: C.surface, border: `1px solid ${C.border}`,
+                        borderRadius: '12px', padding: '16px 18px' }}>
+                <div style={{ fontSize: '11px', color: C.muted, textTransform: 'uppercase',
+                              letterSpacing: '0.05em', fontWeight: 700 }}>{c.label}</div>
+                <div style={{ fontSize: '1.7rem', fontWeight: 800, color: C.gold, marginTop: '6px' }}>{c.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Tenants table */}
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '12px',
+                        overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '720px' }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                  {th('name', 'Server')}
+                  {th('members', 'Members', 'right')}
+                  {th('modules', 'Modules')}
+                  {th('raids', 'Raids', 'right')}
+                  {th('points', 'Points', 'right')}
+                  {th('engage_subs', 'Engage', 'right')}
+                  {th('added_at', 'Added')}
+                  {th('last_active', 'Last active')}
+                </tr>
+              </thead>
+              <tbody>
+                {guilds.map(g => (
+                  <tr key={g.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                    <td style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {g.icon
+                        ? <img src={g.icon} alt="" referrerPolicy="no-referrer" style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }} />
+                        : <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(200,168,78,0.18)', color: C.gold, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700 }}>{(g.name?.[0] || '?').toUpperCase()}</div>}
+                      <span style={{ fontWeight: 600 }}>{g.name}</span>
+                      {g.is_premium && <span style={{ fontSize: '10px', color: C.gold }}>★</span>}
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmt(g.members)}</td>
+                    <td style={{ padding: '10px 12px', color: C.muted }}>{(g.modules || []).join(', ') || '—'}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmt(g.raids)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmt(g.points)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmt(g.engage_subs)}</td>
+                    <td style={{ padding: '10px 12px', color: C.muted, whiteSpace: 'nowrap' }}>{fmtDate(g.added_at)}</td>
+                    <td style={{ padding: '10px 12px', color: C.muted, whiteSpace: 'nowrap' }}>{fmtDate(g.last_active)}</td>
+                  </tr>
+                ))}
+                {guilds.length === 0 && (
+                  <tr><td colSpan={8} style={{ padding: '20px', textAlign: 'center', color: C.muted }}>No guilds found.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
@@ -4660,11 +4813,17 @@ const Dashboard = () => {
     </div>
   );
 
-  const groups = ['Settings', 'Admin Panel'];
+  // The Owner group (Global tab) is only ever rendered for the owner. This is a
+  // cosmetic gate; the /api/admin/overview endpoint independently enforces
+  // require_global_admin server-side, so a non-owner who forced the tab open
+  // would still get a 403 and no data.
+  const owner = isOwnerUser(user);
+  const groups = owner ? ['Settings', 'Admin Panel', 'Owner'] : ['Settings', 'Admin Panel'];
   const groupedNav = {
     top:           NAV.filter(n => !n.group),
     Settings:      NAV.filter(n => n.group === 'Settings'),
     'Admin Panel': NAV.filter(n => n.group === 'Admin Panel'),
+    Owner:         owner ? NAV.filter(n => n.group === 'Owner') : [],
   };
   const avatarUrl = userAvatarUrl(user);
 
@@ -4683,6 +4842,7 @@ const Dashboard = () => {
     protection:   noServerAccess ? <ModuleLock name="Protection" /> : <ProtectionSettings />,
     settings:     noServerAccess ? <ModuleLock name="Server Settings" /> : <SettingsModule />,
     logs:         noServerAccess ? <ModuleLock name="Logs" /> : <LogsModule />,
+    owner:        owner ? <OwnerOverview user={user} /> : <Overview />,
   };
 
   return (
