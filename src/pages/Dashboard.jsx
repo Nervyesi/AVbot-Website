@@ -14,6 +14,8 @@ import {
   listAssets, uploadAsset, deleteAsset,
   listForms, createForm, updateForm, deleteForm,
   createFormField, updateFormField, deleteFormField, sendForm,
+  listEmbeds, createEmbed, updateEmbed, sendEmbed,
+  deleteEmbedMessage, deleteEmbed,
   fetchRaidSettings, saveRaidSettings, fetchRaidList, createRaid, endRaid,
   fetchRaidLeaderboard, fetchRaidVerificationLog, runRaidManualCheck, sendRaidGuide,
   fetchRaidGuideDefaults, fetchRaidScrapingHealth,
@@ -4508,6 +4510,405 @@ const SettingsModule = () => {
   );
 };
 
+// ── Embed Message module ─────────────────────────────────────────────────────
+// Dashboard-side composer for branded embeds. Backend uses build_branded_embed
+// so anything rendered here will look the same when posted to Discord (apart
+// from font, which Discord renders client-side).
+
+const EMBED_EDITOR_DEFAULTS = {
+  title:         '',
+  description:   '',
+  color:         '',     // empty = use brand default on server side
+  image_url:     '',
+  thumbnail_url: '',
+  channel_id:    '',
+  fields:        [],     // {name, value, inline}
+};
+
+const EmbedMessagesSettings = () => {
+  const { server, isPremium } = useContext(DashboardContext);
+  const serverId = server?.id;
+
+  const [embeds,    setEmbeds]    = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState(null);
+  const [activeId,  setActiveId]  = useState(null);
+
+  const [editor,    setEditor]    = useState({ ...EMBED_EDITOR_DEFAULTS });
+  const setEd                     = k => v => setEditor(p => ({ ...p, [k]: v }));
+  const [saving,    setSaving]    = useState(false);
+  const [saveMsg,   setSaveMsg]   = useState('');
+  const [sendState, setSendState] = useState('idle');
+  const [sendMsg,   setSendMsg]   = useState('');
+  const [confirmDel, setConfirmDel] = useState(null); // { id, mode: 'draft'|'message' }
+
+  const doFetch = async () => {
+    if (!serverId) return;
+    try {
+      const { embeds: list } = await listEmbeds(serverId);
+      setEmbeds(list || []);
+      setError(null);
+    } catch (e) { setError(e.message); }
+  };
+
+  useEffect(() => {
+    if (!serverId) { setLoading(false); return; }
+    setLoading(true);
+    setActiveId(null);
+    setEmbeds([]);
+    listEmbeds(serverId)
+      .then(({ embeds: list }) => { setEmbeds(list || []); setError(null); })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [serverId]); // eslint-disable-line
+
+  useEffect(() => {
+    const row = embeds.find(x => x.id === activeId);
+    if (!row) return;
+    setEditor({
+      title:         row.title || '',
+      description:   row.description || '',
+      color:         row.color || '',
+      image_url:     row.image_url || '',
+      thumbnail_url: row.thumbnail_url || '',
+      channel_id:    row.channel_id || '',
+      fields:        Array.isArray(row.fields) ? row.fields : [],
+    });
+    setSaveMsg(''); setSendMsg(''); setSendState('idle');
+  }, [activeId, embeds]);
+
+  const activeRow = embeds.find(e => e.id === activeId) || null;
+
+  const handleCreate = async () => {
+    if (!serverId) return;
+    try {
+      const created = await createEmbed(serverId, { title: 'New Embed' });
+      await doFetch();
+      setActiveId(created.id);
+    } catch (e) { setError(e.message); }
+  };
+
+  const handleSave = async () => {
+    if (!serverId || !activeId || saving) return;
+    setSaving(true); setSaveMsg('');
+    try {
+      const res = await updateEmbed(serverId, activeId, {
+        title:         editor.title,
+        description:   editor.description,
+        color:         editor.color || null,
+        image_url:     editor.image_url,
+        thumbnail_url: editor.thumbnail_url,
+        channel_id:    editor.channel_id,
+        fields:        editor.fields,
+      });
+      if (res?.live_edit === 'edited') {
+        setSaveMsg('✓ Saved (live message updated)');
+      } else if (res?.live_edit === 'forbidden') {
+        setSaveMsg('✓ Saved (bot lacks permission to edit live message)');
+      } else if (res?.live_edit === 'message_missing') {
+        setSaveMsg('✓ Saved (live message was missing; back to draft)');
+      } else {
+        setSaveMsg('✓ Saved');
+      }
+      await doFetch();
+    } catch (e) { setSaveMsg('✗ ' + e.message); }
+    finally { setSaving(false); setTimeout(() => setSaveMsg(''), 4000); }
+  };
+
+  const handleSend = async ({ resend = false } = {}) => {
+    if (!serverId || !activeId || sendState === 'sending') return;
+    const ch = (editor.channel_id || '').trim();
+    if (!ch) {
+      setSendMsg('Enter a channel name or ID first');
+      setSendState('error');
+      setTimeout(() => { setSendMsg(''); setSendState('idle'); }, 3500);
+      return;
+    }
+    setSendState('sending');
+    try {
+      // Save edits first so what posts matches what's on screen. Skip the
+      // live-message edit roundtrip on resend (we're about to overwrite anyway).
+      await updateEmbed(serverId, activeId, {
+        title:         editor.title,
+        description:   editor.description,
+        color:         editor.color || null,
+        image_url:     editor.image_url,
+        thumbnail_url: editor.thumbnail_url,
+        channel_id:    editor.channel_id,
+        fields:        editor.fields,
+      });
+      const res = await sendEmbed(serverId, activeId, ch);
+      setSendMsg(resend
+        ? `✓ Resent (msg ${res.message_id})`
+        : `✓ Sent (msg ${res.message_id})`);
+      setSendState('sent');
+      await doFetch();
+    } catch (e) {
+      setSendMsg('✗ ' + e.message);
+      setSendState('error');
+    }
+    setTimeout(() => { setSendMsg(''); setSendState('idle'); }, 5000);
+  };
+
+  const handleDeleteLiveMessage = async () => {
+    if (!serverId || !activeId) return;
+    try {
+      await deleteEmbedMessage(serverId, activeId);
+      await doFetch();
+      setConfirmDel(null);
+    } catch (e) { setError(e.message); }
+  };
+
+  const handleDeleteDraft = async () => {
+    if (!serverId || !confirmDel) return;
+    try {
+      await deleteEmbed(serverId, confirmDel.id, false);
+      if (activeId === confirmDel.id) setActiveId(null);
+      setConfirmDel(null);
+      await doFetch();
+    } catch (e) { setError(e.message); }
+  };
+
+  const addField = () => {
+    if ((editor.fields || []).length >= 10) return;
+    setEditor(p => ({ ...p, fields: [...(p.fields || []),
+      { name: '', value: '', inline: false }] }));
+  };
+  const updateField = (idx, patch) => {
+    setEditor(p => ({
+      ...p,
+      fields: (p.fields || []).map((f, i) => i === idx ? { ...f, ...patch } : f),
+    }));
+  };
+  const removeField = (idx) => {
+    setEditor(p => ({ ...p, fields: (p.fields || []).filter((_, i) => i !== idx) }));
+  };
+
+  return (
+    <div>
+      <PageHeader icon="💬" title="Embed Messages" badge="MODULE"
+        desc="Compose branded embeds and post them to any channel. Edits flow live; resend creates a new message." />
+
+      {error && (
+        <div style={{ background: 'rgba(237,66,69,0.1)', border: '1px solid rgba(237,66,69,0.3)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', color: C.red, fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {error}
+          <button onClick={() => setError(null)}
+            style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '18px' }}>×</button>
+        </div>
+      )}
+
+      {/* ── Embed list ── */}
+      <SettingsCard>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px', gap: '12px' }}>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Embeds</div>
+            <div style={{ fontSize: '12px', color: C.muted, marginTop: '4px' }}>
+              Unlimited drafts per server. Each one targets a single channel; you can edit, resend, or remove the posted message at any time.
+            </div>
+          </div>
+          <button onClick={handleCreate}
+            style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '9px 16px', color: '#0A0A0F', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, flexShrink: 0 }}>
+            + New Embed
+          </button>
+        </div>
+
+        {loading ? (
+          <div style={{ color: C.muted, fontSize: '13px', padding: '16px 0' }}>Loading…</div>
+        ) : embeds.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '32px 0', color: C.muted }}>
+            <div style={{ fontSize: '28px', marginBottom: '10px' }}>💬</div>
+            <div style={{ fontSize: '14px' }}>
+              No embeds yet. Click <strong style={{ color: C.gold }}>+ New Embed</strong> to start.
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {embeds.map(row => {
+              const isActive = activeId === row.id;
+              const isPosted = row.status === 'posted';
+              const titlePreview = row.title || '(untitled)';
+              const updatedRel = relativeTime(row.updated_at);
+              return (
+                <div key={row.id}
+                  style={{ background: isActive ? 'rgba(200,168,78,0.07)' : 'rgba(0,0,0,0.2)', border: `1px solid ${isActive ? C.gold : 'rgba(255,255,255,0.07)'}`, borderRadius: '10px', padding: '14px 16px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ flex: 1, minWidth: '160px' }}>
+                    <div style={{ fontWeight: 700, fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {titlePreview}
+                    </div>
+                    <div style={{ fontSize: '11px', color: C.muted, marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{
+                        background: isPosted ? 'rgba(59,165,92,0.12)' : 'rgba(255,255,255,0.05)',
+                        border: `1px solid ${isPosted ? 'rgba(59,165,92,0.35)' : 'rgba(255,255,255,0.1)'}`,
+                        color: isPosted ? C.green : C.muted,
+                        padding: '2px 8px', borderRadius: '100px', fontSize: '10px', fontWeight: 700,
+                        letterSpacing: '0.04em', textTransform: 'uppercase',
+                      }}>
+                        {isPosted ? 'Posted' : 'Draft'}
+                      </span>
+                      {row.channel_id && <span>· channel {row.channel_id}</span>}
+                      {updatedRel && <span>· edited {updatedRel}</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0, alignItems: 'center' }}>
+                    <button onClick={() => setActiveId(isActive ? null : row.id)}
+                      style={{ background: isActive ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isActive ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '6px', padding: '5px 12px', color: isActive ? C.gold : '#fff', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
+                      {isActive ? '▲ Close' : '✏️ Edit'}
+                    </button>
+                    {confirmDel?.id === row.id && confirmDel.mode === 'draft' ? (
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11px', color: C.red }}>Delete draft?</span>
+                        <button onClick={handleDeleteDraft}
+                          style={{ background: 'rgba(237,66,69,0.2)', border: '1px solid rgba(237,66,69,0.4)', borderRadius: '6px', padding: '4px 10px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>Yes</button>
+                        <button onClick={() => setConfirmDel(null)}
+                          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '4px 10px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>No</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setConfirmDel({ id: row.id, mode: 'draft' })}
+                        title="Delete this draft (live message is left intact)"
+                        style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px', padding: '4px 6px', lineHeight: 1 }}>🗑</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SettingsCard>
+
+      {/* ── Editor ── */}
+      {activeRow && (
+        <>
+          <SettingsCard title="Embed">
+            <EmbedPreview
+              serverId={serverId}
+              isPremium={isPremium}
+              title={editor.title}
+              description={editor.description}
+              thumbnailUrl={editor.thumbnail_url}
+              imageUrl={editor.image_url}
+              color={editor.color || '#94730D'}
+              footerText={''}
+              onTitleChange={setEd('title')}
+              onDescriptionChange={setEd('description')}
+              onThumbnailChange={setEd('thumbnail_url')}
+              onImageChange={setEd('image_url')}
+              onColorChange={setEd('color')}
+              onFooterTextChange={() => {}}
+              showImage={true}
+              bodySize="base"
+            />
+            <div style={{ marginTop: '8px', fontSize: '11px', color: C.muted }}>
+              Color, footer, thumbnail use your Server Settings brand by default. Set values here to override per-embed.
+            </div>
+          </SettingsCard>
+
+          <SettingsCard title="Additional Fields"
+            >
+            <div style={{ fontSize: '11px', color: C.muted, marginTop: '-6px', marginBottom: '12px' }}>
+              Optional. Up to 10 named blocks under the description. Inline rows show side by side.
+            </div>
+            {(editor.fields || []).length === 0 && (
+              <div style={{ color: C.muted, fontSize: '13px', padding: '8px 0 12px' }}>
+                No extra fields. Click below to add one.
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {(editor.fields || []).map((f, i) => (
+                <div key={i} style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px' }}>
+                    <div>
+                      <Label>Name</Label>
+                      <Input value={f.name || ''} onChange={v => updateField(i, { name: v })} placeholder="Field title" />
+                    </div>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <Label>Value</Label>
+                      <Textarea value={f.value || ''} onChange={v => updateField(i, { value: v })} placeholder="Markdown supported" rows={2} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px' }}>
+                    <label style={{ fontSize: '12px', color: C.muted, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={!!f.inline}
+                        onChange={e => updateField(i, { inline: e.target.checked })}
+                        style={{ cursor: 'pointer', accentColor: C.gold }} />
+                      Inline
+                    </label>
+                    <button onClick={() => removeField(i)}
+                      style={{ background: 'rgba(237,66,69,0.1)', border: '1px solid rgba(237,66,69,0.3)', borderRadius: '6px', padding: '4px 10px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button onClick={addField}
+              disabled={(editor.fields || []).length >= 10}
+              style={{ marginTop: '12px', background: 'rgba(200,168,78,0.08)', border: '1px solid rgba(200,168,78,0.25)', borderRadius: '8px', padding: '8px 14px', color: C.gold, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600, opacity: (editor.fields || []).length >= 10 ? 0.4 : 1 }}>
+              + Add Field
+            </button>
+          </SettingsCard>
+
+          <SettingsCard title="Target Channel">
+            <Field label="Channel" hint="name (e.g. announcements) or numeric ID">
+              <Input value={editor.channel_id} onChange={setEd('channel_id')}
+                placeholder="#announcements or 1234567890" />
+            </Field>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+              <button onClick={handleSave} disabled={saving}
+                style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '9px 18px', color: '#0A0A0F', cursor: saving ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, opacity: saving ? 0.6 : 1 }}>
+                {saving ? 'Saving…' : (activeRow.status === 'posted' ? 'Save (edits live message)' : 'Save Draft')}
+              </button>
+              <button onClick={() => handleSend({ resend: false })}
+                disabled={sendState === 'sending'}
+                style={{ background: 'rgba(59,165,92,0.12)', border: '1px solid rgba(59,165,92,0.35)', borderRadius: '8px', padding: '9px 18px', color: C.green, cursor: sendState === 'sending' ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, opacity: sendState === 'sending' ? 0.6 : 1 }}>
+                {sendState === 'sending' ? 'Sending…' : (activeRow.status === 'posted' ? 'Resend (new message)' : 'Send to Channel')}
+              </button>
+              {activeRow.status === 'posted' && (
+                <button onClick={handleDeleteLiveMessage}
+                  style={{ background: 'rgba(237,66,69,0.1)', border: '1px solid rgba(237,66,69,0.35)', borderRadius: '8px', padding: '9px 14px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
+                  Delete Live Message
+                </button>
+              )}
+            </div>
+
+            {(saveMsg || sendMsg) && (
+              <div style={{ marginTop: '10px', fontSize: '12px',
+                color: (saveMsg.startsWith('✗') || sendMsg.startsWith('✗')) ? C.red : C.green }}>
+                {saveMsg}{saveMsg && sendMsg ? ' · ' : ''}{sendMsg}
+              </div>
+            )}
+            {activeRow.status === 'posted' && activeRow.channel_id && activeRow.message_id && (
+              <div style={{ marginTop: '8px', fontSize: '11px', color: C.muted }}>
+                Posted as message {activeRow.message_id} in channel {activeRow.channel_id}.
+              </div>
+            )}
+          </SettingsCard>
+        </>
+      )}
+    </div>
+  );
+};
+
+// Relative-time helper for the embed list. Standalone and tolerant of bad
+// timestamps; returns an empty string if the input is unparseable.
+function relativeTime(iso) {
+  if (!iso) return '';
+  const t = Date.parse(iso);
+  if (isNaN(t)) return '';
+  const diff = Date.now() - t;
+  if (diff < 0) return 'just now';
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60)  return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60)  return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr  < 24)  return `${hr}h ago`;
+  const d = Math.floor(hr / 24);
+  if (d   < 30)  return `${d}d ago`;
+  return new Date(t).toLocaleDateString();
+}
+
+
 // ── Nav config ────────────────────────────────────────────────────────────────
 
 const NAV = [
@@ -4517,6 +4918,7 @@ const NAV = [
   { id: 'roles',        icon: '🎭', label: 'Role Selection', group: 'Settings' },
   { id: 'forms',        icon: '📋', label: 'Forms',          group: 'Settings' },
   { id: 'tickets',      icon: '🎫', label: 'Tickets',        group: 'Settings' },
+  { id: 'embeds',       icon: '💬', label: 'Embed Messages', group: 'Settings' },
   { id: 'raid',         icon: '⚔️', label: 'Raid',           group: 'Settings' },
   { id: 'engage',       icon: '🔄', label: 'Engage',         group: 'Settings' },
   { id: 'protection',   icon: '🛡️', label: 'Protection',     group: 'Settings' },
@@ -4837,6 +5239,7 @@ const Dashboard = () => {
     roles:        noServerAccess ? <ModuleLock name="Role Select" /> : <RoleSelectSettings />,
     forms:        noServerAccess ? <ModuleLock name="Forms" /> : <FormsSettings />,
     tickets:      noServerAccess ? <ModuleLock name="Tickets" /> : <TicketsSettings />,
+    embeds:       noServerAccess ? <ModuleLock name="Embed Messages" /> : <EmbedMessagesSettings />,
     raid:         noServerAccess ? <ModuleLock name="Raid" /> : <RaidSettings />,
     engage:       noServerAccess ? <ModuleLock name="Engage" /> : <EngageSettings />,
     protection:   noServerAccess ? <ModuleLock name="Protection" /> : <ProtectionSettings />,

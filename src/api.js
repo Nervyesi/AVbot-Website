@@ -192,6 +192,44 @@ export const sendForm = (sid, formId, channelId) =>
     body: JSON.stringify({ channel_id: String(channelId).trim() }),
   });
 
+// ── Embed Message ──────────────────────────────────────────────────────────
+
+export const listEmbeds = (sid) =>
+  apiFetch(`/api/servers/${sid}/embeds`);
+
+export const createEmbed = (sid, body = {}) =>
+  apiFetch(`/api/servers/${sid}/embeds`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+
+export const updateEmbed = (sid, embedId, updates) =>
+  apiFetch(`/api/servers/${sid}/embeds/${embedId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+
+export const sendEmbed = (sid, embedId, channelId) =>
+  apiFetch(`/api/servers/${sid}/embeds/${embedId}/send`, {
+    method: 'POST',
+    body: JSON.stringify(
+      channelId ? { channel_id: String(channelId).trim() } : {}
+    ),
+  });
+
+export const deleteEmbedMessage = (sid, embedId) =>
+  apiFetch(`/api/servers/${sid}/embeds/${embedId}/delete-message`, {
+    method: 'POST',
+  });
+
+export const deleteEmbed = (sid, embedId, alsoDeleteMessage = false) =>
+  apiFetch(
+    `/api/servers/${sid}/embeds/${embedId}${
+      alsoDeleteMessage ? '?delete_message=true' : ''
+    }`,
+    { method: 'DELETE' }
+  );
+
 // ── Raid ───────────────────────────────────────────────────────────────────
 
 export const fetchRaidSettings = (sid) =>
