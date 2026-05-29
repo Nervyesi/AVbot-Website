@@ -230,6 +230,41 @@ export const deleteEmbed = (sid, embedId, alsoDeleteMessage = false) =>
     { method: 'DELETE' }
   );
 
+// ── Giveaway ───────────────────────────────────────────────────────────────
+
+export const listGiveaways = (sid) =>
+  apiFetch(`/api/servers/${sid}/giveaways`);
+
+export const createGiveaway = (sid, body = {}) =>
+  apiFetch(`/api/servers/${sid}/giveaways`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+
+export const updateGiveaway = (sid, gid, updates) =>
+  apiFetch(`/api/servers/${sid}/giveaways/${gid}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+
+export const startGiveaway = (sid, gid) =>
+  apiFetch(`/api/servers/${sid}/giveaways/${gid}/start`, { method: 'POST' });
+
+export const endGiveawayNow = (sid, gid) =>
+  apiFetch(`/api/servers/${sid}/giveaways/${gid}/end-now`, { method: 'POST' });
+
+export const rerollGiveaway = (sid, gid) =>
+  apiFetch(`/api/servers/${sid}/giveaways/${gid}/reroll`, { method: 'POST' });
+
+export const cancelGiveaway = (sid, gid) =>
+  apiFetch(`/api/servers/${sid}/giveaways/${gid}/cancel`, { method: 'POST' });
+
+export const deleteGiveaway = (sid, gid) =>
+  apiFetch(`/api/servers/${sid}/giveaways/${gid}`, { method: 'DELETE' });
+
+export const fetchGiveawayEntries = (sid, gid) =>
+  apiFetch(`/api/servers/${sid}/giveaways/${gid}/entries`);
+
 // ── Raid ───────────────────────────────────────────────────────────────────
 
 export const fetchRaidSettings = (sid) =>

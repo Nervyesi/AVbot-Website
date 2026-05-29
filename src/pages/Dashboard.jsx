@@ -16,6 +16,9 @@ import {
   createFormField, updateFormField, deleteFormField, sendForm,
   listEmbeds, createEmbed, updateEmbed, sendEmbed,
   deleteEmbedMessage, deleteEmbed,
+  listGiveaways, createGiveaway, updateGiveaway, startGiveaway,
+  endGiveawayNow, rerollGiveaway, cancelGiveaway, deleteGiveaway,
+  fetchGiveawayEntries,
   fetchRaidSettings, saveRaidSettings, fetchRaidList, createRaid, endRaid,
   fetchRaidLeaderboard, fetchRaidVerificationLog, runRaidManualCheck, sendRaidGuide,
   fetchRaidGuideDefaults, fetchRaidScrapingHealth,
@@ -4909,6 +4912,557 @@ function relativeTime(iso) {
 }
 
 
+// ── Giveaway module ──────────────────────────────────────────────────────────
+// Dashboard composer for branded giveaway embeds. Same backend-driven brand
+// preview pattern as Embed Messages and Forms.
+
+const GIVEAWAY_EDITOR_DEFAULTS = {
+  title:             '',
+  description:       '',
+  prize:             '',
+  color:             '',
+  image_url:         '',
+  thumbnail_url:     '',
+  channel_id:        '',
+  mention_role_id:   '',
+  allowed_role_ids:  [],         // array of role-id strings
+  duration_value:    1,
+  duration_unit:     'hours',    // 'minutes' | 'hours' | 'days'
+  winner_count:      1,
+  entry_cost_points: 0,
+};
+
+const DURATION_UNIT_FACTOR = { minutes: 60, hours: 3600, days: 86400 };
+
+function secondsToFriendly(sec) {
+  const s = Math.max(0, sec | 0);
+  if (s >= 86400 && s % 86400 === 0) return { value: s / 86400, unit: 'days' };
+  if (s >= 3600  && s % 3600  === 0) return { value: s / 3600,  unit: 'hours' };
+  if (s >= 60    && s % 60    === 0) return { value: s / 60,    unit: 'minutes' };
+  if (s >= 86400) return { value: Math.round(s / 86400), unit: 'days' };
+  if (s >= 3600)  return { value: Math.round(s / 3600),  unit: 'hours' };
+  return { value: Math.max(1, Math.round(s / 60)), unit: 'minutes' };
+}
+
+function giveawayRelative(iso) {
+  if (!iso) return '';
+  const t = Date.parse(iso);
+  if (isNaN(t)) return '';
+  const diff = t - Date.now();
+  if (diff <= 0) return 'now';
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60)   return `in ${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60)   return `in ${min}m`;
+  const hr  = Math.floor(min / 60);
+  if (hr < 24)    return `in ${hr}h ${min % 60}m`;
+  const d   = Math.floor(hr / 24);
+  return `in ${d}d ${hr % 24}h`;
+}
+
+const STATUS_BADGE = {
+  draft:     { label: 'Draft',     bg: 'rgba(255,255,255,0.05)', fg: 'rgba(255,255,255,0.55)', bd: 'rgba(255,255,255,0.1)'  },
+  active:    { label: 'Active',    bg: 'rgba(59,165,92,0.12)',   fg: '#3ba55c',                bd: 'rgba(59,165,92,0.35)'    },
+  drawing:   { label: 'Drawing',   bg: 'rgba(200,168,78,0.12)',  fg: '#C8A84E',                bd: 'rgba(200,168,78,0.35)'  },
+  ended:     { label: 'Ended',     bg: 'rgba(88,101,242,0.12)',  fg: '#5865F2',                bd: 'rgba(88,101,242,0.35)'  },
+  cancelled: { label: 'Cancelled', bg: 'rgba(237,66,69,0.10)',   fg: '#ed4245',                bd: 'rgba(237,66,69,0.35)'    },
+};
+
+const GiveawaySettings = () => {
+  const { server, isPremium } = useContext(DashboardContext);
+  const serverId = server?.id;
+
+  const [list,      setList]      = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState(null);
+  const [activeId,  setActiveId]  = useState(null);
+
+  const [editor, setEditor]   = useState({ ...GIVEAWAY_EDITOR_DEFAULTS });
+  const setEd = k => v => setEditor(p => ({ ...p, [k]: v }));
+  const [busy,    setBusy]    = useState(false);
+  const [msg,     setMsg]     = useState('');
+  const [msgKind, setMsgKind] = useState('ok'); // 'ok' | 'err'
+
+  const [confirm, setConfirm] = useState(null);  // {id, action: 'delete'|'cancel'}
+  const [entrantsFor, setEntrantsFor] = useState(null);
+  const [entrants, setEntrants] = useState([]);
+  const [entrantsLoading, setEntrantsLoading] = useState(false);
+
+  const doFetch = async () => {
+    if (!serverId) return;
+    try {
+      const { giveaways } = await listGiveaways(serverId);
+      setList(giveaways || []);
+      setError(null);
+    } catch (e) { setError(e.message); }
+  };
+
+  useEffect(() => {
+    if (!serverId) { setLoading(false); return; }
+    setLoading(true);
+    setActiveId(null);
+    setList([]);
+    listGiveaways(serverId)
+      .then(({ giveaways }) => { setList(giveaways || []); setError(null); })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [serverId]); // eslint-disable-line
+
+  // When a row becomes active in the editor, hydrate the form.
+  useEffect(() => {
+    const row = list.find(x => x.id === activeId);
+    if (!row) return;
+    const dur = secondsToFriendly(row.duration_seconds || 3600);
+    setEditor({
+      title:             row.title || '',
+      description:       row.description || '',
+      prize:             row.prize || '',
+      color:             row.color || '',
+      image_url:         row.image_url || '',
+      thumbnail_url:     row.thumbnail_url || '',
+      channel_id:        row.channel_id || '',
+      mention_role_id:   row.mention_role_id || '',
+      allowed_role_ids:  Array.isArray(row.allowed_role_ids) ? row.allowed_role_ids : [],
+      duration_value:    dur.value,
+      duration_unit:     dur.unit,
+      winner_count:      row.winner_count || 1,
+      entry_cost_points: row.entry_cost_points || 0,
+    });
+    setMsg('');
+  }, [activeId, list]);
+
+  const active = list.find(g => g.id === activeId) || null;
+  const isActive    = active?.status === 'active';
+  const isEnded     = active?.status === 'ended';
+  const isDraft     = active?.status === 'draft';
+  const isCancelled = active?.status === 'cancelled';
+
+  const showMsg = (text, kind = 'ok') => {
+    setMsg(text); setMsgKind(kind);
+    setTimeout(() => setMsg(''), 4500);
+  };
+
+  // ── Actions ─────────────────────────────────────────────────────────
+  const handleCreate = async () => {
+    if (!serverId) return;
+    try {
+      const created = await createGiveaway(serverId, { title: 'New Giveaway', prize: '' });
+      await doFetch();
+      setActiveId(created.id);
+    } catch (e) { setError(e.message); }
+  };
+
+  const editorToPayload = () => ({
+    title:             editor.title,
+    description:       editor.description,
+    prize:             editor.prize,
+    color:             editor.color || null,
+    image_url:         editor.image_url,
+    thumbnail_url:     editor.thumbnail_url,
+    channel_id:        editor.channel_id,
+    mention_role_id:   editor.mention_role_id || null,
+    allowed_role_ids:  editor.allowed_role_ids || [],
+    duration_seconds:  Math.max(60,
+        (Number(editor.duration_value) || 0) * (DURATION_UNIT_FACTOR[editor.duration_unit] || 3600)),
+    winner_count:      Math.max(1, Number(editor.winner_count) || 1),
+    entry_cost_points: Math.max(0, Number(editor.entry_cost_points) || 0),
+  });
+
+  const handleSave = async () => {
+    if (!serverId || !activeId || busy) return;
+    setBusy(true);
+    try {
+      const payload = editorToPayload();
+      // Drop the locked-while-active fields so the backend doesn't reject the save.
+      if (isActive) {
+        delete payload.duration_seconds;
+        delete payload.winner_count;
+        delete payload.entry_cost_points;
+        delete payload.allowed_role_ids;
+        delete payload.mention_role_id;
+        delete payload.channel_id;
+      }
+      const res = await updateGiveaway(serverId, activeId, payload);
+      showMsg(res?.live_edit === 'edited' ? 'Saved (live message updated)' : 'Saved');
+      await doFetch();
+    } catch (e) { showMsg(e.message, 'err'); }
+    finally { setBusy(false); }
+  };
+
+  const handleStart = async () => {
+    if (!serverId || !activeId || busy) return;
+    // Save first so the latest editor values are in the row when start posts.
+    setBusy(true);
+    try {
+      const payload = editorToPayload();
+      await updateGiveaway(serverId, activeId, payload);
+      const res = await startGiveaway(serverId, activeId);
+      showMsg(`Started. Ends ${giveawayRelative(res.ends_at)}.`);
+      await doFetch();
+    } catch (e) { showMsg(e.message, 'err'); }
+    finally { setBusy(false); }
+  };
+
+  const handleEndNow = async () => {
+    if (!serverId || !activeId || busy) return;
+    setBusy(true);
+    try {
+      await endGiveawayNow(serverId, activeId);
+      showMsg('Drawing winners now.');
+      await doFetch();
+    } catch (e) { showMsg(e.message, 'err'); }
+    finally { setBusy(false); }
+  };
+
+  const handleReroll = async () => {
+    if (!serverId || !activeId || busy) return;
+    setBusy(true);
+    try {
+      await rerollGiveaway(serverId, activeId);
+      showMsg('Rerolled.');
+      await doFetch();
+    } catch (e) { showMsg(e.message, 'err'); }
+    finally { setBusy(false); }
+  };
+
+  const handleCancel = async (id) => {
+    if (!serverId || !id) return;
+    setBusy(true);
+    try {
+      const res = await cancelGiveaway(serverId, id);
+      const r = res?.refund;
+      if (r && r.refunded_points > 0) {
+        showMsg(`Cancelled. Refunded ${r.refunded_points.toLocaleString()} points to ${r.refunded_users} entrant${r.refunded_users === 1 ? '' : 's'}.`);
+      } else {
+        showMsg('Cancelled.');
+      }
+      setConfirm(null);
+      await doFetch();
+    } catch (e) { showMsg(e.message, 'err'); }
+    finally { setBusy(false); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!serverId || !id) return;
+    setBusy(true);
+    try {
+      await deleteGiveaway(serverId, id);
+      if (activeId === id) setActiveId(null);
+      setConfirm(null);
+      await doFetch();
+    } catch (e) { showMsg(e.message, 'err'); }
+    finally { setBusy(false); }
+  };
+
+  const openEntrants = async (id) => {
+    setEntrantsFor(id); setEntrants([]); setEntrantsLoading(true);
+    try {
+      const r = await fetchGiveawayEntries(serverId, id);
+      setEntrants(r.entries || []);
+    } catch (e) {
+      showMsg(e.message, 'err');
+    } finally { setEntrantsLoading(false); }
+  };
+
+  // ── Render ──────────────────────────────────────────────────────────
+  return (
+    <div>
+      <PageHeader icon="🎉" title="Giveaway" badge="MODULE"
+        desc="Branded giveaway embeds with role gating and optional community-points entry cost. Winners drawn from a seeded reproducible pool." />
+
+      {error && (
+        <div style={{ background: 'rgba(237,66,69,0.1)', border: '1px solid rgba(237,66,69,0.3)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', color: C.red, fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {error}
+          <button onClick={() => setError(null)}
+            style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '18px' }}>×</button>
+        </div>
+      )}
+
+      {/* ── List ── */}
+      <SettingsCard>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px', gap: '12px' }}>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Giveaways</div>
+            <div style={{ fontSize: '12px', color: C.muted, marginTop: '4px' }}>
+              Drafts stay private. Start to post the embed and open entries. Cancelling an active paid giveaway refunds every entrant.
+            </div>
+          </div>
+          <button onClick={handleCreate}
+            style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '9px 16px', color: '#0A0A0F', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, flexShrink: 0 }}>
+            + New Giveaway
+          </button>
+        </div>
+
+        {loading ? (
+          <div style={{ color: C.muted, fontSize: '13px', padding: '16px 0' }}>Loading…</div>
+        ) : list.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '32px 0', color: C.muted }}>
+            <div style={{ fontSize: '28px', marginBottom: '10px' }}>🎉</div>
+            <div style={{ fontSize: '14px' }}>
+              No giveaways yet. Click <strong style={{ color: C.gold }}>+ New Giveaway</strong> to start.
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {list.map(row => {
+              const isOpen  = activeId === row.id;
+              const badge   = STATUS_BADGE[row.status] || STATUS_BADGE.draft;
+              const ends    = row.status === 'active' ? giveawayRelative(row.ends_at) : '';
+              return (
+                <div key={row.id}
+                  style={{ background: isOpen ? 'rgba(200,168,78,0.07)' : 'rgba(0,0,0,0.2)', border: `1px solid ${isOpen ? C.gold : 'rgba(255,255,255,0.07)'}`, borderRadius: '10px', padding: '14px 16px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ flex: 1, minWidth: '180px' }}>
+                    <div style={{ fontWeight: 700, fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {row.title || '(untitled)'}
+                    </div>
+                    <div style={{ fontSize: '11px', color: C.muted, marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{
+                        background: badge.bg, border: `1px solid ${badge.bd}`, color: badge.fg,
+                        padding: '2px 8px', borderRadius: '100px', fontSize: '10px', fontWeight: 700,
+                        letterSpacing: '0.04em', textTransform: 'uppercase',
+                      }}>{badge.label}</span>
+                      <span>{row.entry_count.toLocaleString()} entr{row.entry_count === 1 ? 'y' : 'ies'}</span>
+                      {row.entry_cost_points > 0 && <span>· {row.entry_cost_points.toLocaleString()} pts</span>}
+                      {row.winner_count > 1 && <span>· {row.winner_count} winners</span>}
+                      {ends && <span>· ends {ends}</span>}
+                      {row.channel_id && <span>· channel {row.channel_id}</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button onClick={() => setActiveId(isOpen ? null : row.id)}
+                      style={{ background: isOpen ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isOpen ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '6px', padding: '5px 12px', color: isOpen ? C.gold : '#fff', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
+                      {isOpen ? '▲ Close' : '✏️ Edit'}
+                    </button>
+                    {row.status !== 'draft' && (
+                      <button onClick={() => openEntrants(row.id)}
+                        title="View entrants"
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '5px 10px', color: '#fff', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>
+                        👥 {row.entry_count}
+                      </button>
+                    )}
+                    {row.status === 'draft' && (
+                      confirm?.id === row.id && confirm.action === 'delete' ? (
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <span style={{ fontSize: '11px', color: C.red }}>Delete?</span>
+                          <button onClick={() => handleDelete(row.id)} disabled={busy}
+                            style={{ background: 'rgba(237,66,69,0.2)', border: '1px solid rgba(237,66,69,0.4)', borderRadius: '6px', padding: '4px 10px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>Yes</button>
+                          <button onClick={() => setConfirm(null)}
+                            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '4px 10px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>No</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setConfirm({ id: row.id, action: 'delete' })}
+                          title="Delete this draft"
+                          style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px', padding: '4px 6px', lineHeight: 1 }}>🗑</button>
+                      )
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SettingsCard>
+
+      {/* ── Editor ── */}
+      {active && (
+        <>
+          <SettingsCard title="Giveaway">
+            <EmbedPreview
+              serverId={serverId}
+              isPremium={isPremium}
+              title={editor.title}
+              description={editor.description}
+              thumbnailUrl={editor.thumbnail_url}
+              imageUrl={editor.image_url}
+              color={editor.color || '#94730D'}
+              footerText={''}
+              onTitleChange={setEd('title')}
+              onDescriptionChange={setEd('description')}
+              onThumbnailChange={setEd('thumbnail_url')}
+              onImageChange={setEd('image_url')}
+              onColorChange={setEd('color')}
+              onFooterTextChange={() => {}}
+              showImage={true}
+              bodySize="base"
+            />
+            <Field label="Prize" hint="Short summary shown prominently in the embed.">
+              <Input value={editor.prize} onChange={setEd('prize')} placeholder="e.g. 100 USDC + 1 month Discord Nitro" />
+            </Field>
+          </SettingsCard>
+
+          <SettingsCard title="Mechanics">
+            <FieldRow>
+              <Field label="Duration"
+                hint={isActive ? 'Locked while active.' : 'Minimum 60 seconds, maximum 30 days.'}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <Input type="number"
+                    value={String(editor.duration_value)}
+                    onChange={v => setEd('duration_value')(Math.max(0, Number(v) || 0))}
+                    placeholder="1"
+                    style={{ maxWidth: '120px' }} />
+                  <select value={editor.duration_unit} onChange={e => setEd('duration_unit')(e.target.value)}
+                    disabled={isActive}
+                    style={{ background: '#1a1a22', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', fontFamily: 'Sora, sans-serif', outline: 'none', cursor: isActive ? 'default' : 'pointer', opacity: isActive ? 0.55 : 1 }}>
+                    <option value="minutes">minutes</option>
+                    <option value="hours">hours</option>
+                    <option value="days">days</option>
+                  </select>
+                </div>
+              </Field>
+              <Field label="Winner count"
+                hint={isActive ? 'Locked while active.' : 'How many winners are drawn.'}>
+                <Input type="number"
+                  value={String(editor.winner_count)}
+                  onChange={v => setEd('winner_count')(Math.max(1, Number(v) || 1))}
+                  placeholder="1"
+                  style={{ maxWidth: '120px' }} />
+              </Field>
+            </FieldRow>
+            <FieldRow>
+              <Field label="Entry cost (community points)"
+                hint={isActive ? 'Locked while active.' : 'Set 0 for free entry. Cancelling refunds everyone.'}>
+                <Input type="number"
+                  value={String(editor.entry_cost_points)}
+                  onChange={v => setEd('entry_cost_points')(Math.max(0, Number(v) || 0))}
+                  placeholder="0"
+                  style={{ maxWidth: '160px' }} />
+              </Field>
+              <Field label="Target channel"
+                hint={isActive ? 'Locked while active.' : 'Channel name or numeric ID.'}>
+                <Input value={editor.channel_id} onChange={setEd('channel_id')}
+                  placeholder="#giveaways or 1234567890" />
+              </Field>
+            </FieldRow>
+            <FieldRow>
+              <Field label="Mention role on post" hint="Role pinged when the giveaway is posted.">
+                <Input value={editor.mention_role_id} onChange={setEd('mention_role_id')}
+                  placeholder="role id (optional)" />
+              </Field>
+              <Field label="Allowed role ids (comma separated)"
+                hint={isActive ? 'Locked while active.' : 'Leave empty to allow anyone in the server.'}>
+                <Input value={(editor.allowed_role_ids || []).join(', ')}
+                  onChange={v => setEd('allowed_role_ids')(
+                    String(v || '').split(',').map(s => s.trim()).filter(Boolean)
+                  )}
+                  placeholder="1234567890, 9876543210" />
+              </Field>
+            </FieldRow>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+              {(isDraft || isActive) && (
+                <button onClick={handleSave} disabled={busy}
+                  style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '9px 18px', color: '#0A0A0F', cursor: busy ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, opacity: busy ? 0.6 : 1 }}>
+                  {busy ? 'Saving…' : (isActive ? 'Save (edits live message)' : 'Save Draft')}
+                </button>
+              )}
+              {isDraft && (
+                <button onClick={handleStart} disabled={busy}
+                  style={{ background: 'rgba(59,165,92,0.12)', border: '1px solid rgba(59,165,92,0.4)', borderRadius: '8px', padding: '9px 18px', color: C.green, cursor: busy ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, opacity: busy ? 0.6 : 1 }}>
+                  ▶ Start
+                </button>
+              )}
+              {isActive && (
+                <button onClick={handleEndNow} disabled={busy}
+                  style={{ background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.4)', borderRadius: '8px', padding: '9px 18px', color: C.blue, cursor: busy ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, opacity: busy ? 0.6 : 1 }}>
+                  ⏹ End Now
+                </button>
+              )}
+              {isEnded && (
+                <button onClick={handleReroll} disabled={busy}
+                  style={{ background: 'rgba(200,168,78,0.12)', border: '1px solid rgba(200,168,78,0.4)', borderRadius: '8px', padding: '9px 18px', color: C.gold, cursor: busy ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, opacity: busy ? 0.6 : 1 }}>
+                  🎲 Reroll
+                </button>
+              )}
+              {(isActive || isDraft) && (
+                confirm?.id === active.id && confirm.action === 'cancel' ? (
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '12px', color: C.red, maxWidth: '320px' }}>
+                      {isActive && active.entry_cost_points > 0
+                        ? 'Cancel and refund every entrant?'
+                        : 'Cancel this giveaway?'}
+                    </span>
+                    <button onClick={() => handleCancel(active.id)} disabled={busy}
+                      style={{ background: 'rgba(237,66,69,0.2)', border: '1px solid rgba(237,66,69,0.4)', borderRadius: '6px', padding: '6px 12px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>Yes</button>
+                    <button onClick={() => setConfirm(null)}
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px 12px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>No</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setConfirm({ id: active.id, action: 'cancel' })}
+                    style={{ background: 'rgba(237,66,69,0.08)', border: '1px solid rgba(237,66,69,0.35)', borderRadius: '8px', padding: '9px 14px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
+                    {isActive && active.entry_cost_points > 0 ? 'Cancel (refund all)' : 'Cancel'}
+                  </button>
+                )
+              )}
+            </div>
+
+            {msg && (
+              <div style={{ marginTop: '10px', fontSize: '12px', color: msgKind === 'err' ? C.red : C.green }}>
+                {msgKind === 'err' ? '✗ ' : '✓ '}{msg}
+              </div>
+            )}
+            {active && active.message_id && (
+              <div style={{ marginTop: '8px', fontSize: '11px', color: C.muted }}>
+                Posted as message {active.message_id} in channel {active.channel_id || '—'}.
+                {active.status === 'active' && active.ends_at && (
+                  <span> Ends {giveawayRelative(active.ends_at)} (server time).</span>
+                )}
+                {isEnded && active.winners?.length > 0 && (
+                  <span> Winners: {active.winners.map(w => `<@${w}>`).join(', ')}</span>
+                )}
+                {isCancelled && <span> Cancelled.</span>}
+              </div>
+            )}
+          </SettingsCard>
+        </>
+      )}
+
+      {/* ── Entrants modal ── */}
+      {entrantsFor != null && (
+        <div onClick={() => setEntrantsFor(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#16161e', border: `1px solid ${C.border}`, borderRadius: '14px', padding: '24px', maxWidth: '480px', width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <div style={{ fontWeight: 700, fontSize: '15px' }}>Entrants</div>
+              <button onClick={() => setEntrantsFor(null)}
+                style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: '20px' }}>×</button>
+            </div>
+            {entrantsLoading ? (
+              <div style={{ color: C.muted, fontSize: '13px' }}>Loading…</div>
+            ) : entrants.length === 0 ? (
+              <div style={{ color: C.muted, fontSize: '13px' }}>No entries yet.</div>
+            ) : (
+              <div style={{ overflowY: 'auto', flex: 1 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${C.border}`, color: C.muted, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
+                      <th style={{ textAlign: 'left',  padding: '6px 8px' }}>User</th>
+                      <th style={{ textAlign: 'right', padding: '6px 8px' }}>Cost</th>
+                      <th style={{ textAlign: 'right', padding: '6px 8px' }}>Entered</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entrants.map(e => (
+                      <tr key={e.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>{e.user_id}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>{(e.points_charged || 0).toLocaleString()}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', color: C.muted }}>
+                          {e.entered_at ? new Date(e.entered_at).toLocaleString() : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 // ── Nav config ────────────────────────────────────────────────────────────────
 
 const NAV = [
@@ -4919,6 +5473,7 @@ const NAV = [
   { id: 'forms',        icon: '📋', label: 'Forms',          group: 'Settings' },
   { id: 'tickets',      icon: '🎫', label: 'Tickets',        group: 'Settings' },
   { id: 'embeds',       icon: '💬', label: 'Embed Messages', group: 'Settings' },
+  { id: 'giveaway',     icon: '🎉', label: 'Giveaway',       group: 'Settings' },
   { id: 'raid',         icon: '⚔️', label: 'Raid',           group: 'Settings' },
   { id: 'engage',       icon: '🔄', label: 'Engage',         group: 'Settings' },
   { id: 'protection',   icon: '🛡️', label: 'Protection',     group: 'Settings' },
@@ -5240,6 +5795,7 @@ const Dashboard = () => {
     forms:        noServerAccess ? <ModuleLock name="Forms" /> : <FormsSettings />,
     tickets:      noServerAccess ? <ModuleLock name="Tickets" /> : <TicketsSettings />,
     embeds:       noServerAccess ? <ModuleLock name="Embed Messages" /> : <EmbedMessagesSettings />,
+    giveaway:     noServerAccess ? <ModuleLock name="Giveaway" /> : <GiveawaySettings />,
     raid:         noServerAccess ? <ModuleLock name="Raid" /> : <RaidSettings />,
     engage:       noServerAccess ? <ModuleLock name="Engage" /> : <EngageSettings />,
     protection:   noServerAccess ? <ModuleLock name="Protection" /> : <ProtectionSettings />,
