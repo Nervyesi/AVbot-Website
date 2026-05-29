@@ -39,6 +39,43 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 const axisStyle = { fill: 'rgba(255,255,255,0.3)', fontSize: 11, fontFamily: 'Sora, sans-serif' };
 
+// ── Y-axis helpers ───────────────────────────────────────────────────────────
+// Build a domain and tick formatter that surfaces the REAL fluctuation in a
+// series. Old behavior: every tick rounded to "10k" because the chart pinned
+// to a 0-floor and used 1-decimal "k" formatting. New behavior: pad around
+// [min, max] (or [0, max] when the range is bigger than the values), and pick
+// a formatter precise enough that adjacent ticks are visually distinct.
+
+function buildYAxis(values, { pad = 0.08, minSpan = 4 } = {}) {
+  const arr = (values || []).filter(v => v != null && Number.isFinite(v));
+  if (arr.length === 0) return { domain: [0, 'auto'], formatter: v => v };
+  const lo = Math.min(...arr);
+  const hi = Math.max(...arr);
+  // If the spread is small relative to the values, zoom in around it. Otherwise
+  // keep the floor at 0 — a normal "counter" series looks weird without 0.
+  const spread = hi - lo;
+  const tight  = spread > 0 && spread < hi * 0.25;
+  let domLo, domHi;
+  if (tight) {
+    const p = Math.max(minSpan, Math.ceil(spread * pad));
+    domLo = Math.max(0, lo - p);
+    domHi = hi + p;
+  } else {
+    domLo = 0;
+    domHi = hi <= 0 ? 1 : Math.ceil(hi * (1 + pad));
+  }
+  // Pick a formatter precise enough that adjacent ticks differ visibly.
+  const range = domHi - domLo;
+  const formatter = v => {
+    if (v == null || !Number.isFinite(v)) return '';
+    if (range >= 100000) return v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toLocaleString();
+    if (range >= 10000)  return v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toLocaleString();
+    if (range >= 1000)   return v >= 10000 ? `${(v / 1000).toFixed(2)}k` : v.toLocaleString();
+    return v.toLocaleString();
+  };
+  return { domain: [domLo, domHi], formatter };
+}
+
 const Card = ({ children, style }) => (
   <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '14px', padding: '24px', ...style }}>
     {children}
@@ -214,16 +251,41 @@ const Analytics = () => {
   const community   = d?.community_points    ?? null;
   const engageEng   = d?.engage_engagement   ?? null;
 
-  // Member-growth Y domain: scale to the real data range (with padding) so
-  // fluctuations at ~10k are visible instead of a flat line pinned to a 0 floor.
-  const memberVals  = (Array.isArray(memberData) ? memberData : [])
+  // Member-growth Y axis: dynamic domain + precision-aware tick formatter so
+  // values around 10k that fluctuate by tens stop collapsing to "10k 10k 10k".
+  const memberVals = (Array.isArray(memberData) ? memberData : [])
     .map(p => p.value).filter(v => v != null);
-  const memberMin   = memberVals.length ? Math.min(...memberVals) : 0;
-  const memberMax   = memberVals.length ? Math.max(...memberVals) : 0;
-  const memberPad   = Math.max(1, Math.round((memberMax - memberMin) * 0.15));
-  const memberDomain = memberVals.length
-    ? [Math.max(0, memberMin - memberPad), memberMax + memberPad]
-    : [0, 'auto'];
+  const memberAxis = buildYAxis(memberVals, { pad: 0.1, minSpan: 4 });
+
+  // Messages yearly Y axis (other timeframes already had reasonable scaling).
+  const msgVals = (Array.isArray(msgData) ? msgData : [])
+    .map(p => p.value).filter(v => v != null);
+  const msgAxis = buildYAxis(msgVals, { pad: 0.1, minSpan: 1 });
+
+  // ── Yearly honest-range banner ─────────────────────────────────────────
+  // The backend now returns only the months from first_snapshot → today, with
+  // a meta block describing how much of a year we actually have.
+  const yearlyMeta    = d?.yearly_meta ?? null;
+  const yearlySparse  = (memberTf === 'year' || jlTf === 'year' || msgTf === 'year')
+    && yearlyMeta?.is_sparse;
+  const yearlyMemberBanner = (memberTf === 'year' && yearlyMeta?.data_start_date)
+    ? (yearlyMeta.is_sparse
+        ? `Showing all available data since ${yearlyMeta.data_start_date}. Full yearly view will populate over time.`
+        : null)
+    : null;
+  const yearlyJlBanner = (jlTf === 'year' && yearlyMeta?.data_start_date)
+    ? (yearlyMeta.is_sparse
+        ? `Showing all available data since ${yearlyMeta.data_start_date}. Full yearly view will populate over time.`
+        : null)
+    : null;
+  const yearlyMsgBanner = (msgTf === 'year' && yearlyMeta?.data_start_date)
+    ? (yearlyMeta.is_sparse
+        ? `Showing all available data since ${yearlyMeta.data_start_date}. Full yearly view will populate over time.`
+        : null)
+    : null;
+  // Mark the yearly-sparse var as used so lint doesn't trip if a future change
+  // drops it from the banner blocks above.
+  void yearlySparse;
 
   return (
     <div style={{ fontFamily: 'Sora, sans-serif', color: '#fff' }}>
@@ -247,7 +309,15 @@ const Analytics = () => {
           color={C.green} />
       </div>
 
-      <ChartCard title="Member Growth" timeframe={memberTf} onTimeframe={setMemberTf} height={230} noData={memberNoData} dataStarted={dataStarted}>
+      <ChartCard
+        title="Member Growth"
+        timeframe={memberTf}
+        onTimeframe={setMemberTf}
+        height={230}
+        noData={memberNoData}
+        dataStarted={dataStarted}
+        banner={yearlyMemberBanner}
+      >
         {memberData ? (
           <AreaChart data={memberData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
             <defs>
@@ -258,7 +328,13 @@ const Analytics = () => {
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
             <XAxis dataKey="label" tick={axisStyle} />
-            <YAxis tick={axisStyle} domain={memberDomain} allowDecimals={false} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v} />
+            <YAxis
+              tick={axisStyle}
+              domain={memberAxis.domain}
+              allowDecimals={false}
+              tickFormatter={memberAxis.formatter}
+              width={56}
+            />
             <Tooltip content={<CustomTooltip />} />
             <Area type="monotone" dataKey="value" name="Members" stroke={C.gold} fill="url(#goldGrad)" strokeWidth={2} dot={false} connectNulls={false} />
           </AreaChart>
@@ -272,7 +348,10 @@ const Analytics = () => {
         height={230}
         noData={jlNoData}
         dataStarted={dataStarted}
-        banner={leavesStarted ? `Leaves tracked from ${leavesStarted} — earlier data shows joins only` : null}
+        banner={
+          yearlyJlBanner
+            || (leavesStarted ? `Leaves tracked from ${leavesStarted}. Earlier data shows joins only.` : null)
+        }
       >
         {jlData ? (
           <BarChart data={jlData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
@@ -306,7 +385,10 @@ const Analytics = () => {
           height={210}
           noData={msgNoData}
           dataStarted={dataStarted}
-          banner={firstMsgDate ? `Message tracking started ${firstMsgDate}` : null}
+          banner={
+            yearlyMsgBanner
+              || (firstMsgDate ? `Message tracking started ${firstMsgDate}.` : null)
+          }
         >
           {msgData ? (
             <AreaChart data={msgData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
@@ -318,7 +400,12 @@ const Analytics = () => {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
               <XAxis dataKey="label" tick={axisStyle} />
-              <YAxis tick={axisStyle} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
+              <YAxis
+                tick={axisStyle}
+                domain={msgAxis.domain}
+                tickFormatter={msgAxis.formatter}
+                width={56}
+              />
               <Tooltip content={<CustomTooltip />} />
               <Area type="monotone" dataKey="value" name="Messages" stroke={C.blue} fill="url(#blueGrad)" strokeWidth={2} dot={false} />
             </AreaChart>
@@ -388,13 +475,97 @@ const Analytics = () => {
       <SectionHeading icon="🎙️" title="Voice" />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: '12px', marginBottom: '16px' }}>
-        <NumCard label="Total Hours" value={voiceAvail ? `${Math.round((voice.total_minutes || 0) / 60)}h` : undefined} sub="all time" color={C.gold} />
+        <NumCard label="Total Hours" value={voiceAvail ? `${voice.total_hours ?? Math.round((voice.total_minutes || 0) / 60)}h` : undefined} sub="all time" color={C.gold} />
         <NumCard label="Sessions"    value={voiceAvail ? (voice.total_sessions || 0).toLocaleString() : undefined} sub="all time" />
-        <NumCard label="Channels"    value={voiceAvail ? (voice.top_channels?.length || 0) : undefined} sub="with activity" />
-        <NumCard label="Members"     value={voiceAvail ? (voice.top_users?.length || 0) : undefined} sub="in voice" />
+        <NumCard label="Channels"    value={voiceAvail ? (voice.distinct_channels ?? voice.top_channels?.length ?? 0).toLocaleString() : undefined} sub="with activity" />
+        <NumCard label="Members"     value={voiceAvail ? (voice.distinct_users ?? voice.top_users?.length ?? 0).toLocaleString() : undefined} sub="in voice" color={C.green} />
       </div>
 
-      {!voiceAvail && (
+      {voiceAvail ? (
+        <>
+          <Card style={{ marginBottom: '16px' }}>
+            <CardTitle>Voice Minutes Over Time</CardTitle>
+            {voice.timeseries?.some(p => (p.minutes || 0) > 0) ? (
+              <ResponsiveContainer width="100%" height={210}>
+                <AreaChart data={voice.timeseries} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="voiceGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor={C.green} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={C.green} stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
+                  <XAxis dataKey="label" tick={axisStyle} />
+                  <YAxis tick={axisStyle} allowDecimals={false}
+                    tickFormatter={v => v >= 60 ? `${Math.round(v/60)}h` : `${v}m`} width={48} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area type="monotone" dataKey="minutes" name="Minutes" stroke={C.green} fill="url(#voiceGrad)" strokeWidth={2} dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div style={{ color: C.muted, fontSize: '13px' }}>
+                Voice activity will appear in this chart as sessions complete.
+              </div>
+            )}
+          </Card>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+            <Card>
+              <CardTitle>Top Voice Channels</CardTitle>
+              {voice.top_channels?.length ? (
+                <ResponsiveContainer width="100%" height={Math.max(120, voice.top_channels.length * 30)}>
+                  <BarChart data={voice.top_channels.map(c => ({ name: c.name, minutes: c.minutes }))}
+                    layout="vertical" margin={{ top: 0, right: 16, left: 20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false} />
+                    <XAxis type="number" tick={axisStyle}
+                      tickFormatter={v => v >= 60 ? `${Math.round(v/60)}h` : `${v}m`} />
+                    <YAxis type="category" dataKey="name" tick={{ ...axisStyle, fontSize: 10 }} width={110} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="minutes" name="Minutes" fill={C.green} radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={{ color: C.muted, fontSize: '13px' }}>No completed voice sessions yet.</div>
+              )}
+            </Card>
+            <Card>
+              <CardTitle>Top Voice Members</CardTitle>
+              {voice.top_users?.length ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {voice.top_users.map((u, i) => {
+                    const name = u.username || `User ${u.user_id}`;
+                    const h = Math.floor((u.minutes || 0) / 60);
+                    const m = (u.minutes || 0) % 60;
+                    return (
+                      <div key={u.user_id || i} style={{
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                        padding: '8px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: '10px',
+                      }}>
+                        <span style={{ fontSize: i < 3 ? '16px' : '12px', width: '20px', textAlign: 'center', color: C.muted, fontWeight: 700 }}>
+                          {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
+                        </span>
+                        <div style={{
+                          width: '26px', height: '26px', borderRadius: '50%', flexShrink: 0,
+                          background: `hsl(${i * 47},40%,28%)`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700,
+                        }}>{name[0]?.toUpperCase()}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+                          <div style={{ fontSize: '11px', color: C.muted }}>
+                            {h > 0 ? `${h}h ${m}m` : `${m}m`} · {u.sessions} session{u.sessions === 1 ? '' : 's'}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ color: C.muted, fontSize: '13px' }}>No completed voice sessions yet.</div>
+              )}
+            </Card>
+          </div>
+        </>
+      ) : (
         <Card>
           <CardTitle>Voice Activity</CardTitle>
           <div style={{
@@ -404,7 +575,7 @@ const Analytics = () => {
             <div style={{ fontSize: '26px' }}>🎙️</div>
             <div style={{ fontSize: '13px', fontWeight: 600 }}>No voice data yet.</div>
             <div style={{ fontSize: '12px', opacity: 0.7, maxWidth: '420px' }}>
-              Voice activity will appear here once members start using voice channels. Tracking is ready and will populate automatically.
+              Voice activity appears here as soon as a member joins a voice channel and the session completes.
             </div>
           </div>
         </Card>
@@ -439,41 +610,101 @@ const Analytics = () => {
         )}
       </Card>
 
-      {/* ── Engage-for-Engage engagement (engage module, separate) ── */}
+      {/* ── Engage for Engage (engage module) ── */}
       <SectionHeading icon="🔁" title="Engage for Engage" />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: '12px', marginBottom: '16px' }}>
-        <NumCard label="Engage Points"  value={engageEng != null ? (engageEng.total_points || 0).toLocaleString() : null} sub="all time" color={C.gold} />
-        <NumCard label="Engagements"    value={engageEng != null ? (engageEng.total_engagements || 0).toLocaleString() : null} sub="confirmed" />
-        <NumCard label="Active Links"   value={engageEng != null ? (engageEng.active_links || 0).toLocaleString() : null}  sub="in pool" color={C.orange} />
-        <NumCard label="Total Links"    value={engageEng != null ? (engageEng.total_links || 0).toLocaleString() : null}   sub="all time" />
-        <NumCard label="Participants"   value={engageEng != null ? (engageEng.participants || 0).toLocaleString() : null}  sub="unique" color={C.green} />
+        <NumCard label="Points Awarded"    value={engageEng != null ? (engageEng.points_from_actions || engageEng.total_points || 0).toLocaleString() : null} sub="from claims" color={C.gold} />
+        <NumCard label="Claims"            value={engageEng != null ? (engageEng.total_claims || 0).toLocaleString() : null} sub="engagements" />
+        <NumCard label="Submissions"       value={engageEng != null ? (engageEng.total_submissions || 0).toLocaleString() : null} sub="all time" />
+        <NumCard label="Active"            value={engageEng != null ? (engageEng.active_submissions || 0).toLocaleString() : null} sub="open pools" color={C.orange} />
+        <NumCard label="Engagers"          value={engageEng != null ? (engageEng.engagers || 0).toLocaleString() : null}  sub="unique" color={C.green} />
+        <NumCard label="Contributors"      value={engageEng != null ? (engageEng.contributors || 0).toLocaleString() : null} sub="submitters" color={C.blue} />
       </div>
 
-      <Card>
-        <CardTitle>Engage for Engage Overview</CardTitle>
-        {engageEng && (engageEng.total_links || engageEng.total_engagements) ? (
-          <ResponsiveContainer width="100%" height={210}>
-            <BarChart
-              data={[
-                { label: 'Links',       value: engageEng.total_links || 0 },
-                { label: 'Active',      value: engageEng.active_links || 0 },
-                { label: 'Engagements', value: engageEng.total_engagements || 0 },
-                { label: 'Participants',value: engageEng.participants || 0 },
-              ]}
-              margin={{ top: 5, right: 10, left: -10, bottom: 0 }}
-            >
+      <Card style={{ marginBottom: '16px' }}>
+        <CardTitle>Engage Activity (30 days)</CardTitle>
+        {engageEng?.timeseries?.some(p => (p.submissions || 0) + (p.claims || 0) > 0) ? (
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={engageEng.timeseries} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-              <XAxis dataKey="label" tick={axisStyle} />
-              <YAxis tick={axisStyle} allowDecimals={false} />
+              <XAxis dataKey="label" tick={{ ...axisStyle, fontSize: 10 }} interval={3} />
+              <YAxis tick={axisStyle} allowDecimals={false} width={40} />
               <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="value" name="Engage" fill={C.blue} radius={[3, 3, 0, 0]} />
+              <Legend wrapperStyle={{ fontSize: '11px', color: C.muted }} />
+              <Bar dataKey="submissions" name="Submissions" fill={C.gold} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="claims"      name="Claims"      fill={C.blue} radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         ) : (
-          <div style={{ color: C.muted, fontSize: '13px' }}>No engage-for-engage activity yet.</div>
+          <div style={{ color: C.muted, fontSize: '13px' }}>No engage activity in the last 30 days yet.</div>
         )}
       </Card>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+        <Card>
+          <CardTitle>Top Engagers</CardTitle>
+          {engageEng?.top_engagers?.length ? (
+            <ResponsiveContainer width="100%" height={Math.max(120, engageEng.top_engagers.length * 30)}>
+              <BarChart data={engageEng.top_engagers.map(h => ({ name: h.username || `User ${h.user_id}`, points: h.points }))}
+                layout="vertical" margin={{ top: 0, right: 16, left: 20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false} />
+                <XAxis type="number" tick={axisStyle} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v} />
+                <YAxis type="category" dataKey="name" tick={{ ...axisStyle, fontSize: 10 }} width={110} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="points" name="Points" fill={C.gold} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ color: C.muted, fontSize: '13px' }}>No engagement claims yet. Engagers appear here as members claim tasks.</div>
+          )}
+        </Card>
+        <Card>
+          <CardTitle>Top Contributors</CardTitle>
+          {engageEng?.top_contributors?.length ? (
+            <ResponsiveContainer width="100%" height={Math.max(120, engageEng.top_contributors.length * 30)}>
+              <BarChart data={engageEng.top_contributors.map(h => ({ name: h.username || `User ${h.user_id}`, submissions: h.submissions }))}
+                layout="vertical" margin={{ top: 0, right: 16, left: 20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false} />
+                <XAxis type="number" tick={axisStyle} allowDecimals={false} />
+                <YAxis type="category" dataKey="name" tick={{ ...axisStyle, fontSize: 10 }} width={110} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="submissions" name="Submissions" fill={C.blue} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ color: C.muted, fontSize: '13px' }}>No submissions yet. Contributors appear here as members submit tweets.</div>
+          )}
+        </Card>
+      </div>
+
+      {engageEng?.pools?.length > 1 && (
+        <Card>
+          <CardTitle>Per Pool</CardTitle>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${C.border}`, color: C.muted, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
+                  <th style={{ textAlign: 'left',  padding: '8px 10px' }}>Pool</th>
+                  <th style={{ textAlign: 'right', padding: '8px 10px' }}>Submissions</th>
+                  <th style={{ textAlign: 'right', padding: '8px 10px' }}>Claims</th>
+                  <th style={{ textAlign: 'right', padding: '8px 10px' }}>Points</th>
+                </tr>
+              </thead>
+              <tbody>
+                {engageEng.pools.map(p => (
+                  <tr key={p.pool_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                    <td style={{ padding: '8px 10px', fontWeight: 600 }}>{p.name}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>{(p.submissions || 0).toLocaleString()}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>{(p.claims      || 0).toLocaleString()}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', color: C.gold, fontWeight: 700 }}>{(p.points || 0).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       <div style={{ height: '40px' }} />
     </div>
