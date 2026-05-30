@@ -19,6 +19,9 @@ import {
   listGiveaways, createGiveaway, updateGiveaway, startGiveaway,
   endGiveawayNow, rerollGiveaway, cancelGiveaway, deleteGiveaway,
   fetchGiveawayEntries,
+  fetchRadarSettings, saveRadarSettings,
+  fetchRadarWatchlist, addRadarWatchlistEntry, deleteRadarWatchlistEntry,
+  searchRadarAsset, fetchRadarPreview, fetchRadarRecentAlerts,
   fetchRaidSettings, saveRaidSettings, fetchRaidList, createRaid, endRaid,
   fetchRaidLeaderboard, fetchRaidVerificationLog, runRaidManualCheck, sendRaidGuide,
   fetchRaidGuideDefaults, fetchRaidScrapingHealth,
@@ -5487,6 +5490,469 @@ const GiveawaySettings = () => {
 };
 
 
+// ── Radar module ─────────────────────────────────────────────────────────────
+// Phase 1: crypto only. Other topic sections render "coming soon" cards so
+// admins can see what's planned without confusion. Watchlist editor uses
+// search-as-you-type via /search-asset (CoinGecko search).
+
+const RADAR_TIMEZONE_OPTIONS = (() => {
+  const out = [];
+  for (let m = -12 * 60; m <= 14 * 60; m += 60) {
+    const sign = m >= 0 ? '+' : '-';
+    const hh = String(Math.floor(Math.abs(m) / 60)).padStart(2, '0');
+    const mm = String(Math.abs(m) % 60).padStart(2, '0');
+    out.push({ value: m, label: `UTC${sign}${hh}:${mm}` });
+  }
+  return out;
+})();
+
+const RADAR_COMING_SOON = [
+  { id: 'nft',    icon: '🖼️', name: 'NFT' },
+  { id: 'meme',   icon: '🐸', name: 'Memecoin' },
+  { id: 'forex',  icon: '💱', name: 'Forex' },
+  { id: 'stocks', icon: '📈', name: 'Stocks' },
+];
+
+const RadarSettings = () => {
+  const { server } = useContext(DashboardContext);
+  const serverId = server?.id;
+
+  const [settings, setSettings] = useState(null);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState(null);
+  const [msg,      setMsg]      = useState('');
+  const [msgKind,  setMsgKind]  = useState('ok');
+  const [saving,   setSaving]   = useState(false);
+
+  const [watchlist, setWatchlist] = useState([]);
+
+  // Search-as-you-type state for the add-crypto input
+  const [searchQ,        setSearchQ]        = useState('');
+  const [searchResults,  setSearchResults]  = useState([]);
+  const [searchOpen,     setSearchOpen]     = useState(false);
+  const [searchPending,  setSearchPending]  = useState(false);
+  const searchTimerRef = useRef(null);
+
+  // Preview snapshot card (uses first watchlist item if any, else 'bitcoin')
+  const [previewSnap, setPreviewSnap] = useState(null);
+
+  // Recent alerts
+  const [alerts, setAlerts] = useState([]);
+
+  const showMsg = (text, kind = 'ok') => {
+    setMsg(text); setMsgKind(kind);
+    setTimeout(() => setMsg(''), 4500);
+  };
+
+  // ── Initial load ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!serverId) { setLoading(false); return; }
+    setLoading(true);
+    Promise.all([
+      fetchRadarSettings(serverId).catch(e => { setError(e.message); return null; }),
+      fetchRadarWatchlist(serverId, 'crypto').catch(() => ({ watchlist: [] })),
+      fetchRadarRecentAlerts(serverId, 50).catch(() => ({ alerts: [] })),
+    ]).then(([s, wl, al]) => {
+      setSettings(s);
+      setWatchlist(wl?.watchlist || []);
+      setAlerts(al?.alerts || []);
+      setLoading(false);
+    });
+  }, [serverId]); // eslint-disable-line
+
+  // ── Preview snapshot ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!serverId) return;
+    const target = watchlist[0]?.asset_identifier || 'bitcoin';
+    fetchRadarPreview(serverId, 'crypto', target)
+      .then(r => setPreviewSnap(r?.snapshot || null))
+      .catch(() => setPreviewSnap(null));
+  }, [serverId, watchlist.length]); // eslint-disable-line
+
+  // ── Search debounce ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!serverId) return;
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (!searchQ || searchQ.trim().length < 2) {
+      setSearchResults([]); setSearchPending(false);
+      return;
+    }
+    setSearchPending(true);
+    searchTimerRef.current = setTimeout(() => {
+      searchRadarAsset(serverId, 'crypto', searchQ.trim())
+        .then(r => { setSearchResults(r?.suggestions || []); })
+        .catch(() => setSearchResults([]))
+        .finally(() => setSearchPending(false));
+    }, 350);
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+  }, [searchQ, serverId]);
+
+  // ── Settings field updater ─────────────────────────────────────────
+  const setField = (k) => (v) => {
+    setSettings(s => ({ ...(s || {}), [k]: v }));
+  };
+
+  const handleSave = async () => {
+    if (!serverId || saving) return;
+    setSaving(true);
+    try {
+      const payload = {
+        timezone_offset:             Number(settings.timezone_offset || 0),
+        daily_time:                  settings.daily_time || '08:00',
+        daily_enabled:               settings.daily_enabled ? 1 : 0,
+        daily_channel_crypto:        (settings.daily_channel_crypto || '') + '',
+        alerts_channel:              (settings.alerts_channel || '') + '',
+        alerts_enabled:              settings.alerts_enabled ? 1 : 0,
+        movement_threshold_pct:      Number(settings.movement_threshold_pct || 5),
+        volume_multiplier_threshold: Number(settings.volume_multiplier_threshold || 3),
+      };
+      const updated = await saveRadarSettings(serverId, payload);
+      setSettings(updated);
+      showMsg('Saved.');
+    } catch (e) {
+      showMsg(e.message, 'err');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Watchlist add / remove ─────────────────────────────────────────
+  const handleAddSuggestion = async (sug) => {
+    if (!serverId) return;
+    try {
+      await addRadarWatchlistEntry(serverId, {
+        asset_kind:       'crypto',
+        asset_identifier: sug.identifier,
+        display_name:     sug.name || sug.symbol || sug.identifier,
+      });
+      const wl = await fetchRadarWatchlist(serverId, 'crypto');
+      setWatchlist(wl?.watchlist || []);
+      setSearchQ(''); setSearchResults([]); setSearchOpen(false);
+      showMsg(`Added ${sug.name || sug.identifier}.`);
+    } catch (e) { showMsg(e.message, 'err'); }
+  };
+
+  const handleAddRaw = async () => {
+    const q = (searchQ || '').trim();
+    if (!q || !serverId) return;
+    try {
+      await addRadarWatchlistEntry(serverId, {
+        asset_kind:       'crypto',
+        asset_identifier: q,
+      });
+      const wl = await fetchRadarWatchlist(serverId, 'crypto');
+      setWatchlist(wl?.watchlist || []);
+      setSearchQ(''); setSearchResults([]); setSearchOpen(false);
+      showMsg('Added.');
+    } catch (e) { showMsg(e.message, 'err'); }
+  };
+
+  const handleRemove = async (entryId) => {
+    if (!serverId) return;
+    try {
+      await deleteRadarWatchlistEntry(serverId, entryId);
+      setWatchlist(wl => wl.filter(w => w.id !== entryId));
+      showMsg('Removed.');
+    } catch (e) { showMsg(e.message, 'err'); }
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div>
+        <PageHeader icon="📡" title="Radar" badge="MODULE"
+          desc="Market intelligence with watchlists, daily digests, and price movement alerts." />
+        <div style={{ color: C.muted, fontSize: '13px', padding: '24px 0' }}>Loading…</div>
+      </div>
+    );
+  }
+
+  const s = settings || {};
+
+  return (
+    <div>
+      <PageHeader icon="📡" title="Radar" badge="MODULE"
+        desc="Market intelligence with watchlists, daily digests, and price movement alerts." />
+
+      {error && (
+        <div style={{ background: 'rgba(237,66,69,0.1)', border: '1px solid rgba(237,66,69,0.3)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', color: C.red, fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {error}
+          <button onClick={() => setError(null)}
+            style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '18px' }}>×</button>
+        </div>
+      )}
+
+      {/* ── Section 1: Topics ── */}
+      <SettingsCard>
+        <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>Topics</div>
+        <div style={{ fontSize: '12px', color: C.muted, marginBottom: '16px' }}>
+          Crypto is live now via CoinGecko. NFT, Memecoin, Forex, Stocks, and Liquidations ship in later phases.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '10px' }}>
+          <div style={{ background: 'rgba(59,165,92,0.08)', border: `1px solid rgba(59,165,92,0.35)`, borderRadius: '10px', padding: '14px' }}>
+            <div style={{ fontSize: '20px' }}>🪙</div>
+            <div style={{ fontWeight: 700, marginTop: '4px' }}>Crypto</div>
+            <div style={{ fontSize: '11px', color: C.green, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Live</div>
+          </div>
+          {RADAR_COMING_SOON.map(t => (
+            <div key={t.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '14px', opacity: 0.6 }}>
+              <div style={{ fontSize: '20px' }}>{t.icon}</div>
+              <div style={{ fontWeight: 700, marginTop: '4px' }}>{t.name}</div>
+              <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Coming soon</div>
+            </div>
+          ))}
+          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '14px', opacity: 0.6 }}>
+            <div style={{ fontSize: '20px' }}>💥</div>
+            <div style={{ fontWeight: 700, marginTop: '4px' }}>Liquidations</div>
+            <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Coming soon</div>
+          </div>
+        </div>
+      </SettingsCard>
+
+      {/* ── Section 2: Crypto watchlist ── */}
+      <SettingsCard title="Crypto watchlist">
+        <div style={{ fontSize: '12px', color: C.muted, marginBottom: '12px' }}>
+          Add tokens by name (search powered by CoinGecko). Each entry appears in your daily digest and is evaluated for movement and volume alerts.
+        </div>
+
+        <div style={{ position: 'relative', marginBottom: '12px' }}>
+          <Input
+            value={searchQ}
+            onChange={(v) => { setSearchQ(v); setSearchOpen(true); }}
+            placeholder="Search a token (e.g. bitcoin, ethereum, solana)…"
+          />
+          {searchOpen && (searchPending || searchResults.length > 0 || (searchQ || '').trim()) && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: '#16161e', border: `1px solid ${C.border}`, borderRadius: '10px', maxHeight: '280px', overflowY: 'auto', zIndex: 30, boxShadow: '0 12px 32px rgba(0,0,0,0.4)' }}>
+              {searchPending && (
+                <div style={{ padding: '10px 14px', color: C.muted, fontSize: '12px' }}>Searching…</div>
+              )}
+              {!searchPending && searchResults.length === 0 && (
+                <button onClick={handleAddRaw}
+                  style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '10px 14px', color: C.muted, fontSize: '12px', cursor: 'pointer', fontFamily: 'Sora, sans-serif' }}>
+                  No suggestions. Add `{searchQ.trim()}` anyway →
+                </button>
+              )}
+              {searchResults.map((sug, i) => (
+                <button key={sug.identifier + i}
+                  onClick={() => handleAddSuggestion(sug)}
+                  style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', borderBottom: i < searchResults.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', padding: '10px 14px', color: '#fff', fontSize: '13px', cursor: 'pointer', fontFamily: 'Sora, sans-serif', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {sug.thumb && <img src={sug.thumb} alt="" style={{ width: '20px', height: '20px', borderRadius: '50%' }} />}
+                  <span style={{ flex: 1 }}>
+                    <strong>{sug.symbol || sug.identifier?.toUpperCase()}</strong>
+                    <span style={{ color: C.muted, marginLeft: '8px' }}>{sug.name}</span>
+                  </span>
+                  {sug.market_cap_rank && (
+                    <span style={{ color: C.muted, fontSize: '11px' }}>#{sug.market_cap_rank}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {watchlist.length === 0 ? (
+          <div style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '20px 0' }}>
+            No tokens on the crypto watchlist yet. Use the search above to add some.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {watchlist.map(w => {
+              const snap = w.snapshot;
+              const price = snap?.price_usd;
+              const ch24  = snap?.change_24h_pct;
+              return (
+                <div key={w.id} style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  {snap?.image_url && <img src={snap.image_url} alt="" style={{ width: '28px', height: '28px', borderRadius: '50%' }} />}
+                  <div style={{ flex: 1, minWidth: '140px' }}>
+                    <div style={{ fontWeight: 700, fontSize: '14px' }}>{w.display_name}</div>
+                    <div style={{ fontSize: '11px', color: C.muted }}>{w.asset_identifier}</div>
+                  </div>
+                  <div style={{ fontFamily: 'monospace', fontSize: '13px', textAlign: 'right' }}>
+                    <div>{price != null ? fmtRadarPrice(price) : '—'}</div>
+                    <div style={{ color: ch24 == null ? C.muted : (ch24 >= 0 ? C.green : C.red), fontSize: '11px' }}>
+                      {ch24 == null ? '—' : `${ch24 >= 0 ? '+' : ''}${ch24.toFixed(2)}%`}
+                    </div>
+                  </div>
+                  <button onClick={() => handleRemove(w.id)}
+                    style={{ background: 'rgba(237,66,69,0.08)', border: '1px solid rgba(237,66,69,0.35)', borderRadius: '6px', padding: '6px 10px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>
+                    Remove
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SettingsCard>
+
+      {/* ── Section 3: Daily digest ── */}
+      <SettingsCard title="Daily digest">
+        <FieldRow>
+          <Field label="Enable daily digest">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: C.muted }}>
+              <input type="checkbox" checked={!!s.daily_enabled}
+                onChange={e => setField('daily_enabled')(e.target.checked ? 1 : 0)}
+                style={{ accentColor: C.gold }} />
+              Post a daily snapshot in your configured crypto channel.
+            </label>
+          </Field>
+          <Field label="Channel" hint="Where the digest is posted.">
+            <Input value={(s.daily_channel_crypto || '') + ''}
+              onChange={setField('daily_channel_crypto')}
+              placeholder="numeric channel id" />
+          </Field>
+        </FieldRow>
+        <FieldRow>
+          <Field label="Time of day" hint="Local time using your selected timezone offset.">
+            <Input value={s.daily_time || '08:00'} onChange={setField('daily_time')}
+              placeholder="08:00" style={{ maxWidth: '120px' }} />
+          </Field>
+          <Field label="Timezone offset">
+            <select value={Number(s.timezone_offset || 0)}
+              onChange={e => setField('timezone_offset')(Number(e.target.value))}
+              style={{ width: '100%', background: '#1a1a22', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', fontFamily: 'Sora, sans-serif', outline: 'none', cursor: 'pointer' }}>
+              {RADAR_TIMEZONE_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </Field>
+        </FieldRow>
+      </SettingsCard>
+
+      {/* ── Section 4: Alerts ── */}
+      <SettingsCard title="Movement alerts">
+        <FieldRow>
+          <Field label="Enable alerts">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: C.muted }}>
+              <input type="checkbox" checked={!!s.alerts_enabled}
+                onChange={e => setField('alerts_enabled')(e.target.checked ? 1 : 0)}
+                style={{ accentColor: C.gold }} />
+              Post alerts when a watchlist token moves sharply or sees a volume spike.
+            </label>
+          </Field>
+          <Field label="Channel">
+            <Input value={(s.alerts_channel || '') + ''}
+              onChange={setField('alerts_channel')}
+              placeholder="numeric channel id" />
+          </Field>
+        </FieldRow>
+        <FieldRow>
+          <Field label="Movement threshold (%)" hint="Alert when 1h change crosses this value, up or down. Per-asset cooldown is 1 hour per direction.">
+            <Input type="number" value={(s.movement_threshold_pct ?? 5) + ''}
+              onChange={v => setField('movement_threshold_pct')(Number(v))}
+              placeholder="5" style={{ maxWidth: '120px' }} />
+          </Field>
+          <Field label="Volume multiplier" hint="Alert when 24h volume crosses this multiple of the median recent baseline. Cooldown is 1 hour per asset.">
+            <Input type="number" value={(s.volume_multiplier_threshold ?? 3) + ''}
+              onChange={v => setField('volume_multiplier_threshold')(Number(v))}
+              placeholder="3" style={{ maxWidth: '120px' }} />
+          </Field>
+        </FieldRow>
+      </SettingsCard>
+
+      {/* ── Section 5: Live preview ── */}
+      <SettingsCard title="Live preview">
+        <div style={{ fontSize: '12px', color: C.muted, marginBottom: '12px' }}>
+          Snapshot of {previewSnap ? (previewSnap.symbol_display || previewSnap.identifier) : 'your first watchlist token (or bitcoin)'} from the radar cache.
+        </div>
+        {previewSnap ? (
+          <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+            {previewSnap.image_url && <img src={previewSnap.image_url} alt="" style={{ width: '40px', height: '40px', borderRadius: '50%' }} />}
+            <div style={{ flex: 1, minWidth: '160px' }}>
+              <div style={{ fontWeight: 700, fontSize: '15px' }}>
+                {previewSnap.symbol_display || previewSnap.identifier?.toUpperCase()}
+                {previewSnap.rank && <span style={{ color: C.muted, marginLeft: '8px', fontSize: '12px' }}>#{previewSnap.rank}</span>}
+              </div>
+              <div style={{ fontSize: '12px', color: C.muted }}>
+                {previewSnap.raw?.name || previewSnap.identifier}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontFamily: 'monospace', fontSize: '18px', fontWeight: 700 }}>
+                {fmtRadarPrice(previewSnap.price_usd)}
+              </div>
+              <div style={{ fontSize: '12px', color: (previewSnap.change_24h_pct ?? 0) >= 0 ? C.green : C.red }}>
+                24h: {previewSnap.change_24h_pct == null ? '—' : `${previewSnap.change_24h_pct >= 0 ? '+' : ''}${previewSnap.change_24h_pct.toFixed(2)}%`}
+              </div>
+              {previewSnap.change_1h_pct != null && (
+                <div style={{ fontSize: '11px', color: previewSnap.change_1h_pct >= 0 ? C.green : C.red }}>
+                  1h: {previewSnap.change_1h_pct >= 0 ? '+' : ''}{previewSnap.change_1h_pct.toFixed(2)}%
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div style={{ color: C.muted, fontSize: '13px' }}>
+            No live data yet. The fetcher runs every 5 minutes; the preview will fill in on first run.
+          </div>
+        )}
+      </SettingsCard>
+
+      {/* ── Section 6: Recent alerts log ── */}
+      <SettingsCard title="Recent alerts">
+        {alerts.length === 0 ? (
+          <div style={{ color: C.muted, fontSize: '13px' }}>
+            No alerts sent yet. As tokens move past your thresholds they'll appear here for audit.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '320px', overflowY: 'auto' }}>
+            {alerts.map(a => (
+              <div key={a.id} style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px' }}>
+                <span style={{
+                  background: a.alert_type === 'movement_up'   ? 'rgba(59,165,92,0.12)'
+                            : a.alert_type === 'movement_down' ? 'rgba(237,66,69,0.10)'
+                            : 'rgba(200,168,78,0.12)',
+                  border: `1px solid ${
+                    a.alert_type === 'movement_up'   ? 'rgba(59,165,92,0.35)'
+                  : a.alert_type === 'movement_down' ? 'rgba(237,66,69,0.35)'
+                  : 'rgba(200,168,78,0.35)'}`,
+                  color: a.alert_type === 'movement_up'   ? C.green
+                       : a.alert_type === 'movement_down' ? C.red
+                       : C.gold,
+                  padding: '2px 8px', borderRadius: '100px', fontSize: '10px', fontWeight: 700,
+                  textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
+                }}>
+                  {a.alert_type.replace('_', ' ')}
+                </span>
+                <span style={{ fontWeight: 600, minWidth: '80px' }}>{a.asset_identifier}</span>
+                <span style={{ color: C.muted, flex: 1 }}>
+                  {a.payload?.change_1h_pct != null && `1h: ${a.payload.change_1h_pct >= 0 ? '+' : ''}${a.payload.change_1h_pct.toFixed(2)}%`}
+                  {a.payload?.price_usd != null && ` · ${fmtRadarPrice(a.payload.price_usd)}`}
+                </span>
+                <span style={{ color: C.muted, fontSize: '11px', whiteSpace: 'nowrap' }}>
+                  {a.sent_at ? new Date(a.sent_at).toLocaleString() : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </SettingsCard>
+
+      {/* ── Save bar ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '16px' }}>
+        <button onClick={handleSave} disabled={saving}
+          style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '10px 20px', color: '#0A0A0F', cursor: saving ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, opacity: saving ? 0.6 : 1 }}>
+          {saving ? 'Saving…' : 'Save settings'}
+        </button>
+        {msg && (
+          <span style={{ fontSize: '12px', color: msgKind === 'err' ? C.red : C.green }}>
+            {msgKind === 'err' ? '✗ ' : '✓ '}{msg}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+function fmtRadarPrice(v) {
+  if (v == null) return '—';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  if (n >= 1000) return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  if (n >= 1)    return `$${n.toLocaleString(undefined, { maximumFractionDigits: 4 })}`;
+  return `$${n.toFixed(6)}`;
+}
+
+
 // ── Nav config ────────────────────────────────────────────────────────────────
 
 const NAV = [
@@ -5498,6 +5964,7 @@ const NAV = [
   { id: 'tickets',      icon: '🎫', label: 'Tickets',        group: 'Settings' },
   { id: 'embeds',       icon: '💬', label: 'Embed Messages', group: 'Settings' },
   { id: 'giveaway',     icon: '🎉', label: 'Giveaway',       group: 'Settings' },
+  { id: 'radar',        icon: '📡', label: 'Radar',          group: 'Settings' },
   { id: 'raid',         icon: '⚔️', label: 'Raid',           group: 'Settings' },
   { id: 'engage',       icon: '🔄', label: 'Engage',         group: 'Settings' },
   { id: 'protection',   icon: '🛡️', label: 'Protection',     group: 'Settings' },
@@ -5820,6 +6287,7 @@ const Dashboard = () => {
     tickets:      noServerAccess ? <ModuleLock name="Tickets" /> : <TicketsSettings />,
     embeds:       noServerAccess ? <ModuleLock name="Embed Messages" /> : <EmbedMessagesSettings />,
     giveaway:     noServerAccess ? <ModuleLock name="Giveaway" /> : <GiveawaySettings />,
+    radar:        noServerAccess ? <ModuleLock name="Radar" /> : <RadarSettings />,
     raid:         noServerAccess ? <ModuleLock name="Raid" /> : <RaidSettings />,
     engage:       noServerAccess ? <ModuleLock name="Engage" /> : <EngageSettings />,
     protection:   noServerAccess ? <ModuleLock name="Protection" /> : <ProtectionSettings />,

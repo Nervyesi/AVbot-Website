@@ -230,6 +230,38 @@ export const deleteEmbed = (sid, embedId, alsoDeleteMessage = false) =>
     { method: 'DELETE' }
   );
 
+// ── Radar (market intelligence) ────────────────────────────────────────────
+
+export const fetchRadarSettings = (sid) =>
+  apiFetch(`/api/servers/${sid}/radar/settings`);
+
+export const saveRadarSettings = (sid, updates) =>
+  apiFetch(`/api/servers/${sid}/radar/settings`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+
+export const fetchRadarWatchlist = (sid, kind) =>
+  apiFetch(`/api/servers/${sid}/radar/watchlist${kind ? `?asset_kind=${encodeURIComponent(kind)}` : ''}`);
+
+export const addRadarWatchlistEntry = (sid, body) =>
+  apiFetch(`/api/servers/${sid}/radar/watchlist`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+
+export const deleteRadarWatchlistEntry = (sid, entryId) =>
+  apiFetch(`/api/servers/${sid}/radar/watchlist/${entryId}`, { method: 'DELETE' });
+
+export const searchRadarAsset = (sid, kind, q) =>
+  apiFetch(`/api/servers/${sid}/radar/search-asset?kind=${encodeURIComponent(kind)}&q=${encodeURIComponent(q)}`);
+
+export const fetchRadarPreview = (sid, kind, identifier) =>
+  apiFetch(`/api/servers/${sid}/radar/preview?kind=${encodeURIComponent(kind)}&identifier=${encodeURIComponent(identifier)}`);
+
+export const fetchRadarRecentAlerts = (sid, limit = 50) =>
+  apiFetch(`/api/servers/${sid}/radar/alerts/recent?limit=${limit}`);
+
 // ── Giveaway ───────────────────────────────────────────────────────────────
 
 export const listGiveaways = (sid) =>
