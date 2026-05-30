@@ -347,6 +347,7 @@ const PROTECT_CONFIG_MAP = {
   // Feature toggles
   linkEnabled:          'protection_link_detection',
   linkWhitelist:        'protection_link_whitelist',
+  linkRoleWhitelist:    'protection_link_role_whitelist',
   linkAction:           'protection_link_action',
   spamEnabled:          'protection_spam_detection',
   spamThreshold:        'protection_spam_threshold',
@@ -3376,8 +3377,15 @@ const ProtectionSettings = () => {
             desc="Delete messages containing URLs not on the whitelist." />
           {v.linkEnabled && (<>
             <div style={{ marginTop: '14px', marginBottom: '14px' }}>
-              <Field label="Allowed Domains" hint="comma-separated">
-                <Input value={v.linkWhitelist} onChange={set('linkWhitelist')} placeholder="twitter.com,x.com,discord.gg" />
+              <Field label="Allowed Domains" hint="comma separated (spaces OK)">
+                <Input value={v.linkWhitelist} onChange={set('linkWhitelist')} placeholder="twitter.com, x.com, discord.gg" />
+              </Field>
+            </div>
+            <div style={{ marginTop: '14px', marginBottom: '14px' }}>
+              <Field label="Allowed Roles"
+                hint="Role IDs, comma separated (spaces OK). Members with any of these roles are exempt from link deletion. Useful for team and moderator roles.">
+                <Input value={v.linkRoleWhitelist || ''} onChange={set('linkRoleWhitelist')}
+                  placeholder="1234567890, 9876543210" />
               </Field>
             </div>
             <ActionRow actionKey="linkAction" opts={LINK_ACTION_OPTS} />
@@ -4924,13 +4932,25 @@ const GIVEAWAY_EDITOR_DEFAULTS = {
   image_url:         '',
   thumbnail_url:     '',
   channel_id:        '',
-  mention_role_id:   '',
+  mention_role_ids:  [],         // array of role-id strings (multi-role)
   allowed_role_ids:  [],         // array of role-id strings
   duration_value:    1,
   duration_unit:     'hours',    // 'minutes' | 'hours' | 'days'
   winner_count:      1,
   entry_cost_points: 0,
 };
+
+// Tolerant parser used by the dashboard inputs: accept any combination of
+// commas, whitespace, and newlines as separators. Drops empty tokens. Does
+// NOT validate digits — the backend rejects non-numeric tokens with a
+// friendly message, and forcing the dashboard to also validate would just
+// duplicate the rule in two places.
+function parseRoleIdInput(text) {
+  return String(text || '')
+    .split(/[\s,]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
 
 const DURATION_UNIT_FACTOR = { minutes: 60, hours: 3600, days: 86400 };
 
@@ -5021,7 +5041,9 @@ const GiveawaySettings = () => {
       image_url:         row.image_url || '',
       thumbnail_url:     row.thumbnail_url || '',
       channel_id:        row.channel_id || '',
-      mention_role_id:   row.mention_role_id || '',
+      mention_role_ids:  Array.isArray(row.mention_role_ids) && row.mention_role_ids.length
+        ? row.mention_role_ids
+        : (row.mention_role_id ? [String(row.mention_role_id)] : []),
       allowed_role_ids:  Array.isArray(row.allowed_role_ids) ? row.allowed_role_ids : [],
       duration_value:    dur.value,
       duration_unit:     dur.unit,
@@ -5060,7 +5082,7 @@ const GiveawaySettings = () => {
     image_url:         editor.image_url,
     thumbnail_url:     editor.thumbnail_url,
     channel_id:        editor.channel_id,
-    mention_role_id:   editor.mention_role_id || null,
+    mention_role_ids:  editor.mention_role_ids || [],
     allowed_role_ids:  editor.allowed_role_ids || [],
     duration_seconds:  Math.max(60,
         (Number(editor.duration_value) || 0) * (DURATION_UNIT_FACTOR[editor.duration_unit] || 3600)),
@@ -5079,7 +5101,7 @@ const GiveawaySettings = () => {
         delete payload.winner_count;
         delete payload.entry_cost_points;
         delete payload.allowed_role_ids;
-        delete payload.mention_role_id;
+        delete payload.mention_role_ids;
         delete payload.channel_id;
       }
       const res = await updateGiveaway(serverId, activeId, payload);
@@ -5334,16 +5356,18 @@ const GiveawaySettings = () => {
               </Field>
             </FieldRow>
             <FieldRow>
-              <Field label="Mention role on post" hint="Role pinged when the giveaway is posted.">
-                <Input value={editor.mention_role_id} onChange={setEd('mention_role_id')}
-                  placeholder="role id (optional)" />
+              <Field label="Mention roles on post"
+                hint="Role IDs, comma separated (spaces OK). Each role gets pinged when the giveaway is posted.">
+                <Input value={(editor.mention_role_ids || []).join(', ')}
+                  onChange={v => setEd('mention_role_ids')(parseRoleIdInput(v))}
+                  placeholder="1234567890, 9876543210" />
               </Field>
-              <Field label="Allowed role ids (comma separated)"
-                hint={isActive ? 'Locked while active.' : 'Leave empty to allow anyone in the server.'}>
+              <Field label="Allowed role IDs"
+                hint={isActive
+                  ? 'Locked while active.'
+                  : 'Comma separated (spaces OK). Leave empty to allow anyone in the server.'}>
                 <Input value={(editor.allowed_role_ids || []).join(', ')}
-                  onChange={v => setEd('allowed_role_ids')(
-                    String(v || '').split(',').map(s => s.trim()).filter(Boolean)
-                  )}
+                  onChange={v => setEd('allowed_role_ids')(parseRoleIdInput(v))}
                   placeholder="1234567890, 9876543210" />
               </Field>
             </FieldRow>
