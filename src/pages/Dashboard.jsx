@@ -23,6 +23,7 @@ import {
   fetchRadarWatchlist, addRadarWatchlistEntry, deleteRadarWatchlistEntry,
   searchRadarAsset, fetchRadarRecentAlerts,
   sendRadarDigestNow, refreshRadarPreview,
+  resolveRadarMeme,
   fetchRaidSettings, saveRaidSettings, fetchRaidList, createRaid, endRaid,
   fetchRaidLeaderboard, fetchRaidVerificationLog, runRaidManualCheck, sendRaidGuide,
   fetchRaidGuideDefaults, fetchRaidScrapingHealth,
@@ -5581,11 +5582,16 @@ const RICON_REFRESH = (size = 12) => (
     <path d="M21 3v6h-6" />
   </svg>
 );
+// Live topics (Phase 2). Crypto is rendered separately to flag a brand color.
+const RADAR_LIVE_TOPICS = [
+  { id: 'nft',   Icon: RICON_NFT,   name: 'NFT' },
+  { id: 'meme',  Icon: RICON_MEME,  name: 'Memecoin' },
+  { id: 'forex', Icon: RICON_FOREX, name: 'Forex' },
+];
+// Reserved for later phases — Stocks (Phase 4) + Liquidations (Phase 3).
 const RADAR_COMING_SOON = [
-  { id: 'nft',    Icon: RICON_NFT,    name: 'NFT' },
-  { id: 'meme',   Icon: RICON_MEME,   name: 'Memecoin' },
-  { id: 'forex',  Icon: RICON_FOREX,  name: 'Forex' },
-  { id: 'stocks', Icon: RICON_STOCKS, name: 'Stocks' },
+  { id: 'stocks',      Icon: RICON_STOCKS,      name: 'Stocks' },
+  { id: 'liquidation', Icon: RICON_LIQUIDATION, name: 'Liquidations' },
 ];
 
 // Digest template defaults — must mirror digest.py's news-y defaults so the
@@ -5601,6 +5607,31 @@ const RADAR_THUMBNAIL_MODES = [
   { value: 'first_coin', label: 'First coin logo' },
   { value: 'off',        label: 'No thumbnail' },
 ];
+const RADAR_DATE_MODES = [
+  { value: 'date_tz',    label: 'Date + timezone' },
+  { value: 'date_only',  label: 'Date only' },
+  { value: 'off',        label: 'No date' },
+];
+
+// Channel-id input — type="text" + inputMode="numeric" so the browser
+// keeps the string verbatim (Discord snowflakes exceed JS Number precision
+// and type="number" silently rounds the last digits). Pattern enforces
+// digits-only on mobile keyboards. State stays a string end-to-end.
+const RadarChannelInput = ({ value, onChange, placeholder = 'numeric channel id' }) => (
+  <input
+    type="text"
+    inputMode="numeric"
+    pattern="[0-9]*"
+    autoComplete="off"
+    spellCheck={false}
+    value={value == null ? '' : String(value)}
+    onChange={e => onChange(e.target.value.replace(/[^0-9]/g, ''))}
+    placeholder={placeholder}
+    style={{ width: '100%', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', fontFamily: 'Sora, sans-serif', outline: 'none', transition: 'border-color 0.2s', boxSizing: 'border-box' }}
+    onFocus={e => e.target.style.borderColor = 'rgba(200,168,78,0.5)'}
+    onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.08)'}
+  />
+);
 
 const RadarSettings = () => {
   const { server } = useContext(DashboardContext);
@@ -5644,7 +5675,7 @@ const RadarSettings = () => {
     setLoading(true);
     Promise.all([
       fetchRadarSettings(serverId).catch(e => { setError(e.message); return null; }),
-      fetchRadarWatchlist(serverId, 'crypto').catch(() => ({ watchlist: [] })),
+      fetchRadarWatchlist(serverId).catch(() => ({ watchlist: [] })),
       fetchRadarRecentAlerts(serverId, 50).catch(() => ({ alerts: [] })),
     ]).then(([s, wl, al]) => {
       setSettings(s);
@@ -5663,7 +5694,7 @@ const RadarSettings = () => {
     let timer = null;
 
     const pull = () => {
-      fetchRadarWatchlist(serverId, 'crypto')
+      fetchRadarWatchlist(serverId)
         .then(r => {
           if (!alive) return;
           setWatchlist(r?.watchlist || []);
@@ -5697,7 +5728,7 @@ const RadarSettings = () => {
     try {
       await refreshRadarPreview(serverId);
       // The fetcher updated the cache; pull the hydrated watchlist now.
-      const r = await fetchRadarWatchlist(serverId, 'crypto');
+      const r = await fetchRadarWatchlist(serverId);
       setWatchlist(r?.watchlist || []);
       setPreviewLastTs(Date.now());
       showMsg('Refreshed.');
@@ -5760,11 +5791,17 @@ const RadarSettings = () => {
         timezone_offset:             Number(settings.timezone_offset || 0),
         daily_time:                  settings.daily_time || '08:00',
         daily_enabled:               settings.daily_enabled ? 1 : 0,
-        daily_channel_crypto:        (settings.daily_channel_crypto || '') + '',
-        alerts_channel:              (settings.alerts_channel || '') + '',
+        // Channel ids stay STRING end-to-end (Discord snowflakes blow past
+        // JS Number precision). No `+ ''` coercion that could lose digits.
+        daily_channel_crypto:        String(settings.daily_channel_crypto || ''),
+        daily_channel_nft:           String(settings.daily_channel_nft    || ''),
+        daily_channel_meme:          String(settings.daily_channel_meme   || ''),
+        daily_channel_forex:         String(settings.daily_channel_forex  || ''),
+        alerts_channel:              String(settings.alerts_channel       || ''),
         alerts_enabled:              settings.alerts_enabled ? 1 : 0,
         movement_threshold_pct:      Number(settings.movement_threshold_pct || 5),
         volume_multiplier_threshold: Number(settings.volume_multiplier_threshold || 3),
+        digest_date_mode:            settings.digest_date_mode || 'date_tz',
         digest_mention_role_ids:     Array.isArray(settings.digest_mention_role_ids)
                                        ? settings.digest_mention_role_ids
                                        : parseRoleIdInput(settings.digest_mention_role_ids || ''),
@@ -5796,7 +5833,7 @@ const RadarSettings = () => {
         asset_identifier: sug.identifier,
         display_name:     sug.name || sug.symbol || sug.identifier,
       });
-      const wl = await fetchRadarWatchlist(serverId, 'crypto');
+      const wl = await fetchRadarWatchlist(serverId);
       setWatchlist(wl?.watchlist || []);
       setSearchQ(''); setSearchResults([]); setSearchOpen(false);
       showMsg(`Added ${sug.name || sug.identifier}.`);
@@ -5811,7 +5848,7 @@ const RadarSettings = () => {
         asset_kind:       'crypto',
         asset_identifier: q,
       });
-      const wl = await fetchRadarWatchlist(serverId, 'crypto');
+      const wl = await fetchRadarWatchlist(serverId);
       setWatchlist(wl?.watchlist || []);
       setSearchQ(''); setSearchResults([]); setSearchOpen(false);
       showMsg('Added.');
@@ -5859,12 +5896,19 @@ const RadarSettings = () => {
         <div style={{ fontSize: '12px', color: C.muted, marginBottom: '16px' }}>
           Crypto is live now. NFT, Memecoin, Forex, Stocks, and Liquidations ship in later phases.
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: '10px' }}>
           <div style={{ background: 'rgba(59,165,92,0.08)', border: `1px solid rgba(59,165,92,0.35)`, borderRadius: '10px', padding: '14px' }}>
             <div style={{ color: C.green }}>{RICON_CRYPTO(20)}</div>
             <div style={{ fontWeight: 700, marginTop: '4px' }}>Crypto</div>
             <div style={{ fontSize: '11px', color: C.green, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Live</div>
           </div>
+          {RADAR_LIVE_TOPICS.map(t => (
+            <div key={t.id} style={{ background: 'rgba(59,165,92,0.08)', border: '1px solid rgba(59,165,92,0.35)', borderRadius: '10px', padding: '14px' }}>
+              <div style={{ color: C.green }}>{t.Icon(20)}</div>
+              <div style={{ fontWeight: 700, marginTop: '4px' }}>{t.name}</div>
+              <div style={{ fontSize: '11px', color: C.green, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Live</div>
+            </div>
+          ))}
           {RADAR_COMING_SOON.map(t => (
             <div key={t.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '14px', opacity: 0.6 }}>
               <div style={{ color: C.muted }}>{t.Icon(20)}</div>
@@ -5872,11 +5916,6 @@ const RadarSettings = () => {
               <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Coming soon</div>
             </div>
           ))}
-          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '14px', opacity: 0.6 }}>
-            <div style={{ color: C.muted }}>{RICON_LIQUIDATION(20)}</div>
-            <div style={{ fontWeight: 700, marginTop: '4px' }}>Liquidations</div>
-            <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Coming soon</div>
-          </div>
         </div>
       </SettingsCard>
 
@@ -5955,6 +5994,49 @@ const RadarSettings = () => {
         )}
       </SettingsCard>
 
+      {/* ── Section 2b: NFT watchlist ── */}
+      <RadarWatchlistByKind
+        kind="nft"
+        label="NFT"
+        hint="Add Reservoir collections by name. Each entry appears in your daily market update and is evaluated for movement and volume alerts."
+        serverId={serverId}
+        watchlist={watchlist}
+        refresh={async () => {
+          const r = await fetchRadarWatchlist(serverId);
+          setWatchlist(r?.watchlist || []);
+        }}
+        showMsg={showMsg}
+        disabledReason={s?.nft_disabled_reason}
+      />
+
+      {/* ── Section 2c: Memecoin watchlist ── */}
+      <RadarWatchlistByKind
+        kind="meme"
+        label="Memecoin"
+        hint="Paste a DEXScreener URL or chain:address. Click Resolve to preview, then confirm to add."
+        serverId={serverId}
+        watchlist={watchlist}
+        refresh={async () => {
+          const r = await fetchRadarWatchlist(serverId);
+          setWatchlist(r?.watchlist || []);
+        }}
+        showMsg={showMsg}
+      />
+
+      {/* ── Section 2d: Forex watchlist ── */}
+      <RadarWatchlistByKind
+        kind="forex"
+        label="Forex"
+        hint="Pick two currencies. Movement alerts use the 24h delta because Frankfurter is daily-cadence."
+        serverId={serverId}
+        watchlist={watchlist}
+        refresh={async () => {
+          const r = await fetchRadarWatchlist(serverId);
+          setWatchlist(r?.watchlist || []);
+        }}
+        showMsg={showMsg}
+      />
+
       {/* ── Section 3: Daily digest ── */}
       <SettingsCard title="Daily digest">
         <FieldRow>
@@ -5966,13 +6048,26 @@ const RadarSettings = () => {
               Post a daily market update in your configured crypto channel.
             </label>
           </Field>
-          <Field label="Channel" hint="Where the digest is posted.">
-            <Input value={(s.daily_channel_crypto || '') + ''}
-              onChange={setField('daily_channel_crypto')}
-              placeholder="numeric channel id" />
+          <Field label="Main channel" hint="Where the digest is posted when no per-topic channel is set.">
+            <RadarChannelInput value={s.daily_channel_crypto || ''}
+              onChange={setField('daily_channel_crypto')} />
           </Field>
         </FieldRow>
         <FieldRow>
+          <Field label="NFT channel" hint="Optional. Routes NFT entries to a dedicated channel.">
+            <RadarChannelInput value={s.daily_channel_nft || ''}
+              onChange={setField('daily_channel_nft')} />
+          </Field>
+          <Field label="Memecoin channel" hint="Optional. Routes meme entries to a dedicated channel.">
+            <RadarChannelInput value={s.daily_channel_meme || ''}
+              onChange={setField('daily_channel_meme')} />
+          </Field>
+        </FieldRow>
+        <FieldRow>
+          <Field label="Forex channel" hint="Optional. Routes forex entries to a dedicated channel.">
+            <RadarChannelInput value={s.daily_channel_forex || ''}
+              onChange={setField('daily_channel_forex')} />
+          </Field>
           <Field label="Time of day" hint="Local time using your selected timezone offset.">
             <Input value={s.daily_time || '08:00'} onChange={setField('daily_time')}
               placeholder="08:00" style={{ maxWidth: '120px' }} />
@@ -6048,9 +6143,8 @@ const RadarSettings = () => {
             </label>
           </Field>
           <Field label="Channel">
-            <Input value={(s.alerts_channel || '') + ''}
-              onChange={setField('alerts_channel')}
-              placeholder="numeric channel id" />
+            <RadarChannelInput value={s.alerts_channel || ''}
+              onChange={setField('alerts_channel')} />
           </Field>
         </FieldRow>
         <FieldRow>
@@ -6098,31 +6192,50 @@ const RadarSettings = () => {
         </div>
 
         {(() => {
-          const cryptoWatchlist = watchlist.filter(w => w.asset_kind === 'crypto');
-          if (cryptoWatchlist.length === 0) {
+          // Render one section per kind, in the same fixed order as the
+          // digest. Empty kinds are omitted. Across all kinds combined,
+          // the "Show all" cap remains 12 for the initial render — when
+          // expanded each kind shows everything.
+          const KIND_ORDER = ['crypto', 'nft', 'meme', 'forex'];
+          const KIND_LABEL = { crypto: 'Crypto', nft: 'NFT', meme: 'Memecoin', forex: 'Forex' };
+          const sectioned = KIND_ORDER
+            .map(k => ({ kind: k, items: (watchlist || []).filter(w => w.asset_kind === k) }))
+            .filter(s => s.items.length > 0);
+          if (sectioned.length === 0) {
             return (
               <div style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '20px 0' }}>
                 Add tokens above to see live prices here.
               </div>
             );
           }
-          const visible = previewExpanded ? cryptoWatchlist : cryptoWatchlist.slice(0, 12);
-          const hidden  = cryptoWatchlist.length - visible.length;
+          // Truncate per section when not expanded so a 50-entry crypto
+          // list doesn't crowd out a small forex list.
+          const PER_KIND_CAP = previewExpanded ? Infinity : 6;
+          const hiddenTotal = sectioned.reduce(
+            (acc, s) => acc + Math.max(0, s.items.length - PER_KIND_CAP), 0,
+          );
           return (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
-                {visible.map(w => <RadarLiveCard key={w.id} entry={w} />)}
-              </div>
-              {hidden > 0 && (
-                <div style={{ textAlign: 'center', marginTop: '12px' }}>
+              {sectioned.map(({ kind, items }) => (
+                <div key={kind} style={{ marginBottom: '14px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
+                    {KIND_LABEL[kind] || kind}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
+                    {items.slice(0, PER_KIND_CAP).map(w => <RadarLiveCard key={w.id} entry={w} />)}
+                  </div>
+                </div>
+              ))}
+              {hiddenTotal > 0 && (
+                <div style={{ textAlign: 'center', marginTop: '4px' }}>
                   <button onClick={() => setPreviewExpanded(true)}
                     style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>
-                    Show all ({cryptoWatchlist.length})
+                    Show all (+{hiddenTotal} more)
                   </button>
                 </div>
               )}
-              {previewExpanded && cryptoWatchlist.length > 12 && (
-                <div style={{ textAlign: 'center', marginTop: '12px' }}>
+              {previewExpanded && (
+                <div style={{ textAlign: 'center', marginTop: '4px' }}>
                   <button onClick={() => setPreviewExpanded(false)}
                     style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>
                     Show fewer
@@ -6235,6 +6348,319 @@ function RadarSparkline({ points, width = 80, height = 24, stroke = '#C8A84E' })
 // /watchlist endpoint when a cache entry exists. raw.price_history (when
 // present in future iterations) drives the sparkline; for now we render
 // only when the backend supplies enough points.
+// ── Watchlist editor (per kind) ─────────────────────────────────────────────
+// crypto/nft → search-as-you-type → click suggestion to add.
+// forex      → two dropdowns (base / quote) → Add button.
+// meme       → paste DEXScreener URL or chain:address → Resolve → Confirm.
+const RadarWatchlistByKind = ({
+  kind, serverId, label, hint, watchlist, refresh, showMsg, disabledReason,
+}) => {
+  const items = (watchlist || []).filter(w => w.asset_kind === kind);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const handleRemove = async (id) => {
+    try {
+      await deleteRadarWatchlistEntry(serverId, id);
+      await refresh();
+      showMsg('Removed.');
+    } catch (e) { showMsg(e.message, 'err'); }
+  };
+
+  const listBlock = (
+    <>
+      {items.length === 0 ? (
+        <div style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '14px 0' }}>
+          No {label.toLowerCase()} entries yet.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {items.map(w => {
+            const snap  = w.snapshot || {};
+            const price = snap.price_usd;
+            const ch24  = snap.change_24h_pct;
+            return (
+              <div key={w.id} style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                {snap.image_url && (
+                  <img src={snap.image_url} alt="" style={{ width: '28px', height: '28px', borderRadius: '50%' }} />
+                )}
+                <div style={{ flex: 1, minWidth: '140px' }}>
+                  <div style={{ fontWeight: 700, fontSize: '14px' }}>{w.display_name || w.asset_identifier}</div>
+                  <div style={{ fontSize: '11px', color: C.muted, wordBreak: 'break-all' }}>{w.asset_identifier}</div>
+                </div>
+                <div style={{ fontFamily: 'monospace', fontSize: '13px', textAlign: 'right' }}>
+                  <div>{price != null ? fmtRadarPriceWithSymbol(snap) : '—'}</div>
+                  <div style={{ color: ch24 == null ? C.muted : (ch24 >= 0 ? C.green : C.red), fontSize: '11px' }}>
+                    {ch24 == null ? '—' : `${ch24 >= 0 ? '+' : ''}${ch24.toFixed(2)}%`}
+                  </div>
+                </div>
+                {confirmDel === w.id ? (
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button onClick={() => handleRemove(w.id)}
+                      style={{ background: 'rgba(237,66,69,0.2)', border: '1px solid rgba(237,66,69,0.4)', borderRadius: '6px', padding: '4px 10px', color: C.red, cursor: 'pointer', fontSize: '12px', fontFamily: 'Sora, sans-serif', fontWeight: 600 }}>Yes</button>
+                    <button onClick={() => setConfirmDel(null)}
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '4px 10px', color: C.muted, cursor: 'pointer', fontSize: '12px', fontFamily: 'Sora, sans-serif' }}>No</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setConfirmDel(w.id)}
+                    style={{ background: 'rgba(237,66,69,0.08)', border: '1px solid rgba(237,66,69,0.35)', borderRadius: '6px', padding: '6px 10px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>
+                    Remove
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <SettingsCard title={`${label} watchlist`}>
+      <div style={{ fontSize: '12px', color: C.muted, marginBottom: '12px' }}>
+        {hint}
+      </div>
+      {disabledReason ? (
+        <div style={{ background: 'rgba(237,66,69,0.06)', border: '1px solid rgba(237,66,69,0.25)', borderRadius: '8px', padding: '10px 14px', color: C.red, fontSize: '12px', marginBottom: '12px' }}>
+          {disabledReason}
+        </div>
+      ) : (
+        <>
+          {kind === 'crypto' || kind === 'nft' ? (
+            <RadarSearchAddBlock kind={kind} serverId={serverId}
+              refresh={refresh} showMsg={showMsg} />
+          ) : null}
+          {kind === 'forex' ? (
+            <RadarForexAddBlock serverId={serverId} refresh={refresh} showMsg={showMsg} />
+          ) : null}
+          {kind === 'meme' ? (
+            <RadarMemeAddBlock serverId={serverId} refresh={refresh} showMsg={showMsg} />
+          ) : null}
+        </>
+      )}
+      {listBlock}
+    </SettingsCard>
+  );
+};
+
+const RadarSearchAddBlock = ({ kind, serverId, refresh, showMsg }) => {
+  const [q,        setQ]        = useState('');
+  const [results,  setResults]  = useState([]);
+  const [open,     setOpen]     = useState(false);
+  const [pending,  setPending]  = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (!serverId) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    const term = (q || '').trim();
+    if (term.length < 2) { setResults([]); setPending(false); return; }
+    setPending(true);
+    timerRef.current = setTimeout(() => {
+      searchRadarAsset(serverId, kind, term)
+        .then(r => setResults(r?.suggestions || []))
+        .catch(() => setResults([]))
+        .finally(() => setPending(false));
+    }, 350);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [q, kind, serverId]);
+
+  const handleAdd = async (sug) => {
+    try {
+      await addRadarWatchlistEntry(serverId, {
+        asset_kind:       kind,
+        asset_identifier: sug.identifier,
+        display_name:     sug.name || sug.symbol || sug.identifier,
+      });
+      setQ(''); setResults([]); setOpen(false);
+      await refresh();
+      showMsg(`Added ${sug.name || sug.identifier}.`);
+    } catch (e) { showMsg(e.message, 'err'); }
+  };
+  const handleAddRaw = async () => {
+    const term = (q || '').trim();
+    if (!term) return;
+    try {
+      await addRadarWatchlistEntry(serverId, {
+        asset_kind: kind, asset_identifier: term,
+      });
+      setQ(''); setResults([]); setOpen(false);
+      await refresh();
+      showMsg('Added.');
+    } catch (e) { showMsg(e.message, 'err'); }
+  };
+
+  return (
+    <div style={{ position: 'relative', marginBottom: '12px' }}>
+      <Input value={q} onChange={(v) => { setQ(v); setOpen(true); }}
+        placeholder={kind === 'nft'
+          ? 'Search collection name (e.g. azuki, pudgypenguins)…'
+          : 'Search a token (e.g. bitcoin, ethereum, solana)…'} />
+      {open && ((q || '').trim().length >= 2) && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: '#16161e', border: `1px solid ${C.border}`, borderRadius: '10px', maxHeight: '280px', overflowY: 'auto', zIndex: 30, boxShadow: '0 12px 32px rgba(0,0,0,0.4)' }}>
+          {pending && (
+            <div style={{ padding: '10px 14px', color: C.muted, fontSize: '12px' }}>Searching…</div>
+          )}
+          {!pending && results.length === 0 && (
+            <button onClick={handleAddRaw}
+              style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '10px 14px', color: C.muted, fontSize: '12px', cursor: 'pointer', fontFamily: 'Sora, sans-serif' }}>
+              No suggestions. Add "{q.trim()}" anyway.
+            </button>
+          )}
+          {results.map((sug, i) => (
+            <button key={sug.identifier + i} onClick={() => handleAdd(sug)}
+              style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', borderBottom: i < results.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', padding: '10px 14px', color: '#fff', fontSize: '13px', cursor: 'pointer', fontFamily: 'Sora, sans-serif', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {(sug.thumb || sug.image) && (
+                <img src={sug.thumb || sug.image} alt=""
+                  style={{ width: '20px', height: '20px', borderRadius: '50%' }} />
+              )}
+              <span style={{ flex: 1 }}>
+                {sug.symbol && <strong>{sug.symbol}</strong>}
+                <span style={{ color: C.muted, marginLeft: sug.symbol ? '8px' : 0 }}>{sug.name}</span>
+              </span>
+              {sug.market_cap_rank && (
+                <span style={{ color: C.muted, fontSize: '11px' }}>#{sug.market_cap_rank}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const RadarForexAddBlock = ({ serverId, refresh, showMsg }) => {
+  const [currencies, setCurrencies] = useState([]);
+  const [base,       setBase]       = useState('EUR');
+  const [quote,      setQuote]      = useState('USD');
+  const [busy,       setBusy]       = useState(false);
+
+  useEffect(() => {
+    if (!serverId) return;
+    searchRadarAsset(serverId, 'forex', '')
+      .then(r => setCurrencies(r?.suggestions || []))
+      .catch(() => setCurrencies([]));
+  }, [serverId]);
+
+  const handleAdd = async () => {
+    if (!base || !quote || base === quote || busy) return;
+    setBusy(true);
+    try {
+      await addRadarWatchlistEntry(serverId, {
+        asset_kind: 'forex', asset_identifier: `${base}/${quote}`,
+      });
+      await refresh();
+      showMsg(`Added ${base}/${quote}.`);
+    } catch (e) { showMsg(e.message, 'err'); }
+    finally { setBusy(false); }
+  };
+
+  const selectStyle = { background: '#1a1a22', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', fontFamily: 'Sora, sans-serif', outline: 'none', cursor: 'pointer', minWidth: '120px' };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+      <Field label="Base">
+        <select value={base} onChange={e => setBase(e.target.value)} style={selectStyle}>
+          {currencies.map(c => <option key={c.identifier} value={c.identifier}>{c.identifier} — {c.name}</option>)}
+        </select>
+      </Field>
+      <Field label="Quote">
+        <select value={quote} onChange={e => setQuote(e.target.value)} style={selectStyle}>
+          {currencies.map(c => <option key={c.identifier} value={c.identifier}>{c.identifier} — {c.name}</option>)}
+        </select>
+      </Field>
+      <button onClick={handleAdd} disabled={busy || base === quote}
+        style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '10px 18px', color: '#0A0A0F', cursor: (busy || base === quote) ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, opacity: (busy || base === quote) ? 0.5 : 1 }}>
+        {busy ? 'Adding…' : 'Add pair'}
+      </button>
+    </div>
+  );
+};
+
+const RadarMemeAddBlock = ({ serverId, refresh, showMsg }) => {
+  const [input,    setInput]    = useState('');
+  const [preview,  setPreview]  = useState(null);
+  const [resolving, setResolving] = useState(false);
+  const [saving,   setSaving]   = useState(false);
+
+  const handleResolve = async () => {
+    const term = (input || '').trim();
+    if (!term || resolving) return;
+    setResolving(true); setPreview(null);
+    try {
+      const r = await resolveRadarMeme(serverId, term);
+      setPreview(r);
+    } catch (e) { showMsg(e.message, 'err'); }
+    finally { setResolving(false); }
+  };
+  const handleConfirm = async () => {
+    if (!preview || saving) return;
+    setSaving(true);
+    try {
+      await addRadarWatchlistEntry(serverId, {
+        asset_kind: 'meme',
+        asset_identifier: preview.identifier,
+        display_name: preview.name || preview.symbol || preview.identifier,
+      });
+      setInput(''); setPreview(null);
+      await refresh();
+      showMsg(`Added ${preview.symbol || preview.identifier}.`);
+    } catch (e) { showMsg(e.message, 'err'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div style={{ marginBottom: '12px' }}>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div style={{ flex: 1, minWidth: '200px' }}>
+          <Input value={input} onChange={setInput}
+            placeholder="DEXScreener URL or chain:address (e.g. solana:F7Hwf…)" />
+        </div>
+        <button onClick={handleResolve} disabled={resolving || !input.trim()}
+          style={{ background: 'rgba(200,168,78,0.12)', border: '1px solid rgba(200,168,78,0.4)', borderRadius: '8px', padding: '10px 16px', color: C.gold, cursor: (resolving || !input.trim()) ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 600, opacity: (resolving || !input.trim()) ? 0.5 : 1 }}>
+          {resolving ? 'Resolving…' : 'Resolve'}
+        </button>
+      </div>
+      {preview && (
+        <div style={{ marginTop: '10px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(200,168,78,0.25)', borderRadius: '10px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          {preview.image_url && <img src={preview.image_url} alt="" style={{ width: '32px', height: '32px', borderRadius: '50%' }} />}
+          <div style={{ flex: 1, minWidth: '180px' }}>
+            <div style={{ fontWeight: 700 }}>
+              {preview.symbol || '—'} <span style={{ color: C.muted, fontSize: '12px' }}>· {preview.chain}</span>
+            </div>
+            <div style={{ fontSize: '11px', color: C.muted, wordBreak: 'break-all' }}>{preview.address}</div>
+            <div style={{ fontSize: '12px', marginTop: '4px' }}>
+              {fmtRadarPriceWithSymbol({ price_usd: preview.price_usd, price_display_symbol: '$' })}
+              {preview.change_24h_pct != null && (
+                <span style={{ color: preview.change_24h_pct >= 0 ? C.green : C.red, marginLeft: '8px' }}>
+                  {preview.change_24h_pct >= 0 ? '+' : ''}{preview.change_24h_pct.toFixed(2)}%
+                </span>
+              )}
+            </div>
+          </div>
+          <button onClick={handleConfirm} disabled={saving}
+            style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '8px 16px', color: '#0A0A0F', cursor: saving ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 700, opacity: saving ? 0.6 : 1 }}>
+            {saving ? 'Adding…' : 'Confirm and add'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+function fmtRadarPriceWithSymbol(snap) {
+  if (!snap || snap.price_usd == null) return '—';
+  const n = Number(snap.price_usd);
+  if (!Number.isFinite(n)) return '—';
+  const sym = snap.price_display_symbol || '$';
+  const formatted = n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+    : n >= 1 ? n.toLocaleString(undefined, { maximumFractionDigits: 4 })
+    : n.toFixed(6);
+  // Single-glyph symbols ($, €, £, ¥) prefix; 3-letter codes (USD, EUR) suffix.
+  if (sym === '$' || sym === '€' || sym === '£' || sym === '¥' || sym.length === 1) {
+    return `${sym}${formatted}`;
+  }
+  return `${formatted} ${sym}`;
+}
+
 const RadarLiveCard = ({ entry }) => {
   const snap  = entry.snapshot || {};
   const price = snap.price_usd;
@@ -6326,6 +6752,14 @@ const RadarDigestStyle = ({ settings, setField }) => {
 
   const today = new Date();
   const monthLabel = today.toLocaleString('en-US', { month: 'short', day: 'numeric' });
+  const dateMode = s.digest_date_mode || 'date_tz';
+  const tzOffset = Number(s.timezone_offset || 0);
+  const tzSign   = tzOffset >= 0 ? '+' : '-';
+  const tzHH     = String(Math.floor(Math.abs(tzOffset) / 60)).padStart(2, '0');
+  const tzMM     = String(Math.abs(tzOffset) % 60).padStart(2, '0');
+  const dateSuffix = dateMode === 'off'        ? ''
+                   : dateMode === 'date_only'  ? ` — ${monthLabel}`
+                   : ` — ${monthLabel} (UTC${tzSign}${tzHH}:${tzMM})`;
 
   return (
     <div style={{ marginTop: '18px', paddingTop: '14px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
@@ -6369,6 +6803,20 @@ const RadarDigestStyle = ({ settings, setField }) => {
               </select>
             </Field>
           </FieldRow>
+          <Field label="Date display" hint="Whether the title appends today's date and your timezone label.">
+            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '3px', gap: '2px' }}>
+              {RADAR_DATE_MODES.map(o => {
+                const active = (s.digest_date_mode || 'date_tz') === o.value;
+                return (
+                  <button key={o.value} type="button"
+                    onClick={() => setField('digest_date_mode')(o.value)}
+                    style={{ flex: 1, background: active ? 'rgba(200,168,78,0.18)' : 'transparent', border: active ? '1px solid rgba(200,168,78,0.4)' : '1px solid transparent', color: active ? C.gold : C.muted, fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600, padding: '6px 8px', borderRadius: '5px', cursor: 'pointer' }}>
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
           <Field label="Footer" hint={`Leave empty for the brand footer ("${RADAR_DIGEST_DEFAULTS.footer}").`}>
             <Input value={footer} onChange={setField('digest_footer')}
               placeholder={RADAR_DIGEST_DEFAULTS.footer} />
@@ -6382,7 +6830,7 @@ const RadarDigestStyle = ({ settings, setField }) => {
           </div>
           <div style={{ background: '#1e1f22', borderRadius: '8px', padding: '14px 16px', borderLeft: `4px solid ${liveColor}`, fontFamily: 'Whitney, Sora, sans-serif' }}>
             <div style={{ fontWeight: 700, fontSize: '15px', color: '#fff', marginBottom: '4px' }}>
-              📊 {liveTitle} — {monthLabel} (UTC+00:00)
+              📊 {liveTitle}{dateSuffix}
             </div>
             <div style={{ color: 'rgba(255,255,255,0.82)', fontSize: '13px', lineHeight: 1.5, marginBottom: '10px', whiteSpace: 'pre-wrap' }}>
               {liveIntro}

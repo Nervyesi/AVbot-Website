@@ -268,6 +268,12 @@ export const sendRadarDigestNow = (sid) =>
 export const refreshRadarPreview = (sid) =>
   apiFetch(`/api/servers/${sid}/radar/preview-refresh`, { method: 'POST' });
 
+export const resolveRadarMeme = (sid, input) =>
+  apiFetch(`/api/servers/${sid}/radar/watchlist/resolve`, {
+    method: 'POST',
+    body: JSON.stringify({ kind: 'meme', input }),
+  });
+
 // ── Giveaway ───────────────────────────────────────────────────────────────
 
 export const listGiveaways = (sid) =>
