@@ -262,6 +262,12 @@ export const fetchRadarPreview = (sid, kind, identifier) =>
 export const fetchRadarRecentAlerts = (sid, limit = 50) =>
   apiFetch(`/api/servers/${sid}/radar/alerts/recent?limit=${limit}`);
 
+export const sendRadarDigestNow = (sid) =>
+  apiFetch(`/api/servers/${sid}/radar/digest/send-now`, { method: 'POST' });
+
+export const refreshRadarPreview = (sid) =>
+  apiFetch(`/api/servers/${sid}/radar/preview-refresh`, { method: 'POST' });
+
 // ── Giveaway ───────────────────────────────────────────────────────────────
 
 export const listGiveaways = (sid) =>

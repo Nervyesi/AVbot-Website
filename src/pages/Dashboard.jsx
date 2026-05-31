@@ -21,7 +21,8 @@ import {
   fetchGiveawayEntries,
   fetchRadarSettings, saveRadarSettings,
   fetchRadarWatchlist, addRadarWatchlistEntry, deleteRadarWatchlistEntry,
-  searchRadarAsset, fetchRadarPreview, fetchRadarRecentAlerts,
+  searchRadarAsset, fetchRadarRecentAlerts,
+  sendRadarDigestNow, refreshRadarPreview,
   fetchRaidSettings, saveRaidSettings, fetchRaidList, createRaid, endRaid,
   fetchRaidLeaderboard, fetchRaidVerificationLog, runRaidManualCheck, sendRaidGuide,
   fetchRaidGuideDefaults, fetchRaidScrapingHealth,
@@ -5533,11 +5534,16 @@ const RadarSettings = () => {
   const [searchPending,  setSearchPending]  = useState(false);
   const searchTimerRef = useRef(null);
 
-  // Preview snapshot card (uses first watchlist item if any, else 'bitcoin')
-  const [previewSnap, setPreviewSnap] = useState(null);
-
   // Recent alerts
   const [alerts, setAlerts] = useState([]);
+
+  // Live preview state — polling grid over the entire crypto watchlist.
+  const [previewExpanded, setPreviewExpanded] = useState(false);
+  const [previewLastTs,   setPreviewLastTs]   = useState(null);
+  const [previewRefreshing, setPreviewRefreshing] = useState(false);
+
+  // Manual digest send state.
+  const [digestSending, setDigestSending] = useState(false);
 
   const showMsg = (text, kind = 'ok') => {
     setMsg(text); setMsgKind(kind);
@@ -5560,14 +5566,80 @@ const RadarSettings = () => {
     });
   }, [serverId]); // eslint-disable-line
 
-  // ── Preview snapshot ───────────────────────────────────────────────
+  // ── Live preview polling (30s while tab is visible) ────────────────
+  // Pulls /watchlist?asset_kind=crypto — already cache-hydrated — so this
+  // is zero extra API cost. Polling pauses when the document is hidden.
   useEffect(() => {
     if (!serverId) return;
-    const target = watchlist[0]?.asset_identifier || 'bitcoin';
-    fetchRadarPreview(serverId, 'crypto', target)
-      .then(r => setPreviewSnap(r?.snapshot || null))
-      .catch(() => setPreviewSnap(null));
-  }, [serverId, watchlist.length]); // eslint-disable-line
+    let alive = true;
+    let timer = null;
+
+    const pull = () => {
+      fetchRadarWatchlist(serverId, 'crypto')
+        .then(r => {
+          if (!alive) return;
+          setWatchlist(r?.watchlist || []);
+          setPreviewLastTs(Date.now());
+        })
+        .catch(() => {});
+    };
+
+    const tick = () => {
+      if (document.visibilityState !== 'hidden') pull();
+    };
+
+    const onVis = () => {
+      // Snap a refresh as soon as the tab becomes visible again so the
+      // user doesn't stare at a 5-minute-old card.
+      if (document.visibilityState === 'visible') pull();
+    };
+
+    timer = setInterval(tick, 30000);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      alive = false;
+      if (timer) clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [serverId]); // eslint-disable-line
+
+  const handlePreviewRefresh = async () => {
+    if (!serverId || previewRefreshing) return;
+    setPreviewRefreshing(true);
+    try {
+      await refreshRadarPreview(serverId);
+      // The fetcher updated the cache; pull the hydrated watchlist now.
+      const r = await fetchRadarWatchlist(serverId, 'crypto');
+      setWatchlist(r?.watchlist || []);
+      setPreviewLastTs(Date.now());
+      showMsg('Refreshed.');
+    } catch (e) {
+      showMsg(e.message, 'err');
+    } finally {
+      setPreviewRefreshing(false);
+    }
+  };
+
+  const handleDigestSendNow = async () => {
+    if (!serverId || digestSending) return;
+    setDigestSending(true);
+    try {
+      const r = await sendRadarDigestNow(serverId);
+      // Refresh masked settings so remaining-today counter updates.
+      try {
+        const fresh = await fetchRadarSettings(serverId);
+        setSettings(fresh);
+      } catch {}
+      const remaining = r?.remaining_today;
+      showMsg(
+        `Digest sent.${remaining != null ? ` ${remaining} of ${r.daily_cap} remaining today.` : ''}`
+      );
+    } catch (e) {
+      showMsg(e.message, 'err');
+    } finally {
+      setDigestSending(false);
+    }
+  };
 
   // ── Search debounce ────────────────────────────────────────────────
   useEffect(() => {
@@ -5605,6 +5677,12 @@ const RadarSettings = () => {
         alerts_enabled:              settings.alerts_enabled ? 1 : 0,
         movement_threshold_pct:      Number(settings.movement_threshold_pct || 5),
         volume_multiplier_threshold: Number(settings.volume_multiplier_threshold || 3),
+        digest_mention_role_ids:     Array.isArray(settings.digest_mention_role_ids)
+                                       ? settings.digest_mention_role_ids
+                                       : parseRoleIdInput(settings.digest_mention_role_ids || ''),
+        alerts_mention_role_ids:     Array.isArray(settings.alerts_mention_role_ids)
+                                       ? settings.alerts_mention_role_ids
+                                       : parseRoleIdInput(settings.alerts_mention_role_ids || ''),
       };
       const updated = await saveRadarSettings(serverId, payload);
       setSettings(updated);
@@ -5816,6 +5894,47 @@ const RadarSettings = () => {
             </select>
           </Field>
         </FieldRow>
+        <Field label="Mention roles"
+          hint="Role IDs, comma separated (spaces OK). Each role gets pinged with each digest. Leave empty for no ping.">
+          <Input
+            value={Array.isArray(s.digest_mention_role_ids)
+              ? s.digest_mention_role_ids.join(', ')
+              : (s.digest_mention_role_ids || '')}
+            onChange={v => setField('digest_mention_role_ids')(parseRoleIdInput(v))}
+            placeholder="1234567890, 9876543210" />
+        </Field>
+
+        {/* Manual send-now row */}
+        <div style={{
+          marginTop: '14px', padding: '12px 14px',
+          background: 'rgba(200,168,78,0.06)',
+          border: '1px solid rgba(200,168,78,0.18)',
+          borderRadius: '10px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexWrap: 'wrap', gap: '12px',
+        }}>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '2px' }}>Send digest now</div>
+            <div style={{ fontSize: '11px', color: C.muted }}>
+              Posts the current digest immediately to your crypto channel. Limited to {s.manual_digests_daily_cap ?? 5} per UTC day with a 5 minute cooldown.{' '}
+              <strong style={{ color: '#fff' }}>
+                {(s.manual_digests_used_today ?? 0)} of {(s.manual_digests_daily_cap ?? 5)} used today
+              </strong>
+              {' · '}{(s.manual_digests_remaining_today ?? 5)} remaining
+            </div>
+          </div>
+          {(s.manual_digests_remaining_today ?? 5) <= 0 ? (
+            <button disabled title="Daily cap reached. Resets at UTC midnight."
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '8px 16px', color: C.muted, cursor: 'not-allowed', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
+              Daily cap reached
+            </button>
+          ) : (
+            <button onClick={handleDigestSendNow} disabled={digestSending}
+              style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '8px 18px', color: '#0A0A0F', cursor: digestSending ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 700, opacity: digestSending ? 0.6 : 1 }}>
+              {digestSending ? 'Sending…' : 'Send digest now'}
+            </button>
+          )}
+        </div>
       </SettingsCard>
 
       {/* ── Section 4: Alerts ── */}
@@ -5847,44 +5966,71 @@ const RadarSettings = () => {
               placeholder="3" style={{ maxWidth: '120px' }} />
           </Field>
         </FieldRow>
+        <Field label="Mention roles"
+          hint="Role IDs, comma separated (spaces OK). Each role gets pinged on every movement or volume alert. Leave empty for no ping.">
+          <Input
+            value={Array.isArray(s.alerts_mention_role_ids)
+              ? s.alerts_mention_role_ids.join(', ')
+              : (s.alerts_mention_role_ids || '')}
+            onChange={v => setField('alerts_mention_role_ids')(parseRoleIdInput(v))}
+            placeholder="1234567890, 9876543210" />
+        </Field>
       </SettingsCard>
 
-      {/* ── Section 5: Live preview ── */}
+      {/* ── Section 5: Live preview (polling grid over the whole watchlist) ── */}
       <SettingsCard title="Live preview">
-        <div style={{ fontSize: '12px', color: C.muted, marginBottom: '12px' }}>
-          Snapshot of {previewSnap ? (previewSnap.symbol_display || previewSnap.identifier) : 'your first watchlist token (or bitcoin)'} from the radar cache.
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+          <div style={{ fontSize: '12px', color: C.muted }}>
+            Live snapshots over your crypto watchlist. Auto refresh every 30 seconds while this tab is visible.
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '11px', color: C.muted }}>
+              {previewLastTs ? `Updated ${secondsAgo(previewLastTs)} ago` : 'Not loaded yet'}
+            </span>
+            <button onClick={handlePreviewRefresh} disabled={previewRefreshing}
+              style={{ background: 'rgba(200,168,78,0.10)', border: '1px solid rgba(200,168,78,0.25)', borderRadius: '8px', padding: '6px 12px', color: C.gold, cursor: previewRefreshing ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600, opacity: previewRefreshing ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {previewRefreshing && <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', border: '2px solid currentColor', borderTopColor: 'transparent', animation: 'avspin 0.8s linear infinite' }} />}
+              {previewRefreshing ? 'Refreshing…' : 'Refresh now'}
+            </button>
+            <style>{`@keyframes avspin{to{transform:rotate(360deg)}}`}</style>
+          </div>
         </div>
-        {previewSnap ? (
-          <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-            {previewSnap.image_url && <img src={previewSnap.image_url} alt="" style={{ width: '40px', height: '40px', borderRadius: '50%' }} />}
-            <div style={{ flex: 1, minWidth: '160px' }}>
-              <div style={{ fontWeight: 700, fontSize: '15px' }}>
-                {previewSnap.symbol_display || previewSnap.identifier?.toUpperCase()}
-                {previewSnap.rank && <span style={{ color: C.muted, marginLeft: '8px', fontSize: '12px' }}>#{previewSnap.rank}</span>}
+
+        {(() => {
+          const cryptoWatchlist = watchlist.filter(w => w.asset_kind === 'crypto');
+          if (cryptoWatchlist.length === 0) {
+            return (
+              <div style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '20px 0' }}>
+                Add tokens above to see live prices here.
               </div>
-              <div style={{ fontSize: '12px', color: C.muted }}>
-                {previewSnap.raw?.name || previewSnap.identifier}
+            );
+          }
+          const visible = previewExpanded ? cryptoWatchlist : cryptoWatchlist.slice(0, 12);
+          const hidden  = cryptoWatchlist.length - visible.length;
+          return (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
+                {visible.map(w => <RadarLiveCard key={w.id} entry={w} />)}
               </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontFamily: 'monospace', fontSize: '18px', fontWeight: 700 }}>
-                {fmtRadarPrice(previewSnap.price_usd)}
-              </div>
-              <div style={{ fontSize: '12px', color: (previewSnap.change_24h_pct ?? 0) >= 0 ? C.green : C.red }}>
-                24h: {previewSnap.change_24h_pct == null ? '—' : `${previewSnap.change_24h_pct >= 0 ? '+' : ''}${previewSnap.change_24h_pct.toFixed(2)}%`}
-              </div>
-              {previewSnap.change_1h_pct != null && (
-                <div style={{ fontSize: '11px', color: previewSnap.change_1h_pct >= 0 ? C.green : C.red }}>
-                  1h: {previewSnap.change_1h_pct >= 0 ? '+' : ''}{previewSnap.change_1h_pct.toFixed(2)}%
+              {hidden > 0 && (
+                <div style={{ textAlign: 'center', marginTop: '12px' }}>
+                  <button onClick={() => setPreviewExpanded(true)}
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>
+                    Show all ({cryptoWatchlist.length})
+                  </button>
                 </div>
               )}
-            </div>
-          </div>
-        ) : (
-          <div style={{ color: C.muted, fontSize: '13px' }}>
-            No live data yet. The fetcher runs every 5 minutes; the preview will fill in on first run.
-          </div>
-        )}
+              {previewExpanded && cryptoWatchlist.length > 12 && (
+                <div style={{ textAlign: 'center', marginTop: '12px' }}>
+                  <button onClick={() => setPreviewExpanded(false)}
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>
+                    Show fewer
+                  </button>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </SettingsCard>
 
       {/* ── Section 6: Recent alerts log ── */}
@@ -5952,8 +6098,120 @@ function fmtRadarPrice(v) {
   return `$${n.toFixed(6)}`;
 }
 
+function secondsAgo(ts) {
+  const sec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  return `${hr}h ${min % 60}m`;
+}
+
+// Tiny inline sparkline. Renders a polyline through the supplied series.
+// Returns null silently when fewer than 6 samples are available (matches
+// the task spec — no spinner, no placeholder).
+function RadarSparkline({ points, width = 80, height = 24, stroke = '#C8A84E' }) {
+  if (!Array.isArray(points) || points.length < 6) return null;
+  const vals = points.filter(v => v != null && Number.isFinite(v));
+  if (vals.length < 6) return null;
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const span = max - min || 1;
+  const dx = width / (vals.length - 1);
+  const path = vals.map((v, i) => {
+    const x = i * dx;
+    const y = height - ((v - min) / span) * height;
+    return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+  }).join(' ');
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+      <path d={path} stroke={stroke} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// One card in the live preview grid. snapshot is hydrated by the backend's
+// /watchlist endpoint when a cache entry exists. raw.price_history (when
+// present in future iterations) drives the sparkline; for now we render
+// only when the backend supplies enough points.
+const RadarLiveCard = ({ entry }) => {
+  const snap  = entry.snapshot || {};
+  const price = snap.price_usd;
+  const ch1   = snap.change_1h_pct;
+  const ch24  = snap.change_24h_pct;
+  const name  = entry.display_name || snap.symbol_display || entry.asset_identifier;
+  const sparkSeries = Array.isArray(snap?.raw?.price_series)
+    ? snap.raw.price_series
+    : Array.isArray(snap?.price_history)
+      ? snap.price_history
+      : null;
+  const stale = !entry.snapshot;
+  return (
+    <div style={{
+      background: 'rgba(0,0,0,0.2)',
+      border: '1px solid rgba(255,255,255,0.06)',
+      borderRadius: '10px',
+      padding: '12px 14px',
+      display: 'flex', flexDirection: 'column', gap: '6px',
+      opacity: stale ? 0.7 : 1,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {snap.image_url
+          ? <img src={snap.image_url} alt="" style={{ width: '24px', height: '24px', borderRadius: '50%' }} />
+          : <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {(snap.symbol_display || entry.asset_identifier || '').toUpperCase()}
+          </div>
+          <div style={{ fontSize: '10px', color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {name}
+          </div>
+        </div>
+        {snap.rank && <span style={{ fontSize: '10px', color: C.muted }}>#{snap.rank}</span>}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '10px' }}>
+        <div>
+          <div style={{ fontFamily: 'monospace', fontSize: '15px', fontWeight: 700 }}>
+            {fmtRadarPrice(price)}
+          </div>
+          <div style={{ display: 'flex', gap: '8px', fontSize: '11px', marginTop: '2px' }}>
+            <span style={{ color: ch1  == null ? C.muted : (ch1  >= 0 ? C.green : C.red) }}>
+              1h&nbsp;{ch1  == null ? '—' : `${ch1  >= 0 ? '+' : ''}${ch1.toFixed(2)}%`}
+            </span>
+            <span style={{ color: ch24 == null ? C.muted : (ch24 >= 0 ? C.green : C.red) }}>
+              24h&nbsp;{ch24 == null ? '—' : `${ch24 >= 0 ? '+' : ''}${ch24.toFixed(2)}%`}
+            </span>
+          </div>
+        </div>
+        <RadarSparkline points={sparkSeries}
+          stroke={(ch24 ?? 0) >= 0 ? C.green : C.red} />
+      </div>
+      {stale && (
+        <div style={{ fontSize: '10px', color: C.muted, fontStyle: 'italic' }}>
+          Waiting for first fetch
+        </div>
+      )}
+    </div>
+  );
+};
+
 
 // ── Nav config ────────────────────────────────────────────────────────────────
+
+// Inline SVG icon for the Radar nav entry. The 📡 emoji didn't render on
+// some production browsers (no satellite-antenna glyph in the user's font
+// stack), so Radar specifically uses an SVG node. NavBtn detects React
+// nodes vs string emojis and renders both correctly.
+const RadarNavIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+       strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="2.5" />
+    <path d="M12 12 L20 6" />
+    <path d="M19.07 4.93a10 10 0 1 1-14.14 0" />
+    <path d="M16.24 7.76a6 6 0 1 1-8.48 0" />
+  </svg>
+);
 
 const NAV = [
   { id: 'overview',      icon: '📊', label: 'Overview',      group: null },
@@ -5964,7 +6222,7 @@ const NAV = [
   { id: 'tickets',      icon: '🎫', label: 'Tickets',        group: 'Settings' },
   { id: 'embeds',       icon: '💬', label: 'Embed Messages', group: 'Settings' },
   { id: 'giveaway',     icon: '🎉', label: 'Giveaway',       group: 'Settings' },
-  { id: 'radar',        icon: '📡', label: 'Radar',          group: 'Settings' },
+  { id: 'radar',        icon: <RadarNavIcon />, label: 'Radar', group: 'Settings' },
   { id: 'raid',         icon: '⚔️', label: 'Raid',           group: 'Settings' },
   { id: 'engage',       icon: '🔄', label: 'Engage',         group: 'Settings' },
   { id: 'protection',   icon: '🛡️', label: 'Protection',     group: 'Settings' },
@@ -5980,7 +6238,7 @@ const NavBtn = ({ item, active, setActive }) => (
     style={{ width: '100%', background: active === item.id ? 'rgba(200,168,78,0.1)' : 'transparent', border: `1px solid ${active === item.id ? 'rgba(200,168,78,0.2)' : 'transparent'}`, borderRadius: '8px', color: active === item.id ? C.gold : 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: active === item.id ? 600 : 400, marginBottom: '2px', fontFamily: 'Sora, sans-serif', transition: 'all 0.15s', textAlign: 'left' }}
     onMouseOver={e => { if (active !== item.id) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
     onMouseOut={e => { if (active !== item.id) e.currentTarget.style.background = 'transparent'; }}>
-    <span style={{ fontSize: '15px', flexShrink: 0 }}>{item.icon}</span>
+    <span style={{ fontSize: '15px', width: '16px', height: '16px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>{item.icon}</span>
     {item.label}
   </button>
 );
