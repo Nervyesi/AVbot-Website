@@ -5507,11 +5507,99 @@ const RADAR_TIMEZONE_OPTIONS = (() => {
   return out;
 })();
 
+// Inline SVG icon set used across the Radar tab. Lucide-style, ~1.8px
+// stroke inside a fixed-size box; the wrapping <div style={fontSize: ...}>
+// at the call sites is irrelevant because SVGs render at their own
+// width/height. Drawn ourselves so font/emoji availability never breaks.
+const RICON_CRYPTO = (size = 20) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+       strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M9 8h4.5a2.5 2.5 0 0 1 0 5H9" />
+    <path d="M9 13h5a2.5 2.5 0 0 1 0 5H9" />
+    <path d="M9 5v3M9 16v3M13 5v3M13 16v3" />
+  </svg>
+);
+const RICON_NFT = (size = 20) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+       strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <circle cx="9" cy="10" r="1.5" />
+    <path d="M21 16l-5-5-9 9" />
+  </svg>
+);
+const RICON_MEME = (size = 20) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+       strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M8 14c1 1.5 2.5 2.5 4 2.5S15 15.5 16 14" />
+    <circle cx="9"  cy="10" r=".8" />
+    <circle cx="15" cy="10" r=".8" />
+  </svg>
+);
+const RICON_FOREX = (size = 20) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+       strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 8h12l-3-3" />
+    <path d="M20 16H8l3 3" />
+  </svg>
+);
+const RICON_STOCKS = (size = 20) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+       strokeLinejoin="round" aria-hidden="true">
+    <path d="M3 17l5-5 4 4 8-9" />
+    <path d="M14 7h6v6" />
+  </svg>
+);
+const RICON_LIQUIDATION = (size = 20) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+       strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 2L3 14h7l-2 8 11-13h-7l1-7z" />
+  </svg>
+);
+const RICON_RADAR_HEADER = (size = 18) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+       strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="2.5" />
+    <path d="M12 12 L20 6" />
+    <path d="M19.07 4.93a10 10 0 1 1-14.14 0" />
+    <path d="M16.24 7.76a6 6 0 1 1-8.48 0" />
+  </svg>
+);
+const RICON_REFRESH = (size = 12) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+       strokeLinejoin="round" aria-hidden="true">
+    <path d="M21 12a9 9 0 1 1-3-6.7" />
+    <path d="M21 3v6h-6" />
+  </svg>
+);
 const RADAR_COMING_SOON = [
-  { id: 'nft',    icon: '🖼️', name: 'NFT' },
-  { id: 'meme',   icon: '🐸', name: 'Memecoin' },
-  { id: 'forex',  icon: '💱', name: 'Forex' },
-  { id: 'stocks', icon: '📈', name: 'Stocks' },
+  { id: 'nft',    Icon: RICON_NFT,    name: 'NFT' },
+  { id: 'meme',   Icon: RICON_MEME,   name: 'Memecoin' },
+  { id: 'forex',  Icon: RICON_FOREX,  name: 'Forex' },
+  { id: 'stocks', Icon: RICON_STOCKS, name: 'Stocks' },
+];
+
+// Digest template defaults — must mirror digest.py's news-y defaults so the
+// dashboard preview shows the same fallback wording the bot will post.
+const RADAR_DIGEST_DEFAULTS = {
+  title:  "Today's Market Beat",
+  intro:  "Here's how your tracked assets are moving today.",
+  color:  '#94730D',                 // brand goldDark
+  footer: 'AVbot',
+};
+const RADAR_THUMBNAIL_MODES = [
+  { value: 'brand',      label: 'Brand thumbnail' },
+  { value: 'first_coin', label: 'First coin logo' },
+  { value: 'off',        label: 'No thumbnail' },
 ];
 
 const RadarSettings = () => {
@@ -5683,6 +5771,11 @@ const RadarSettings = () => {
         alerts_mention_role_ids:     Array.isArray(settings.alerts_mention_role_ids)
                                        ? settings.alerts_mention_role_ids
                                        : parseRoleIdInput(settings.alerts_mention_role_ids || ''),
+        digest_title:                settings.digest_title || '',
+        digest_intro:                settings.digest_intro || '',
+        digest_color:                settings.digest_color || '',
+        digest_footer:               settings.digest_footer || '',
+        digest_thumbnail_mode:       settings.digest_thumbnail_mode || 'brand',
       };
       const updated = await saveRadarSettings(serverId, payload);
       setSettings(updated);
@@ -5738,7 +5831,7 @@ const RadarSettings = () => {
   if (loading) {
     return (
       <div>
-        <PageHeader icon="📡" title="Radar" badge="MODULE"
+        <PageHeader icon={<RICON_RADAR_HEADER size={18} />} title="Radar" badge="MODULE"
           desc="Market intelligence with watchlists, daily digests, and price movement alerts." />
         <div style={{ color: C.muted, fontSize: '13px', padding: '24px 0' }}>Loading…</div>
       </div>
@@ -5749,8 +5842,8 @@ const RadarSettings = () => {
 
   return (
     <div>
-      <PageHeader icon="📡" title="Radar" badge="MODULE"
-        desc="Market intelligence with watchlists, daily digests, and price movement alerts." />
+      <PageHeader icon={<RICON_RADAR_HEADER size={18} />} title="Radar" badge="MODULE"
+        desc="Market intelligence with watchlists, daily market updates, and price movement alerts." />
 
       {error && (
         <div style={{ background: 'rgba(237,66,69,0.1)', border: '1px solid rgba(237,66,69,0.3)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', color: C.red, fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -5764,23 +5857,23 @@ const RadarSettings = () => {
       <SettingsCard>
         <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>Topics</div>
         <div style={{ fontSize: '12px', color: C.muted, marginBottom: '16px' }}>
-          Crypto is live now via CoinGecko. NFT, Memecoin, Forex, Stocks, and Liquidations ship in later phases.
+          Crypto is live now. NFT, Memecoin, Forex, Stocks, and Liquidations ship in later phases.
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '10px' }}>
           <div style={{ background: 'rgba(59,165,92,0.08)', border: `1px solid rgba(59,165,92,0.35)`, borderRadius: '10px', padding: '14px' }}>
-            <div style={{ fontSize: '20px' }}>🪙</div>
+            <div style={{ color: C.green }}>{RICON_CRYPTO(20)}</div>
             <div style={{ fontWeight: 700, marginTop: '4px' }}>Crypto</div>
             <div style={{ fontSize: '11px', color: C.green, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Live</div>
           </div>
           {RADAR_COMING_SOON.map(t => (
             <div key={t.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '14px', opacity: 0.6 }}>
-              <div style={{ fontSize: '20px' }}>{t.icon}</div>
+              <div style={{ color: C.muted }}>{t.Icon(20)}</div>
               <div style={{ fontWeight: 700, marginTop: '4px' }}>{t.name}</div>
               <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Coming soon</div>
             </div>
           ))}
           <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '14px', opacity: 0.6 }}>
-            <div style={{ fontSize: '20px' }}>💥</div>
+            <div style={{ color: C.muted }}>{RICON_LIQUIDATION(20)}</div>
             <div style={{ fontWeight: 700, marginTop: '4px' }}>Liquidations</div>
             <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Coming soon</div>
           </div>
@@ -5790,7 +5883,7 @@ const RadarSettings = () => {
       {/* ── Section 2: Crypto watchlist ── */}
       <SettingsCard title="Crypto watchlist">
         <div style={{ fontSize: '12px', color: C.muted, marginBottom: '12px' }}>
-          Add tokens by name (search powered by CoinGecko). Each entry appears in your daily digest and is evaluated for movement and volume alerts.
+          Add tokens by name. Each entry appears in your daily market update and is evaluated for movement and volume alerts.
         </div>
 
         <div style={{ position: 'relative', marginBottom: '12px' }}>
@@ -5870,7 +5963,7 @@ const RadarSettings = () => {
               <input type="checkbox" checked={!!s.daily_enabled}
                 onChange={e => setField('daily_enabled')(e.target.checked ? 1 : 0)}
                 style={{ accentColor: C.gold }} />
-              Post a daily snapshot in your configured crypto channel.
+              Post a daily market update in your configured crypto channel.
             </label>
           </Field>
           <Field label="Channel" hint="Where the digest is posted.">
@@ -5935,6 +6028,12 @@ const RadarSettings = () => {
             </button>
           )}
         </div>
+
+        {/* ── Digest Style sub-section ── */}
+        <RadarDigestStyle
+          settings={s}
+          setField={setField}
+        />
       </SettingsCard>
 
       {/* ── Section 4: Alerts ── */}
@@ -5981,7 +6080,7 @@ const RadarSettings = () => {
       <SettingsCard title="Live preview">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
           <div style={{ fontSize: '12px', color: C.muted }}>
-            Live snapshots over your crypto watchlist. Auto refresh every 30 seconds while this tab is visible.
+            Live prices over your crypto watchlist. Auto refresh every 30 seconds while this tab is visible.
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ fontSize: '11px', color: C.muted }}>
@@ -5989,7 +6088,9 @@ const RadarSettings = () => {
             </span>
             <button onClick={handlePreviewRefresh} disabled={previewRefreshing}
               style={{ background: 'rgba(200,168,78,0.10)', border: '1px solid rgba(200,168,78,0.25)', borderRadius: '8px', padding: '6px 12px', color: C.gold, cursor: previewRefreshing ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600, opacity: previewRefreshing ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              {previewRefreshing && <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', border: '2px solid currentColor', borderTopColor: 'transparent', animation: 'avspin 0.8s linear infinite' }} />}
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '12px', height: '12px', animation: previewRefreshing ? 'avspin 0.8s linear infinite' : 'none' }}>
+                {RICON_REFRESH(12)}
+              </span>
               {previewRefreshing ? 'Refreshing…' : 'Refresh now'}
             </button>
             <style>{`@keyframes avspin{to{transform:rotate(360deg)}}`}</style>
@@ -6202,6 +6303,109 @@ const RadarLiveCard = ({ entry }) => {
 // some production browsers (no satellite-antenna glyph in the user's font
 // stack), so Radar specifically uses an SVG node. NavBtn detects React
 // nodes vs string emojis and renders both correctly.
+
+// ── Digest Style sub-section ────────────────────────────────────────────────
+// Per-guild customization for the digest embed. Mirrors the Embed Message
+// editor pattern (live Discord-style preview to the right). Defaults match
+// the news-y defaults in services/radar/digest.py so the preview shows the
+// same fallback text the bot will post when a field is left empty.
+const RadarDigestStyle = ({ settings, setField }) => {
+  const s = settings || {};
+  const title  = s.digest_title  || '';
+  const intro  = s.digest_intro  || '';
+  const color  = s.digest_color  || '';
+  const footer = s.digest_footer || '';
+  const thumbMode = s.digest_thumbnail_mode || 'brand';
+
+  const liveTitle  = title || RADAR_DIGEST_DEFAULTS.title;
+  const liveIntro  = intro || RADAR_DIGEST_DEFAULTS.intro;
+  const liveColor  = /^#?[0-9a-fA-F]{6}$/.test(color || '')
+    ? (color.startsWith('#') ? color : `#${color}`)
+    : RADAR_DIGEST_DEFAULTS.color;
+  const liveFooter = footer || RADAR_DIGEST_DEFAULTS.footer;
+
+  const today = new Date();
+  const monthLabel = today.toLocaleString('en-US', { month: 'short', day: 'numeric' });
+
+  return (
+    <div style={{ marginTop: '18px', paddingTop: '14px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      <div style={{ fontSize: '12px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
+        Digest Style
+      </div>
+      <div style={{ fontSize: '11px', color: C.muted, marginBottom: '14px' }}>
+        Tailor how the digest embed looks. Empty fields fall back to the news-style defaults shown in the preview.
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '20px', alignItems: 'flex-start' }}>
+        {/* ── Inputs column ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <Field label="Title" hint={`Leave empty for default: "${RADAR_DIGEST_DEFAULTS.title}".`}>
+            <Input value={title} onChange={setField('digest_title')}
+              placeholder={RADAR_DIGEST_DEFAULTS.title} />
+          </Field>
+          <Field label="Intro" hint="Shown above the per-token list. Leave empty for default.">
+            <Textarea value={intro} onChange={setField('digest_intro')}
+              placeholder={RADAR_DIGEST_DEFAULTS.intro} rows={2} />
+          </Field>
+          <FieldRow>
+            <Field label="Color" hint="Hex color, e.g. #C8A84E. Empty uses your brand color.">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input type="color"
+                  value={liveColor}
+                  onChange={e => setField('digest_color')(e.target.value)}
+                  style={{ width: '36px', height: '36px', padding: 0, border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', background: 'transparent', cursor: 'pointer' }} />
+                <Input value={color}
+                  onChange={setField('digest_color')}
+                  placeholder="#C8A84E" />
+              </div>
+            </Field>
+            <Field label="Thumbnail mode" hint="Brand thumbnail, first watchlist coin's logo, or no thumbnail.">
+              <select value={thumbMode}
+                onChange={e => setField('digest_thumbnail_mode')(e.target.value)}
+                style={{ width: '100%', background: '#1a1a22', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', fontFamily: 'Sora, sans-serif', outline: 'none', cursor: 'pointer' }}>
+                {RADAR_THUMBNAIL_MODES.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </Field>
+          </FieldRow>
+          <Field label="Footer" hint={`Leave empty for the brand footer ("${RADAR_DIGEST_DEFAULTS.footer}").`}>
+            <Input value={footer} onChange={setField('digest_footer')}
+              placeholder={RADAR_DIGEST_DEFAULTS.footer} />
+          </Field>
+        </div>
+
+        {/* ── Live Discord-style preview ── */}
+        <div>
+          <div style={{ fontSize: '11px', color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
+            Preview
+          </div>
+          <div style={{ background: '#1e1f22', borderRadius: '8px', padding: '14px 16px', borderLeft: `4px solid ${liveColor}`, fontFamily: 'Whitney, Sora, sans-serif' }}>
+            <div style={{ fontWeight: 700, fontSize: '15px', color: '#fff', marginBottom: '4px' }}>
+              📊 {liveTitle} — {monthLabel} (UTC+00:00)
+            </div>
+            <div style={{ color: 'rgba(255,255,255,0.82)', fontSize: '13px', lineHeight: 1.5, marginBottom: '10px', whiteSpace: 'pre-wrap' }}>
+              {liveIntro}
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '4px', padding: '8px 10px', fontFamily: 'monospace', fontSize: '12px', color: 'rgba(255,255,255,0.85)' }}>
+              <div style={{ color: C.muted, fontSize: '10px', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Your Watchlist</div>
+              <div>{'BTC      $68,234.00  +2.30%'}</div>
+              <div>{'ETH      $3,456.00   -0.80%'}</div>
+              <div>{'SOL      $156.40     +5.10%'}</div>
+            </div>
+            <div style={{ marginTop: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
+              {liveFooter}
+            </div>
+          </div>
+          <div style={{ fontSize: '10px', color: C.muted, marginTop: '6px', textAlign: 'center' }}>
+            Brand color and brand footer apply unless overridden above.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const RadarNavIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
        stroke="currentColor" strokeWidth="2" strokeLinecap="round"
