@@ -262,11 +262,17 @@ export const fetchRadarPreview = (sid, kind, identifier) =>
 export const fetchRadarRecentAlerts = (sid, limit = 50) =>
   apiFetch(`/api/servers/${sid}/radar/alerts/recent?limit=${limit}`);
 
-export const sendRadarDigestNow = (sid) =>
-  apiFetch(`/api/servers/${sid}/radar/digest/send-now`, { method: 'POST' });
+export const sendRadarDigestNow = (sid, topic) =>
+  apiFetch(`/api/servers/${sid}/radar/digest/send-now`, {
+    method: 'POST',
+    body: JSON.stringify({ topic }),
+  });
 
-export const refreshRadarPreview = (sid) =>
-  apiFetch(`/api/servers/${sid}/radar/preview-refresh`, { method: 'POST' });
+export const refreshRadarPreview = (sid, topic) =>
+  apiFetch(`/api/servers/${sid}/radar/preview-refresh`, {
+    method: 'POST',
+    body: JSON.stringify(topic ? { topic } : {}),
+  });
 
 export const resolveRadarMeme = (sid, input) =>
   apiFetch(`/api/servers/${sid}/radar/watchlist/resolve`, {
