@@ -89,8 +89,9 @@ const Label = ({ children, hint }) => (
   </div>
 );
 
-const Input = ({ value, onChange, placeholder, type = 'text', style }) => (
+const Input = ({ value, onChange, placeholder, type = 'text', style, disabled = false }) => (
   <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+    disabled={disabled}
     style={{ width: '100%', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', fontFamily: 'Sora, sans-serif', outline: 'none', transition: 'border-color 0.2s', boxSizing: 'border-box', ...style }}
     onFocus={e => e.target.style.borderColor = 'rgba(200,168,78,0.5)'}
     onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.08)'} />
@@ -5644,6 +5645,25 @@ const RADAR_TOPIC_DEFAULTS = () => ({
   movement_threshold_pct:      5.0,
   volume_multiplier_threshold: 3.0,
   alerts_mention_role_ids:     [],
+  // Phase 3 — multi-timeframe watchlist alerts (research-based defaults).
+  alert_1h_threshold_pct:      3.0,
+  alert_24h_threshold_pct:     8.0,
+  alert_7d_threshold_pct:      20.0,
+  alert_volume_multiplier:     2.5,
+  alert_1h_enabled:            1,
+  alert_24h_enabled:           1,
+  alert_7d_enabled:            0,
+  alert_volume_enabled:        1,
+  // Phase 3 — Trending Discovery (meme + nft only).
+  discovery_enabled:                   0,
+  discovery_channel:                   '',
+  discovery_mention_role_ids:          [],
+  discovery_min_liquidity_usd:         50000,
+  discovery_min_volume_24h_usd:        100000,
+  discovery_min_age_hours:             24,
+  discovery_min_change_1h_pct:         30.0,
+  discovery_min_volume_change_24h_pct: 50.0,
+  discovery_min_sales_24h:             10,
   digest_title:                '',
   digest_intro:                '',
   digest_color:                '',
@@ -5667,6 +5687,13 @@ function radarTopicDiffers(local, persisted) {
     'alerts_enabled','alerts_channel',
     'movement_threshold_pct','volume_multiplier_threshold',
     'alerts_mention_role_ids',
+    'alert_1h_threshold_pct','alert_24h_threshold_pct','alert_7d_threshold_pct',
+    'alert_volume_multiplier',
+    'alert_1h_enabled','alert_24h_enabled','alert_7d_enabled','alert_volume_enabled',
+    'discovery_enabled','discovery_channel','discovery_mention_role_ids',
+    'discovery_min_liquidity_usd','discovery_min_volume_24h_usd',
+    'discovery_min_age_hours','discovery_min_change_1h_pct',
+    'discovery_min_volume_change_24h_pct','discovery_min_sales_24h',
     'digest_title','digest_intro','digest_color','digest_footer',
     'digest_thumbnail_mode','digest_date_mode',
   ];
@@ -5796,6 +5823,27 @@ const RadarSettings = () => {
     alerts_mention_role_ids:     Array.isArray(topicForms[t].alerts_mention_role_ids)
                                    ? topicForms[t].alerts_mention_role_ids
                                    : parseRoleIdInput(topicForms[t].alerts_mention_role_ids || ''),
+    // Phase 3 — multi-timeframe watchlist alerts.
+    alert_1h_threshold_pct:      Number(topicForms[t].alert_1h_threshold_pct ?? 3),
+    alert_24h_threshold_pct:     Number(topicForms[t].alert_24h_threshold_pct ?? 8),
+    alert_7d_threshold_pct:      Number(topicForms[t].alert_7d_threshold_pct ?? 20),
+    alert_volume_multiplier:     Number(topicForms[t].alert_volume_multiplier ?? 2.5),
+    alert_1h_enabled:            topicForms[t].alert_1h_enabled ? 1 : 0,
+    alert_24h_enabled:           topicForms[t].alert_24h_enabled ? 1 : 0,
+    alert_7d_enabled:            topicForms[t].alert_7d_enabled ? 1 : 0,
+    alert_volume_enabled:        topicForms[t].alert_volume_enabled ? 1 : 0,
+    // Phase 3 — Trending Discovery (meme + nft).
+    discovery_enabled:           topicForms[t].discovery_enabled ? 1 : 0,
+    discovery_channel:           String(topicForms[t].discovery_channel || ''),
+    discovery_mention_role_ids:  Array.isArray(topicForms[t].discovery_mention_role_ids)
+                                   ? topicForms[t].discovery_mention_role_ids
+                                   : parseRoleIdInput(topicForms[t].discovery_mention_role_ids || ''),
+    discovery_min_liquidity_usd:         Number(topicForms[t].discovery_min_liquidity_usd ?? 50000),
+    discovery_min_volume_24h_usd:        Number(topicForms[t].discovery_min_volume_24h_usd ?? 100000),
+    discovery_min_age_hours:             Number(topicForms[t].discovery_min_age_hours ?? 24),
+    discovery_min_change_1h_pct:         Number(topicForms[t].discovery_min_change_1h_pct ?? 30),
+    discovery_min_volume_change_24h_pct: Number(topicForms[t].discovery_min_volume_change_24h_pct ?? 50),
+    discovery_min_sales_24h:             Number(topicForms[t].discovery_min_sales_24h ?? 10),
     digest_title:                topicForms[t].digest_title || '',
     digest_intro:                topicForms[t].digest_intro || '',
     digest_color:                topicForms[t].digest_color || '',
@@ -5974,6 +6022,11 @@ const RadarSettings = () => {
       {/* Movement alerts card for the active topic. */}
       <RadarTopicAlertsCard topic={activeTopic} form={topicForm} setField={setField} />
 
+      {/* Trending Discovery card — Memecoin + NFT only (not Crypto/Forex). */}
+      {(activeTopic === 'meme' || activeTopic === 'nft') && (
+        <RadarDiscoveryCard topic={activeTopic} form={topicForm} setField={setField} />
+      )}
+
       {/* Digest Style card for the active topic. */}
       <SettingsCard title="Digest Style">
         <RadarDigestStyle settings={{ ...topicForm, timezone_offset: globalForm.timezone_offset }}
@@ -6089,52 +6142,241 @@ const RadarTopicDailyCard = ({ topic, serverId, form, setField, showMsg, onSent 
   );
 };
 
-const RadarTopicAlertsCard = ({ topic, form, setField }) => (
-  <SettingsCard title="Movement alerts">
-    <FieldRow>
-      <Field label="Enable alerts">
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: C.muted }}>
-          <input type="checkbox" checked={!!form.alerts_enabled}
-            onChange={e => setField('alerts_enabled')(e.target.checked ? 1 : 0)}
-            style={{ accentColor: C.gold }} />
-          Post alerts when this topic's tokens move sharply or see a volume spike.
-        </label>
-      </Field>
-      <Field label="Channel">
-        <RadarChannelInput value={form.alerts_channel || ''}
-          onChange={setField('alerts_channel')} />
-      </Field>
-    </FieldRow>
-    <FieldRow>
-      <Field label="Movement threshold (%)" hint="Alert when 1h change crosses this value, up or down. Per-asset cooldown is 1 hour per direction.">
-        <Input type="number" value={(form.movement_threshold_pct ?? 5) + ''}
-          onChange={v => setField('movement_threshold_pct')(Number(v))}
-          placeholder="5" style={{ maxWidth: '120px' }} />
-      </Field>
-      {topic !== 'forex' ? (
-        <Field label="Volume multiplier" hint="Alert when 24h volume crosses this multiple of the median recent baseline. Cooldown is 1 hour per asset.">
-          <Input type="number" value={(form.volume_multiplier_threshold ?? 3) + ''}
-            onChange={v => setField('volume_multiplier_threshold')(Number(v))}
-            placeholder="3" style={{ maxWidth: '120px' }} />
+// One timeframe row: an enable toggle + a threshold input. Used by the
+// multi-timeframe alerts card so every timeframe is independently switchable.
+const RadarTimeframeRow = ({ label, enabledKey, thresholdKey, form, setField,
+                             suffix = '%', min, max, recommended, note }) => {
+  const on = !!form[enabledKey];
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', minWidth: '170px' }}>
+        <input type="checkbox" checked={on}
+          onChange={e => setField(enabledKey)(e.target.checked ? 1 : 0)}
+          style={{ accentColor: C.gold }} />
+        <span style={{ fontSize: '13px', color: '#fff', fontWeight: 600 }}>{label}</span>
+      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <Input type="number" value={(form[thresholdKey] ?? recommended) + ''}
+          onChange={v => setField(thresholdKey)(Number(v))}
+          disabled={!on}
+          placeholder={String(recommended)}
+          style={{ maxWidth: '100px', opacity: on ? 1 : 0.45 }} />
+        <span style={{ fontSize: '13px', color: C.muted }}>{suffix}</span>
+      </div>
+      <span style={{ fontSize: '11px', color: C.muted, flex: 1, minWidth: '160px' }}>
+        {note || `Recommended ${recommended}${suffix}. Allowed ${min}${suffix} to ${max}${suffix}.`}
+      </span>
+    </div>
+  );
+};
+
+// Multi-timeframe watchlist alerts. 1h / 24h / 7d each fire independently
+// (direction from the sign of the change); volume spike is a separate
+// toggle. Forex hides the volume row (no liquidity metric) and notes that
+// its 1h check falls back to the 24h delta (Frankfurter is daily-cadence).
+const RadarTopicAlertsCard = ({ topic, form, setField }) => {
+  const isForex = topic === 'forex';
+  return (
+    <SettingsCard title="Movement alerts">
+      <FieldRow>
+        <Field label="Enable alerts">
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: C.muted }}>
+            <input type="checkbox" checked={!!form.alerts_enabled}
+              onChange={e => setField('alerts_enabled')(e.target.checked ? 1 : 0)}
+              style={{ accentColor: C.gold }} />
+            Post alerts when a watchlist asset moves sharply on a timeframe below.
+          </label>
         </Field>
+        <Field label="Channel">
+          <RadarChannelInput value={form.alerts_channel || ''}
+            onChange={setField('alerts_channel')} />
+        </Field>
+      </FieldRow>
+
+      <div style={{ marginTop: '6px' }}>
+        <div style={{ fontSize: '12px', color: C.muted, marginBottom: '4px' }}>
+          Recommended: 3% / 8% / 20% — major moves only. Each timeframe fires
+          on a move in either direction with a 1 hour per-asset cooldown.
+        </div>
+        <RadarTimeframeRow label="1 hour change"
+          enabledKey="alert_1h_enabled" thresholdKey="alert_1h_threshold_pct"
+          form={form} setField={setField} recommended={3} min={1} max={20}
+          note={isForex ? 'Forex has no hourly feed — this falls back to the 24h delta. Allowed 1% to 20%.' : undefined} />
+        <RadarTimeframeRow label="24 hour change"
+          enabledKey="alert_24h_enabled" thresholdKey="alert_24h_threshold_pct"
+          form={form} setField={setField} recommended={8} min={3} max={50} />
+        <RadarTimeframeRow label="7 day change"
+          enabledKey="alert_7d_enabled" thresholdKey="alert_7d_threshold_pct"
+          form={form} setField={setField} recommended={20} min={10} max={100}
+          note={isForex ? 'Off by default. Forex moves slowly; 10% to 100% allowed.' : 'Off by default — weekly moves are high confidence. Allowed 10% to 100%.'} />
+        {!isForex && (
+          <RadarTimeframeRow label="Volume spike"
+            enabledKey="alert_volume_enabled" thresholdKey="alert_volume_multiplier"
+            form={form} setField={setField} suffix="x" recommended={2.5} min={1.5} max={10}
+            note="Fires when 24h volume crosses this multiple of the recent baseline. Allowed 1.5x to 10x." />
+        )}
+      </div>
+
+      <Field label="Mention roles"
+        hint="Role IDs, comma separated (spaces OK). Each role gets pinged on every alert.">
+        <Input
+          value={Array.isArray(form.alerts_mention_role_ids)
+            ? form.alerts_mention_role_ids.join(', ')
+            : (form.alerts_mention_role_ids || '')}
+          onChange={v => setField('alerts_mention_role_ids')(parseRoleIdInput(v))}
+          placeholder="1234567890, 9876543210" />
+      </Field>
+    </SettingsCard>
+  );
+};
+
+// ── Trending Discovery card (Memecoin + NFT only) ────────────────────────
+// A separate subsystem from the watchlist: a background scanner surfaces
+// tokens / collections that are pumping right now, filtered by quality
+// thresholds. Buy signal only — no dump alerts. Each asset is posted at
+// most once per cooldown window (12h meme, 24h nft).
+const RADAR_DISCOVERY_FAKE = {
+  meme: {
+    title: '🚀 Memecoin Pumping — $WAGMI',
+    lines: [
+      '**Price:** $0.004210',
+      '**1h change:** +42.0%',
+      '**Liquidity:** $182,400',
+      '**24h volume:** $1,240,000',
+      '**Pair age:** 3.5 days',
+      '**Chain:** SOLANA',
+      '**DEX:** raydium',
+    ],
+  },
+  nft: {
+    title: '🎨 NFT Heating Up — Sample Collection',
+    lines: [
+      '**Floor:** $1,820.00',
+      '**Floor change 24h:** +6.40%',
+      '**24h volume:** $640,000',
+      '**Volume change 24h:** +120.0%',
+      '**Sales last 24h:** 84',
+    ],
+  },
+};
+
+const RadarDiscoveryPreview = ({ topic }) => {
+  const sample = RADAR_DISCOVERY_FAKE[topic];
+  if (!sample) return null;
+  return (
+    <div style={{ marginTop: '14px' }}>
+      <div style={{ fontSize: '11px', color: C.muted, marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        Live preview (sample data)
+      </div>
+      <div style={{ display: 'flex', gap: '12px', background: '#2b2d31', borderRadius: '8px', padding: '14px 16px', borderLeft: `4px solid ${C.gold}`, maxWidth: '460px' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ color: '#fff', fontSize: '14px', fontWeight: 700, marginBottom: '6px' }}>{sample.title}</div>
+          {sample.lines.map((ln, i) => {
+            const [k, ...rest] = ln.replace(/\*\*/g, '').split(':');
+            return (
+              <div key={i} style={{ fontSize: '12px', color: 'rgba(255,255,255,0.82)', lineHeight: 1.7 }}>
+                <span style={{ color: C.muted }}>{k}:</span>{rest.join(':')}
+              </div>
+            );
+          })}
+          <div style={{ fontSize: '11px', color: C.gold, marginTop: '8px' }}>Open on {topic === 'meme' ? 'DEXScreener' : 'OpenSea'}</div>
+        </div>
+        <div style={{ width: '52px', height: '52px', borderRadius: '8px', background: 'rgba(200,168,78,0.12)', flexShrink: 0 }} />
+      </div>
+    </div>
+  );
+};
+
+const RadarDiscoveryCard = ({ topic, form, setField }) => {
+  if (topic !== 'meme' && topic !== 'nft') return null;
+  const isMeme = topic === 'meme';
+  return (
+    <SettingsCard title="Trending Discovery">
+      <div style={{ fontSize: '12px', color: C.muted, marginBottom: '12px', lineHeight: 1.6 }}>
+        Surfaces tokens and collections currently pumping. Buy signal only — no
+        dump alerts. Each asset is alerted at most once per {isMeme ? '12 hours' : '24 hours'}.
+        This is separate from your watchlist.
+      </div>
+      <FieldRow>
+        <Field label="Enable discovery">
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: C.muted }}>
+            <input type="checkbox" checked={!!form.discovery_enabled}
+              onChange={e => setField('discovery_enabled')(e.target.checked ? 1 : 0)}
+              style={{ accentColor: C.gold }} />
+            Scan {isMeme ? 'DEXScreener every 5 minutes' : 'Reservoir every 10 minutes'} and post buy signals.
+          </label>
+        </Field>
+        <Field label="Discovery channel">
+          <RadarChannelInput value={form.discovery_channel || ''}
+            onChange={setField('discovery_channel')} />
+        </Field>
+      </FieldRow>
+
+      {isMeme ? (
+        <>
+          <FieldRow>
+            <Field label="Min liquidity (USD)" hint="Rug filter. Recommended 50,000.">
+              <Input type="number" value={(form.discovery_min_liquidity_usd ?? 50000) + ''}
+                onChange={v => setField('discovery_min_liquidity_usd')(Number(v))}
+                placeholder="50000" style={{ maxWidth: '160px' }} />
+            </Field>
+            <Field label="Min 24h volume (USD)" hint="Recommended 100,000.">
+              <Input type="number" value={(form.discovery_min_volume_24h_usd ?? 100000) + ''}
+                onChange={v => setField('discovery_min_volume_24h_usd')(Number(v))}
+                placeholder="100000" style={{ maxWidth: '160px' }} />
+            </Field>
+          </FieldRow>
+          <FieldRow>
+            <Field label="Min pair age (hours)" hint="Older pairs are less likely rugs. Recommended 24.">
+              <Input type="number" value={(form.discovery_min_age_hours ?? 24) + ''}
+                onChange={v => setField('discovery_min_age_hours')(Number(v))}
+                placeholder="24" style={{ maxWidth: '120px' }} />
+            </Field>
+            <Field label="Min 1h change (%)" hint="Buy threshold. Recommended 30%.">
+              <Input type="number" value={(form.discovery_min_change_1h_pct ?? 30) + ''}
+                onChange={v => setField('discovery_min_change_1h_pct')(Number(v))}
+                placeholder="30" style={{ maxWidth: '120px' }} />
+            </Field>
+          </FieldRow>
+        </>
       ) : (
-        <Field label="Volume multiplier" hint="Forex does not have liquidity metrics; volume spike alerts are skipped.">
-          <Input value="not applicable" onChange={() => {}} placeholder="not applicable"
-            style={{ maxWidth: '160px', opacity: 0.5 }} />
-        </Field>
+        <>
+          <FieldRow>
+            <Field label="Min 24h volume (USD)" hint="Recommended 100,000.">
+              <Input type="number" value={(form.discovery_min_volume_24h_usd ?? 100000) + ''}
+                onChange={v => setField('discovery_min_volume_24h_usd')(Number(v))}
+                placeholder="100000" style={{ maxWidth: '160px' }} />
+            </Field>
+            <Field label="Min 24h volume change (%)" hint="How much hotter than yesterday. Recommended 50%.">
+              <Input type="number" value={(form.discovery_min_volume_change_24h_pct ?? 50) + ''}
+                onChange={v => setField('discovery_min_volume_change_24h_pct')(Number(v))}
+                placeholder="50" style={{ maxWidth: '140px' }} />
+            </Field>
+          </FieldRow>
+          <FieldRow>
+            <Field label="Min sales (24h)" hint="Real demand filter. Recommended 10.">
+              <Input type="number" value={(form.discovery_min_sales_24h ?? 10) + ''}
+                onChange={v => setField('discovery_min_sales_24h')(Number(v))}
+                placeholder="10" style={{ maxWidth: '120px' }} />
+            </Field>
+          </FieldRow>
+        </>
       )}
-    </FieldRow>
-    <Field label="Mention roles"
-      hint="Role IDs, comma separated (spaces OK). Each role gets pinged on every movement or volume alert.">
-      <Input
-        value={Array.isArray(form.alerts_mention_role_ids)
-          ? form.alerts_mention_role_ids.join(', ')
-          : (form.alerts_mention_role_ids || '')}
-        onChange={v => setField('alerts_mention_role_ids')(parseRoleIdInput(v))}
-        placeholder="1234567890, 9876543210" />
-    </Field>
-  </SettingsCard>
-);
+
+      <Field label="Mention roles"
+        hint="Role IDs, comma separated (spaces OK). Pinged on every discovery alert.">
+        <Input
+          value={Array.isArray(form.discovery_mention_role_ids)
+            ? form.discovery_mention_role_ids.join(', ')
+            : (form.discovery_mention_role_ids || '')}
+          onChange={v => setField('discovery_mention_role_ids')(parseRoleIdInput(v))}
+          placeholder="1234567890, 9876543210" />
+      </Field>
+
+      <RadarDiscoveryPreview topic={topic} />
+    </SettingsCard>
+  );
+};
 
 const RadarTopicLivePreview = ({ topic, watchlist, serverId, showMsg }) => {
   const [refreshing, setRefreshing] = useState(false);
@@ -6331,7 +6573,22 @@ const RadarSearchAddBlock = ({ kind, serverId, refresh, showMsg }) => {
   const [results,  setResults]  = useState([]);
   const [open,     setOpen]     = useState(false);
   const [pending,  setPending]  = useState(false);
+  // When an adapter is env-gated off (e.g. NFT without RESERVOIR_API_KEY)
+  // the search endpoint returns a `note` describing how to enable it. We
+  // surface that exact message inline instead of a generic "search failed".
+  const [note,     setNote]     = useState('');
   const timerRef = useRef(null);
+
+  // Probe once on mount so a disabled adapter shows its hint even before
+  // the admin types anything.
+  useEffect(() => {
+    if (!serverId) return;
+    let alive = true;
+    searchRadarAsset(serverId, kind, '')
+      .then(r => { if (alive) setNote(r?.note || ''); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [kind, serverId]);
 
   useEffect(() => {
     if (!serverId) return;
@@ -6341,7 +6598,7 @@ const RadarSearchAddBlock = ({ kind, serverId, refresh, showMsg }) => {
     setPending(true);
     timerRef.current = setTimeout(() => {
       searchRadarAsset(serverId, kind, term)
-        .then(r => setResults(r?.suggestions || []))
+        .then(r => { setResults(r?.suggestions || []); setNote(r?.note || ''); })
         .catch(() => setResults([]))
         .finally(() => setPending(false));
     }, 350);
@@ -6372,6 +6629,16 @@ const RadarSearchAddBlock = ({ kind, serverId, refresh, showMsg }) => {
       showMsg('Added.');
     } catch (e) { showMsg(e.message, 'err'); }
   };
+
+  // Adapter disabled (e.g. NFT without RESERVOIR_API_KEY): show the exact
+  // server-supplied hint and hide the search box entirely.
+  if (note) {
+    return (
+      <div style={{ background: 'rgba(237,66,69,0.06)', border: '1px solid rgba(237,66,69,0.25)', borderRadius: '8px', padding: '10px 14px', color: C.red, fontSize: '12px', marginBottom: '12px' }}>
+        {note}
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: 'relative', marginBottom: '12px' }}>
