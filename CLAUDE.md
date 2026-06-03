@@ -41,7 +41,7 @@ public/
 ### Owner gate
 ```jsx
 const isOwner = ['user_id','id','sub','discord_id']
-  .some(k => String(user?.[k] || '') === '461460143345927306');
+  .some(k => String(user?.[k] || '') === '461460143343927306');
 ```
 
 ### Inline styled card
