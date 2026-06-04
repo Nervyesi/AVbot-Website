@@ -5988,7 +5988,7 @@ const RadarSettings = () => {
         label={RADAR_TOPIC_TABS.find(t => t.id === activeTopic)?.label || 'Watchlist'}
         hint={
           activeTopic === 'crypto' ? 'Add tokens by name. Each entry appears in your daily market update and is evaluated for movement and volume alerts.'
-        : activeTopic === 'nft'    ? 'Add Reservoir collections by name. Each entry appears in your daily market update and is evaluated for movement and volume alerts.'
+        : activeTopic === 'nft'    ? 'Pick a chain and enter the OpenSea collection slug (e.g. pudgypenguins). Each entry appears in your daily market update and is evaluated for movement and volume alerts.'
         : activeTopic === 'meme'   ? 'Paste a DEXScreener URL or chain:address. Click Resolve to preview, then confirm to add.'
         : activeTopic === 'forex'  ? 'Pick two currencies. Movement alerts use the 24h delta because Frankfurter is daily-cadence.'
         : ''}
@@ -6249,11 +6249,11 @@ const RADAR_DISCOVERY_FAKE = {
     ],
   },
   nft: {
-    title: '🎨 NFT Heating Up — Sample Collection',
+    title: '🎨 NFT Heating Up: Sample Collection',
     lines: [
-      '**Floor:** $1,820.00',
-      '**Floor change 24h:** +6.40%',
-      '**24h volume:** $640,000',
+      '**Chain:** ETHEREUM',
+      '**Floor:** Ξ1.820',
+      '**24h volume:** Ξ640.00',
       '**Volume change 24h:** +120.0%',
       '**Sales last 24h:** 84',
     ],
@@ -6303,7 +6303,7 @@ const RadarDiscoveryCard = ({ topic, form, setField }) => {
             <input type="checkbox" checked={!!form.discovery_enabled}
               onChange={e => setField('discovery_enabled')(e.target.checked ? 1 : 0)}
               style={{ accentColor: C.gold }} />
-            Scan {isMeme ? 'DEXScreener every 5 minutes' : 'Reservoir every 10 minutes'} and post buy signals.
+            Scan {isMeme ? 'DEXScreener every 5 minutes' : 'OpenSea every 10 minutes'} and post buy signals.
           </label>
         </Field>
         <Field label="Discovery channel">
@@ -6342,24 +6342,20 @@ const RadarDiscoveryCard = ({ topic, form, setField }) => {
       ) : (
         <>
           <FieldRow>
-            <Field label="Min 24h volume (USD)" hint="Recommended 100,000.">
-              <Input type="number" value={(form.discovery_min_volume_24h_usd ?? 100000) + ''}
-                onChange={v => setField('discovery_min_volume_24h_usd')(Number(v))}
-                placeholder="100000" style={{ maxWidth: '160px' }} />
-            </Field>
             <Field label="Min 24h volume change (%)" hint="How much hotter than yesterday. Recommended 50%.">
               <Input type="number" value={(form.discovery_min_volume_change_24h_pct ?? 50) + ''}
                 onChange={v => setField('discovery_min_volume_change_24h_pct')(Number(v))}
                 placeholder="50" style={{ maxWidth: '140px' }} />
             </Field>
-          </FieldRow>
-          <FieldRow>
             <Field label="Min sales (24h)" hint="Real demand filter. Recommended 10.">
               <Input type="number" value={(form.discovery_min_sales_24h ?? 10) + ''}
                 onChange={v => setField('discovery_min_sales_24h')(Number(v))}
                 placeholder="10" style={{ maxWidth: '120px' }} />
             </Field>
           </FieldRow>
+          <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px' }}>
+            Collections scanned across Ethereum, Base and Solana. Floor and volume are in each chain's native token; dust collections below a small floor are skipped automatically.
+          </div>
         </>
       )}
 
@@ -6453,6 +6449,21 @@ const chainBgColor = (chain) => CHAIN_COLORS[(chain || '').toLowerCase()] || '#6
 const chainFromIdentifier = (identifier) =>
   (identifier && identifier.includes(':')) ? identifier.split(':')[0].toLowerCase() : '';
 
+// NFT chains supported by the OpenSea v2 adapter. Used by the NFT add UI's
+// chain selector; the watchlist identifier is '<chain>:<slug>'.
+const NFT_CHAINS = [
+  { code: 'ethereum',  label: 'Ethereum' },
+  { code: 'polygon',   label: 'Polygon' },
+  { code: 'base',      label: 'Base' },
+  { code: 'arbitrum',  label: 'Arbitrum' },
+  { code: 'optimism',  label: 'Optimism' },
+  { code: 'solana',    label: 'Solana' },
+  { code: 'avalanche', label: 'Avalanche' },
+  { code: 'zora',      label: 'Zora' },
+  { code: 'blast',     label: 'Blast' },
+  { code: 'sei',       label: 'Sei' },
+];
+
 // Static currency list so the Forex add dropdowns always have options even if
 // the live currency lookup is empty/slow. Frankfurter covers all of these.
 const FOREX_CURRENCIES = [
@@ -6468,13 +6479,18 @@ const FOREX_CURRENCIES = [
   { identifier: 'TRY', name: 'Turkish Lira' },
 ];
 
-function fmtRadarPrice(v) {
+// Honors the snapshot's display symbol (NFT floor in Ξ,
+// forex in the quote currency, etc.). Single-char glyphs prefix the number;
+// multi-char tickers (SOL, AVAX) follow it.
+function fmtRadarPriceSym(v, sym) {
   if (v == null) return '—';
   const n = Number(v);
   if (!Number.isFinite(n)) return '—';
-  if (n >= 1000) return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-  if (n >= 1)    return `$${n.toLocaleString(undefined, { maximumFractionDigits: 4 })}`;
-  return `$${n.toFixed(6)}`;
+  const s = sym || '$';
+  const body = n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+            : n >= 1    ? n.toLocaleString(undefined, { maximumFractionDigits: 4 })
+            : n.toFixed(6);
+  return s.length === 1 ? `${s}${body}` : `${body} ${s}`;
 }
 
 function secondsAgo(ts) {
@@ -6607,13 +6623,15 @@ const RadarWatchlistByKind = ({
 };
 
 const RadarSearchAddBlock = ({ kind, serverId, refresh, showMsg }) => {
+  const isNft = kind === 'nft';
   const [q,        setQ]        = useState('');
+  const [nftChain, setNftChain] = useState('ethereum');
   const [results,  setResults]  = useState([]);
   const [open,     setOpen]     = useState(false);
   const [pending,  setPending]  = useState(false);
-  // When an adapter is env-gated off (e.g. NFT without RESERVOIR_API_KEY)
-  // the search endpoint returns a `note` describing how to enable it. We
-  // surface that exact message inline instead of a generic "search failed".
+  // When an adapter is env-gated off (e.g. NFT without OPENSEA_API_KEY) the
+  // search endpoint returns a `note` describing how to enable it. We surface
+  // that exact message inline instead of a generic "search failed".
   const [note,     setNote]     = useState('');
   const timerRef = useRef(null);
 
@@ -6634,14 +6652,17 @@ const RadarSearchAddBlock = ({ kind, serverId, refresh, showMsg }) => {
     const term = (q || '').trim();
     if (term.length < 2) { setResults([]); setPending(false); return; }
     setPending(true);
+    // OpenSea has no fuzzy name search, so for NFT the query resolves a
+    // '<chain>:<slug>'. Crypto stays a plain CoinGecko search term.
+    const lookup = kind === 'nft' ? `${nftChain}:${term}` : term;
     timerRef.current = setTimeout(() => {
-      searchRadarAsset(serverId, kind, term)
+      searchRadarAsset(serverId, kind, lookup)
         .then(r => { setResults(r?.suggestions || []); setNote(r?.note || ''); })
         .catch(() => setResults([]))
         .finally(() => setPending(false));
     }, 350);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [q, kind, serverId]);
+  }, [q, kind, serverId, nftChain]);
 
   const handleAdd = async (sug) => {
     try {
@@ -6658,9 +6679,10 @@ const RadarSearchAddBlock = ({ kind, serverId, refresh, showMsg }) => {
   const handleAddRaw = async () => {
     const term = (q || '').trim();
     if (!term) return;
+    const ident = isNft && !term.includes(':') ? `${nftChain}:${term}` : term;
     try {
       await addRadarWatchlistEntry(serverId, {
-        asset_kind: kind, asset_identifier: term,
+        asset_kind: kind, asset_identifier: ident,
       });
       setQ(''); setResults([]); setOpen(false);
       await refresh();
@@ -6668,7 +6690,7 @@ const RadarSearchAddBlock = ({ kind, serverId, refresh, showMsg }) => {
     } catch (e) { showMsg(e.message, 'err'); }
   };
 
-  // Adapter disabled (e.g. NFT without RESERVOIR_API_KEY): show the exact
+  // Adapter disabled (e.g. NFT without OPENSEA_API_KEY): show the exact
   // server-supplied hint and hide the search box entirely.
   if (note) {
     return (
@@ -6678,41 +6700,55 @@ const RadarSearchAddBlock = ({ kind, serverId, refresh, showMsg }) => {
     );
   }
 
+  const selectStyle = { background: '#1a1a22', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', fontFamily: 'Sora, sans-serif', outline: 'none', cursor: 'pointer', minWidth: '130px' };
+
   return (
-    <div style={{ position: 'relative', marginBottom: '12px' }}>
-      <Input value={q} onChange={(v) => { setQ(v); setOpen(true); }}
-        placeholder={kind === 'nft'
-          ? 'Search collection name (e.g. azuki, pudgypenguins)…'
-          : 'Search a token (e.g. bitcoin, ethereum, solana)…'} />
-      {open && ((q || '').trim().length >= 2) && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: '#16161e', border: `1px solid ${C.border}`, borderRadius: '10px', maxHeight: '280px', overflowY: 'auto', zIndex: 30, boxShadow: '0 12px 32px rgba(0,0,0,0.4)' }}>
-          {pending && (
-            <div style={{ padding: '10px 14px', color: C.muted, fontSize: '12px' }}>Searching…</div>
-          )}
-          {!pending && results.length === 0 && (
-            <button onClick={handleAddRaw}
-              style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '10px 14px', color: C.muted, fontSize: '12px', cursor: 'pointer', fontFamily: 'Sora, sans-serif' }}>
-              No suggestions. Add "{q.trim()}" anyway.
-            </button>
-          )}
-          {results.map((sug, i) => (
-            <button key={sug.identifier + i} onClick={() => handleAdd(sug)}
-              style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', borderBottom: i < results.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', padding: '10px 14px', color: '#fff', fontSize: '13px', cursor: 'pointer', fontFamily: 'Sora, sans-serif', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              {(sug.thumb || sug.image) && (
-                <img src={sug.thumb || sug.image} alt=""
-                  style={{ width: '20px', height: '20px', borderRadius: '50%' }} />
-              )}
-              <span style={{ flex: 1 }}>
-                {sug.symbol && <strong>{sug.symbol}</strong>}
-                <span style={{ color: C.muted, marginLeft: sug.symbol ? '8px' : 0 }}>{sug.name}</span>
-              </span>
-              {sug.market_cap_rank && (
-                <span style={{ color: C.muted, fontSize: '11px' }}>#{sug.market_cap_rank}</span>
-              )}
-            </button>
-          ))}
-        </div>
+    <div style={{ position: 'relative', marginBottom: '12px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+      {isNft && (
+        <select value={nftChain} onChange={e => setNftChain(e.target.value)} style={selectStyle}>
+          {NFT_CHAINS.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+        </select>
       )}
+      <div style={{ position: 'relative', flex: 1 }}>
+        <Input value={q} onChange={(v) => { setQ(v); setOpen(true); }}
+          placeholder={isNft
+            ? 'Collection slug (e.g. pudgypenguins, boredapeyachtclub)'
+            : 'Search a token (e.g. bitcoin, ethereum, solana)…'} />
+        {open && ((q || '').trim().length >= 2) && (
+          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: '#16161e', border: `1px solid ${C.border}`, borderRadius: '10px', maxHeight: '280px', overflowY: 'auto', zIndex: 30, boxShadow: '0 12px 32px rgba(0,0,0,0.4)' }}>
+            {pending && (
+              <div style={{ padding: '10px 14px', color: C.muted, fontSize: '12px' }}>Searching…</div>
+            )}
+            {!pending && results.length === 0 && (
+              <button onClick={handleAddRaw}
+                style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '10px 14px', color: C.muted, fontSize: '12px', cursor: 'pointer', fontFamily: 'Sora, sans-serif' }}>
+                {isNft ? `Add "${nftChain}:${q.trim()}" anyway.` : `No suggestions. Add "${q.trim()}" anyway.`}
+              </button>
+            )}
+            {results.map((sug, i) => (
+              <button key={sug.identifier + i} onClick={() => handleAdd(sug)}
+                style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', borderBottom: i < results.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', padding: '10px 14px', color: '#fff', fontSize: '13px', cursor: 'pointer', fontFamily: 'Sora, sans-serif', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {(sug.thumb || sug.image || sug.image_url) && (
+                  <img src={sug.thumb || sug.image || sug.image_url} alt=""
+                    style={{ width: '20px', height: '20px', borderRadius: '50%' }} />
+                )}
+                <span style={{ flex: 1 }}>
+                  {sug.symbol && <strong>{sug.symbol}</strong>}
+                  <span style={{ color: C.muted, marginLeft: sug.symbol ? '8px' : 0 }}>{sug.name}</span>
+                </span>
+                {sug.chain && (
+                  <span style={{ padding: '2px 7px', borderRadius: '999px', fontSize: '9px', fontFamily: 'monospace', fontWeight: 600, background: chainBgColor(sug.chain), color: '#fff', textTransform: 'uppercase' }}>
+                    {String(sug.chain).slice(0, 4)}
+                  </span>
+                )}
+                {sug.market_cap_rank && (
+                  <span style={{ color: C.muted, fontSize: '11px' }}>#{sug.market_cap_rank}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -6869,7 +6905,7 @@ const RadarLiveCard = ({ entry }) => {
   const ch1   = snap.change_1h_pct;
   const ch24  = snap.change_24h_pct;
   const name  = entry.display_name || snap.symbol_display || entry.asset_identifier;
-  const chain = entry.asset_kind === 'meme'
+  const chain = (entry.asset_kind === 'meme' || entry.asset_kind === 'nft')
     ? ((snap?.raw?.chain) || chainFromIdentifier(entry.asset_identifier))
     : '';
   const sparkSeries = Array.isArray(snap?.raw?.price_series)
@@ -6915,7 +6951,7 @@ const RadarLiveCard = ({ entry }) => {
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '10px' }}>
         <div>
           <div style={{ fontFamily: 'monospace', fontSize: '15px', fontWeight: 700 }}>
-            {fmtRadarPrice(price)}
+            {fmtRadarPriceSym(price, snap.price_display_symbol)}
           </div>
           <div style={{ display: 'flex', gap: '8px', fontSize: '11px', marginTop: '2px' }}>
             <span style={{ color: ch1  == null ? C.muted : (ch1  >= 0 ? C.green : C.red) }}>
