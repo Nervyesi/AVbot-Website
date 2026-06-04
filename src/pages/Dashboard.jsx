@@ -6430,6 +6430,44 @@ const RadarTopicLivePreview = ({ topic, watchlist, serverId, showMsg }) => {
 };
 
 
+// Memecoin chain chip colors (brand colors per chain). Mirrors the Discord
+// badge mapping in services/radar/chain_badges.py.
+const CHAIN_COLORS = {
+  solana:    '#9945FF',
+  ethereum:  '#627EEA',
+  base:      '#0052FF',
+  arbitrum:  '#28A0F0',
+  polygon:   '#8247E5',
+  bsc:       '#F0B90B',
+  optimism:  '#FF0420',
+  avalanche: '#E84142',
+  fantom:    '#1969FF',
+  blast:     '#FCFC03',
+  linea:     '#121212',
+  scroll:    '#FFEEDA',
+};
+const chainBgColor = (chain) => CHAIN_COLORS[(chain || '').toLowerCase()] || '#666';
+
+// Memecoin identifiers are 'chain:address' — recover the chain prefix for the
+// card chip without needing the backend to send a separate field.
+const chainFromIdentifier = (identifier) =>
+  (identifier && identifier.includes(':')) ? identifier.split(':')[0].toLowerCase() : '';
+
+// Static currency list so the Forex add dropdowns always have options even if
+// the live currency lookup is empty/slow. Frankfurter covers all of these.
+const FOREX_CURRENCIES = [
+  { identifier: 'USD', name: 'US Dollar' },
+  { identifier: 'EUR', name: 'Euro' },
+  { identifier: 'GBP', name: 'British Pound' },
+  { identifier: 'JPY', name: 'Japanese Yen' },
+  { identifier: 'CHF', name: 'Swiss Franc' },
+  { identifier: 'CAD', name: 'Canadian Dollar' },
+  { identifier: 'AUD', name: 'Australian Dollar' },
+  { identifier: 'CNY', name: 'Chinese Yuan' },
+  { identifier: 'AED', name: 'UAE Dirham' },
+  { identifier: 'TRY', name: 'Turkish Lira' },
+];
+
 function fmtRadarPrice(v) {
   if (v == null) return '—';
   const n = Number(v);
@@ -6680,7 +6718,9 @@ const RadarSearchAddBlock = ({ kind, serverId, refresh, showMsg }) => {
 };
 
 const RadarForexAddBlock = ({ serverId, refresh, showMsg }) => {
-  const [currencies, setCurrencies] = useState([]);
+  // Seed with the static list so the dropdowns always have options; the live
+  // lookup only replaces it when it actually returns currencies.
+  const [currencies, setCurrencies] = useState(FOREX_CURRENCIES);
   const [base,       setBase]       = useState('EUR');
   const [quote,      setQuote]      = useState('USD');
   const [busy,       setBusy]       = useState(false);
@@ -6688,12 +6728,14 @@ const RadarForexAddBlock = ({ serverId, refresh, showMsg }) => {
   useEffect(() => {
     if (!serverId) return;
     searchRadarAsset(serverId, 'forex', '')
-      .then(r => setCurrencies(r?.suggestions || []))
-      .catch(() => setCurrencies([]));
+      .then(r => { const s = r?.suggestions || []; if (s.length) setCurrencies(s); })
+      .catch(() => { /* keep the static fallback */ });
   }, [serverId]);
 
+  const sameCurrency = base === quote;
+
   const handleAdd = async () => {
-    if (!base || !quote || base === quote || busy) return;
+    if (!base || !quote || sameCurrency || busy) return;
     setBusy(true);
     try {
       await addRadarWatchlistEntry(serverId, {
@@ -6708,21 +6750,29 @@ const RadarForexAddBlock = ({ serverId, refresh, showMsg }) => {
   const selectStyle = { background: '#1a1a22', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', fontFamily: 'Sora, sans-serif', outline: 'none', cursor: 'pointer', minWidth: '120px' };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
-      <Field label="Base">
-        <select value={base} onChange={e => setBase(e.target.value)} style={selectStyle}>
-          {currencies.map(c => <option key={c.identifier} value={c.identifier}>{c.identifier} — {c.name}</option>)}
-        </select>
-      </Field>
-      <Field label="Quote">
-        <select value={quote} onChange={e => setQuote(e.target.value)} style={selectStyle}>
-          {currencies.map(c => <option key={c.identifier} value={c.identifier}>{c.identifier} — {c.name}</option>)}
-        </select>
-      </Field>
-      <button onClick={handleAdd} disabled={busy || base === quote}
-        style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '10px 18px', color: '#0A0A0F', cursor: (busy || base === quote) ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, opacity: (busy || base === quote) ? 0.5 : 1 }}>
-        {busy ? 'Adding…' : 'Add pair'}
-      </button>
+    <div style={{ marginBottom: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
+        <Field label="Base">
+          <select value={base} onChange={e => setBase(e.target.value)} style={selectStyle}>
+            {currencies.map(c => <option key={c.identifier} value={c.identifier}>{c.identifier} ({c.name})</option>)}
+          </select>
+        </Field>
+        <div style={{ paddingBottom: '12px', color: C.muted, fontSize: '16px', fontWeight: 700 }}>/</div>
+        <Field label="Quote">
+          <select value={quote} onChange={e => setQuote(e.target.value)} style={selectStyle}>
+            {currencies.map(c => <option key={c.identifier} value={c.identifier}>{c.identifier} ({c.name})</option>)}
+          </select>
+        </Field>
+        <button onClick={handleAdd} disabled={busy || sameCurrency}
+          style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '10px 18px', color: '#0A0A0F', cursor: (busy || sameCurrency) ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, opacity: (busy || sameCurrency) ? 0.5 : 1 }}>
+          {busy ? 'Adding…' : 'Add pair'}
+        </button>
+      </div>
+      {sameCurrency && (
+        <div style={{ color: C.red, fontSize: '12px', marginTop: '8px' }}>
+          Base and quote must be different.
+        </div>
+      )}
     </div>
   );
 };
@@ -6819,6 +6869,9 @@ const RadarLiveCard = ({ entry }) => {
   const ch1   = snap.change_1h_pct;
   const ch24  = snap.change_24h_pct;
   const name  = entry.display_name || snap.symbol_display || entry.asset_identifier;
+  const chain = entry.asset_kind === 'meme'
+    ? ((snap?.raw?.chain) || chainFromIdentifier(entry.asset_identifier))
+    : '';
   const sparkSeries = Array.isArray(snap?.raw?.price_series)
     ? snap.raw.price_series
     : Array.isArray(snap?.price_history)
@@ -6846,6 +6899,17 @@ const RadarLiveCard = ({ entry }) => {
             {name}
           </div>
         </div>
+        {chain && (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center',
+            padding: '2px 8px', borderRadius: '999px',
+            fontSize: '10px', fontFamily: 'monospace', fontWeight: 600,
+            letterSpacing: '0.05em', background: chainBgColor(chain),
+            color: '#fff', textTransform: 'uppercase',
+          }}>
+            {chain.slice(0, 5)}
+          </span>
+        )}
         {snap.rank && <span style={{ fontSize: '10px', color: C.muted }}>#{snap.rank}</span>}
       </div>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '10px' }}>
