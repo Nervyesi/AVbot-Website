@@ -5990,7 +5990,7 @@ const RadarSettings = () => {
           activeTopic === 'crypto' ? 'Add tokens by name. Each entry appears in your daily market update and is evaluated for movement and volume alerts.'
         : activeTopic === 'nft'    ? 'Pick a chain and enter the OpenSea collection slug (e.g. pudgypenguins). Each entry appears in your daily market update and is evaluated for movement and volume alerts.'
         : activeTopic === 'meme'   ? 'Paste a DEXScreener URL or chain:address. Click Resolve to preview, then confirm to add.'
-        : activeTopic === 'forex'  ? 'Pick two currencies. Movement alerts use the 24h delta because Frankfurter is daily-cadence.'
+        : activeTopic === 'forex'  ? 'Pick two currencies, or a commodity priced in USD (Gold, Silver, Oil, Platinum). Movement alerts use the 24h delta.'
         : ''}
         serverId={serverId}
         watchlist={watchlist}
@@ -6464,20 +6464,30 @@ const NFT_CHAINS = [
   { code: 'sei',       label: 'Sei' },
 ];
 
-// Static currency list so the Forex add dropdowns always have options even if
-// the live currency lookup is empty/slow. Frankfurter covers all of these.
+// Static currency list so the Forex add dropdowns always have options. Fiat is
+// priced via Frankfurter; commodities (auto-quoted in USD) via Yahoo.
 const FOREX_CURRENCIES = [
-  { identifier: 'USD', name: 'US Dollar' },
-  { identifier: 'EUR', name: 'Euro' },
-  { identifier: 'GBP', name: 'British Pound' },
-  { identifier: 'JPY', name: 'Japanese Yen' },
-  { identifier: 'CHF', name: 'Swiss Franc' },
-  { identifier: 'CAD', name: 'Canadian Dollar' },
-  { identifier: 'AUD', name: 'Australian Dollar' },
-  { identifier: 'CNY', name: 'Chinese Yuan' },
-  { identifier: 'AED', name: 'UAE Dirham' },
-  { identifier: 'TRY', name: 'Turkish Lira' },
+  // Fiat
+  { identifier: 'USD', name: 'US Dollar',        type: 'fiat' },
+  { identifier: 'EUR', name: 'Euro',             type: 'fiat' },
+  { identifier: 'GBP', name: 'British Pound',    type: 'fiat' },
+  { identifier: 'JPY', name: 'Japanese Yen',     type: 'fiat' },
+  { identifier: 'CHF', name: 'Swiss Franc',      type: 'fiat' },
+  { identifier: 'CAD', name: 'Canadian Dollar',  type: 'fiat' },
+  { identifier: 'AUD', name: 'Australian Dollar', type: 'fiat' },
+  { identifier: 'CNY', name: 'Chinese Yuan',     type: 'fiat' },
+  { identifier: 'AED', name: 'UAE Dirham',       type: 'fiat' },
+  { identifier: 'TRY', name: 'Turkish Lira',     type: 'fiat' },
+  // Commodities (auto-quoted in USD)
+  { identifier: 'XAU',   name: 'Gold (XAU)',     type: 'commodity' },
+  { identifier: 'XAG',   name: 'Silver (XAG)',   type: 'commodity' },
+  { identifier: 'WTI',   name: 'Oil WTI',        type: 'commodity' },
+  { identifier: 'BRENT', name: 'Oil Brent',      type: 'commodity' },
+  { identifier: 'XPT',   name: 'Platinum (XPT)', type: 'commodity' },
 ];
+const COMMODITY_BASES = new Set(
+  FOREX_CURRENCIES.filter(c => c.type === 'commodity').map(c => c.identifier)
+);
 
 // Honors the snapshot's display symbol (NFT floor in Ξ,
 // forex in the quote currency, etc.). Single-char glyphs prefix the number;
@@ -6754,49 +6764,52 @@ const RadarSearchAddBlock = ({ kind, serverId, refresh, showMsg }) => {
 };
 
 const RadarForexAddBlock = ({ serverId, refresh, showMsg }) => {
-  // Seed with the static list so the dropdowns always have options; the live
-  // lookup only replaces it when it actually returns currencies.
-  const [currencies, setCurrencies] = useState(FOREX_CURRENCIES);
-  const [base,       setBase]       = useState('EUR');
-  const [quote,      setQuote]      = useState('USD');
-  const [busy,       setBusy]       = useState(false);
+  const fiat        = FOREX_CURRENCIES.filter(c => c.type === 'fiat');
+  const commodities = FOREX_CURRENCIES.filter(c => c.type === 'commodity');
+  const [base,  setBase]  = useState('EUR');
+  const [quote, setQuote] = useState('USD');
+  const [busy,  setBusy]  = useState(false);
 
+  const isCommodityBase = COMMODITY_BASES.has(base);
+
+  // Commodities are always quoted in USD; force it when a commodity is picked.
   useEffect(() => {
-    if (!serverId) return;
-    searchRadarAsset(serverId, 'forex', '')
-      .then(r => { const s = r?.suggestions || []; if (s.length) setCurrencies(s); })
-      .catch(() => { /* keep the static fallback */ });
-  }, [serverId]);
+    if (isCommodityBase && quote !== 'USD') setQuote('USD');
+  }, [isCommodityBase, quote]);
 
-  const sameCurrency = base === quote;
+  const sameCurrency = !isCommodityBase && base === quote;
 
   const handleAdd = async () => {
-    if (!base || !quote || sameCurrency || busy) return;
+    const q = isCommodityBase ? 'USD' : quote;
+    if (!base || !q || sameCurrency || busy) return;
     setBusy(true);
     try {
       await addRadarWatchlistEntry(serverId, {
-        asset_kind: 'forex', asset_identifier: `${base}/${quote}`,
+        asset_kind: 'forex', asset_identifier: `${base}/${q}`,
       });
       await refresh();
-      showMsg(`Added ${base}/${quote}.`);
+      showMsg(`Added ${base}/${q}.`);
     } catch (e) { showMsg(e.message, 'err'); }
     finally { setBusy(false); }
   };
 
   const selectStyle = { background: '#1a1a22', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', fontFamily: 'Sora, sans-serif', outline: 'none', cursor: 'pointer', minWidth: '120px' };
+  const opt = c => <option key={c.identifier} value={c.identifier}>{c.identifier} ({c.name})</option>;
 
   return (
     <div style={{ marginBottom: '12px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
         <Field label="Base">
           <select value={base} onChange={e => setBase(e.target.value)} style={selectStyle}>
-            {currencies.map(c => <option key={c.identifier} value={c.identifier}>{c.identifier} ({c.name})</option>)}
+            <optgroup label="Fiat">{fiat.map(opt)}</optgroup>
+            <optgroup label="Commodities">{commodities.map(opt)}</optgroup>
           </select>
         </Field>
         <div style={{ paddingBottom: '12px', color: C.muted, fontSize: '16px', fontWeight: 700 }}>/</div>
         <Field label="Quote">
-          <select value={quote} onChange={e => setQuote(e.target.value)} style={selectStyle}>
-            {currencies.map(c => <option key={c.identifier} value={c.identifier}>{c.identifier} ({c.name})</option>)}
+          <select value={quote} onChange={e => setQuote(e.target.value)} disabled={isCommodityBase}
+            style={{ ...selectStyle, opacity: isCommodityBase ? 0.5 : 1, cursor: isCommodityBase ? 'not-allowed' : 'pointer' }}>
+            {fiat.map(opt)}
           </select>
         </Field>
         <button onClick={handleAdd} disabled={busy || sameCurrency}
@@ -6804,6 +6817,11 @@ const RadarForexAddBlock = ({ serverId, refresh, showMsg }) => {
           {busy ? 'Adding…' : 'Add pair'}
         </button>
       </div>
+      {isCommodityBase && (
+        <div style={{ color: C.muted, fontSize: '12px', marginTop: '8px' }}>
+          Commodities are priced in USD.
+        </div>
+      )}
       {sameCurrency && (
         <div style={{ color: C.red, fontSize: '12px', marginTop: '8px' }}>
           Base and quote must be different.
