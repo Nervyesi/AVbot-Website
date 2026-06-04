@@ -6923,6 +6923,10 @@ const RadarLiveCard = ({ entry }) => {
   const ch1   = snap.change_1h_pct;
   const ch24  = snap.change_24h_pct;
   const name  = entry.display_name || snap.symbol_display || entry.asset_identifier;
+  // Commodities/forex carry a friendly label like 'Gold (XAU/USD)'; show it as
+  // the card title with the raw pair beneath. Other kinds are unaffected.
+  const forexFriendly = entry.asset_kind === 'forex'
+    ? (snap.display_name || entry.display_name) : null;
   const chain = (entry.asset_kind === 'meme' || entry.asset_kind === 'nft')
     ? ((snap?.raw?.chain) || chainFromIdentifier(entry.asset_identifier))
     : '';
@@ -6947,10 +6951,10 @@ const RadarLiveCard = ({ entry }) => {
           : <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {(snap.symbol_display || entry.asset_identifier || '').toUpperCase()}
+            {forexFriendly || (snap.symbol_display || entry.asset_identifier || '').toUpperCase()}
           </div>
           <div style={{ fontSize: '10px', color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {name}
+            {forexFriendly ? (snap.symbol_display || entry.asset_identifier) : name}
           </div>
         </div>
         {chain && (
