@@ -5352,7 +5352,49 @@ const GIVEAWAY_EDITOR_DEFAULTS = {
   duration_unit:     'hours',    // 'minutes' | 'hours' | 'days'
   winner_count:      1,
   entry_cost_points: 0,
+  cost_source:       'community', // 'community' | 'engage'
+  entry_tasks:       [],         // [{type, target, label}]
 };
+
+// Giveaway entry-task types. value matches the backend enum; the target field
+// shape changes per type (handled in the editor).
+const GIVEAWAY_TASK_TYPES = [
+  { value: 'twitter_follow',  label: 'Follow X Account' },
+  { value: 'twitter_like',    label: 'Like X Post' },
+  { value: 'twitter_retweet', label: 'Retweet X Post' },
+  { value: 'discord_member',  label: 'Join Discord Server' },
+  { value: 'discord_role',    label: 'Hold Role in Discord Server' },
+];
+
+// Client-side validators mirror the backend so the admin gets an inline error
+// before the save round-trips. The backend re-validates regardless.
+const RE_X_USERNAME = /^[A-Za-z0-9_]{1,15}$/;
+const RE_SNOWFLAKE  = /^\d{17,19}$/;
+const RE_TWEET_REF  = /(?:status\/)?(\d{10,25})/;
+
+function validateGiveawayTasks(tasks) {
+  for (let i = 0; i < (tasks || []).length; i++) {
+    const t = tasks[i];
+    const n = i + 1;
+    const target = String(t.target || '').trim();
+    if (!target) return `Task ${n}: target is required`;
+    if (t.type === 'twitter_follow') {
+      if (!RE_X_USERNAME.test(target.replace(/^@/, '')))
+        return `Task ${n}: "${target}" is not a valid X username`;
+    } else if (t.type === 'twitter_like' || t.type === 'twitter_retweet') {
+      if (!RE_TWEET_REF.test(target))
+        return `Task ${n}: "${target}" is not a valid tweet URL or ID`;
+    } else if (t.type === 'discord_member') {
+      if (!RE_SNOWFLAKE.test(target))
+        return `Task ${n}: "${target}" is not a valid Discord server ID`;
+    } else if (t.type === 'discord_role') {
+      const parts = target.split(':');
+      if (parts.length !== 2 || !RE_SNOWFLAKE.test((parts[0] || '').trim()) || !RE_SNOWFLAKE.test((parts[1] || '').trim()))
+        return `Task ${n}: role target must be serverID:roleID (both numeric)`;
+    }
+  }
+  return null;
+}
 
 // Tolerant parser used by the dashboard inputs: accept any combination of
 // commas, whitespace, and newlines as separators. Drops empty tokens. Does
@@ -5400,6 +5442,87 @@ const STATUS_BADGE = {
   drawing:   { label: 'Drawing',   bg: 'rgba(200,168,78,0.12)',  fg: '#C8A84E',                bd: 'rgba(200,168,78,0.35)'  },
   ended:     { label: 'Ended',     bg: 'rgba(88,101,242,0.12)',  fg: '#5865F2',                bd: 'rgba(88,101,242,0.35)'  },
   cancelled: { label: 'Cancelled', bg: 'rgba(237,66,69,0.10)',   fg: '#ed4245',                bd: 'rgba(237,66,69,0.35)'    },
+};
+
+// Repeatable entry-task list editor. The target field shape changes by task
+// type (X username, tweet URL/ID, server ID, or server ID + role ID). Discord
+// tasks carry a static reminder that AVbot must be in the target server.
+const GiveawayTasksEditor = ({ tasks, onChange }) => {
+  const setTask = (i, patch) => onChange(tasks.map((t, idx) => idx === i ? { ...t, ...patch } : t));
+  const addTask = () => onChange([...tasks, { type: 'twitter_follow', target: '', label: '' }]);
+  const removeTask = (i) => onChange(tasks.filter((_, idx) => idx !== i));
+
+  // discord_role keeps two visible inputs but stores one "guildID:roleID" target.
+  const roleParts = (target) => {
+    const [g = '', r = ''] = String(target || '').split(':');
+    return { g: g.trim(), r: r.trim() };
+  };
+
+  return (
+    <div style={{ marginTop: '6px', marginBottom: '18px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <Label hint="Members must complete these before they can enter.">Entry tasks (optional)</Label>
+        <button type="button" onClick={addTask}
+          style={{ background: 'rgba(200,168,78,0.12)', border: '1px solid rgba(200,168,78,0.4)', borderRadius: '8px', padding: '6px 12px', color: C.gold, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 700 }}>
+          + Add task
+        </button>
+      </div>
+
+      {tasks.length === 0 ? (
+        <div style={{ fontSize: '12px', color: C.muted, padding: '8px 0' }}>
+          No tasks. Members enter directly (subject to role and cost rules).
+        </div>
+      ) : tasks.map((t, i) => {
+        const isDiscordRole = t.type === 'discord_role';
+        const isDiscordMember = t.type === 'discord_member';
+        const isFollow = t.type === 'twitter_follow';
+        const parts = roleParts(t.target);
+        return (
+          <div key={i} style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '12px 14px', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              <div style={{ minWidth: '180px' }}>
+                <Select value={t.type}
+                  onChange={v => setTask(i, { type: v, target: '' })}
+                  options={GIVEAWAY_TASK_TYPES} />
+              </div>
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                {isDiscordRole ? (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <Input value={parts.g}
+                      onChange={v => setTask(i, { target: `${v.trim()}:${parts.r}` })}
+                      placeholder="Discord server ID" />
+                    <Input value={parts.r}
+                      onChange={v => setTask(i, { target: `${parts.g}:${v.trim()}` })}
+                      placeholder="Role ID" />
+                  </div>
+                ) : (
+                  <Input value={t.target}
+                    onChange={v => setTask(i, { target: v })}
+                    placeholder={
+                      isFollow ? 'X username (without @)' :
+                      isDiscordMember ? 'Discord server ID' :
+                      'Tweet URL or ID'
+                    } />
+                )}
+                {(isDiscordMember || isDiscordRole) && (
+                  <div style={{ fontSize: '11px', color: C.orange, marginTop: '6px' }}>
+                    AVbot must be in this server for verification to work.
+                  </div>
+                )}
+              </div>
+              <button type="button" onClick={() => removeTask(i)} title="Remove task"
+                style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px', padding: '6px', lineHeight: 1 }}>🗑</button>
+            </div>
+            <div style={{ marginTop: '8px' }}>
+              <Input value={t.label}
+                onChange={v => setTask(i, { label: v })}
+                placeholder="Display text shown to users (optional)" />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 };
 
 const GiveawaySettings = () => {
@@ -5463,6 +5586,10 @@ const GiveawaySettings = () => {
       duration_unit:     dur.unit,
       winner_count:      row.winner_count || 1,
       entry_cost_points: row.entry_cost_points || 0,
+      cost_source:       row.cost_source || 'community',
+      entry_tasks:       Array.isArray(row.entry_tasks)
+        ? row.entry_tasks.map(t => ({ type: t.type, target: t.target || '', label: t.label || '' }))
+        : [],
     });
     setMsg('');
   }, [activeId, list]);
@@ -5502,10 +5629,19 @@ const GiveawaySettings = () => {
         (Number(editor.duration_value) || 0) * (DURATION_UNIT_FACTOR[editor.duration_unit] || 3600)),
     winner_count:      Math.max(1, Number(editor.winner_count) || 1),
     entry_cost_points: Math.max(0, Number(editor.entry_cost_points) || 0),
+    cost_source:       editor.cost_source === 'engage' ? 'engage' : 'community',
+    entry_tasks:       (editor.entry_tasks || []).map(t => ({
+      type: t.type,
+      target: String(t.target || '').trim(),
+      label: String(t.label || '').trim(),
+    })),
   });
 
   const handleSave = async () => {
     if (!serverId || !activeId || busy) return;
+    // Inline task validation before the round-trip.
+    const taskErr = validateGiveawayTasks(editor.entry_tasks);
+    if (taskErr) { showMsg(taskErr, 'err'); return; }
     setBusy(true);
     try {
       const payload = editorToPayload();
@@ -5517,6 +5653,7 @@ const GiveawaySettings = () => {
         delete payload.allowed_role_ids;
         delete payload.mention_role_ids;
         delete payload.channel_id;
+        delete payload.cost_source;   // locked once active (matches backend)
       }
       const res = await updateGiveaway(serverId, activeId, payload);
       showMsg(res?.live_edit === 'edited' ? 'Saved (live message updated)' : 'Saved');
@@ -5527,6 +5664,8 @@ const GiveawaySettings = () => {
 
   const handleStart = async () => {
     if (!serverId || !activeId || busy) return;
+    const taskErr = validateGiveawayTasks(editor.entry_tasks);
+    if (taskErr) { showMsg(taskErr, 'err'); return; }
     // Save first so the latest editor values are in the row when start posts.
     setBusy(true);
     try {
@@ -5658,7 +5797,12 @@ const GiveawaySettings = () => {
                         letterSpacing: '0.04em', textTransform: 'uppercase',
                       }}>{badge.label}</span>
                       <span>{row.entry_count.toLocaleString()} entr{row.entry_count === 1 ? 'y' : 'ies'}</span>
-                      {row.entry_cost_points > 0 && <span>· {row.entry_cost_points.toLocaleString()} pts</span>}
+                      {row.entry_cost_points > 0 && <span>· {row.entry_cost_points.toLocaleString()} {row.cost_source === 'engage' ? 'engage pts' : 'pts'}</span>}
+                      {Array.isArray(row.entry_tasks) && row.entry_tasks.length > 0 && (
+                        <span style={{ background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.35)', color: '#8b95f5', padding: '2px 8px', borderRadius: '100px', fontSize: '10px', fontWeight: 700 }}>
+                          Tasks: {row.entry_tasks.length}
+                        </span>
+                      )}
                       {row.winner_count > 1 && <span>· {row.winner_count} winners</span>}
                       {ends && <span>· ends {ends}</span>}
                       {row.channel_id && <span>· channel {row.channel_id}</span>}
@@ -5755,13 +5899,38 @@ const GiveawaySettings = () => {
               </Field>
             </FieldRow>
             <FieldRow>
-              <Field label="Entry cost (community points)"
+              <Field label="Entry cost (points)"
                 hint={isActive ? 'Locked while active.' : 'Set 0 for free entry. Cancelling refunds everyone.'}>
                 <Input type="number"
                   value={String(editor.entry_cost_points)}
                   onChange={v => setEd('entry_cost_points')(Math.max(0, Number(v) || 0))}
                   placeholder="0"
                   style={{ maxWidth: '160px' }} />
+                {Number(editor.entry_cost_points) > 0 && (
+                  <div style={{ marginTop: '10px' }}>
+                    <div style={{ fontSize: '11px', color: C.muted, marginBottom: '6px' }}>
+                      Which point pool pays for entries
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {[['community', 'Community Points'], ['engage', 'Engage Points']].map(([val, lbl]) => {
+                        const sel = (editor.cost_source || 'community') === val;
+                        return (
+                          <button key={val} type="button"
+                            onClick={() => { if (!isActive) setEd('cost_source')(val); }}
+                            disabled={isActive}
+                            style={{ background: sel ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${sel ? C.gold : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px', padding: '8px 14px', color: sel ? C.gold : '#fff', cursor: isActive ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600, opacity: isActive ? 0.6 : 1 }}>
+                            {sel ? '● ' : '○ '}{lbl}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {(editor.cost_source === 'engage') && (
+                      <div style={{ fontSize: '11px', color: C.orange, marginTop: '6px' }}>
+                        Make sure this server has Engage Points enabled, or entries will fail.
+                      </div>
+                    )}
+                  </div>
+                )}
               </Field>
               <Field label="Target channel"
                 hint={isActive ? 'Locked while active.' : 'Channel name or numeric ID.'}>
@@ -5769,6 +5938,10 @@ const GiveawaySettings = () => {
                   placeholder="#giveaways or 1234567890" />
               </Field>
             </FieldRow>
+
+            <GiveawayTasksEditor
+              tasks={editor.entry_tasks || []}
+              onChange={setEd('entry_tasks')} />
             <FieldRow>
               <Field label="Mention roles on post"
                 hint="Role IDs, comma separated (spaces OK). Each role gets pinged when the giveaway is posted.">
