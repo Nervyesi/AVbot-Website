@@ -88,6 +88,33 @@ export const updateEngagePool = (serverId, poolId, body) =>
 export const fetchLeaderboard = (id, limit = 25) =>
   apiFetch(`/api/servers/${id}/leaderboard?limit=${limit}`);
 
+// ── Wallet Collections (inside the Engage module) ────────────────────────────
+
+export const listWalletCollections = (sid) =>
+  apiFetch(`/api/servers/${sid}/wallet-collections`);
+
+export const createWalletCollection = (sid, body = {}) =>
+  apiFetch(`/api/servers/${sid}/wallet-collections`, {
+    method: 'POST', body: JSON.stringify(body),
+  });
+
+export const updateWalletCollection = (sid, cid, updates) =>
+  apiFetch(`/api/servers/${sid}/wallet-collections/${cid}`, {
+    method: 'PATCH', body: JSON.stringify(updates),
+  });
+
+export const deleteWalletCollection = (sid, cid) =>
+  apiFetch(`/api/servers/${sid}/wallet-collections/${cid}`, { method: 'DELETE' });
+
+export const fetchWalletSubmissions = (sid, cid) =>
+  apiFetch(`/api/servers/${sid}/wallet-collections/${cid}/submissions`);
+
+export const postWalletCollection = (sid, cid) =>
+  apiFetch(`/api/servers/${sid}/wallet-collections/${cid}/post`, { method: 'POST' });
+
+export const closeWalletCollection = (sid, cid) =>
+  apiFetch(`/api/servers/${sid}/wallet-collections/${cid}/close`, { method: 'POST' });
+
 // ── Verify ─────────────────────────────────────────────────────────────────
 
 export const sendVerifyMessage = (serverId, channelId) =>

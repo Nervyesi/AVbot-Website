@@ -28,6 +28,9 @@ import {
   fetchRaidLeaderboard, fetchRaidVerificationLog, runRaidManualCheck, sendRaidGuide,
   fetchRaidGuideDefaults, fetchRaidScrapingHealth,
   fetchEngagePools, updateEngagePool,
+  listWalletCollections, createWalletCollection, updateWalletCollection,
+  deleteWalletCollection, fetchWalletSubmissions, postWalletCollection,
+  closeWalletCollection,
   fetchSettings, updateBrand, updateAccess, updateLevels,
   fetchLogs, downloadLogs, fetchFlags, resolveFlag,
   fetchUserPoints, adjustPoints, fetchLeaderboard,
@@ -3006,6 +3009,409 @@ const RaidSettings = () => {
   );
 };
 
+// ── Wallet Collections (inside the Engage module) ───────────────────────────────
+
+const WALLET_CHAINS = [
+  { value: 'evm',     label: 'EVM' },
+  { value: 'solana',  label: 'Solana' },
+  { value: 'bitcoin', label: 'Bitcoin' },
+  { value: 'cardano', label: 'Cardano' },
+  { value: 'cosmos',  label: 'Cosmos' },
+  { value: 'tron',    label: 'Tron' },
+  { value: 'aptos',   label: 'Aptos' },
+  { value: 'sui',     label: 'Sui' },
+  { value: 'other',   label: 'Other' },
+];
+const WALLET_CHAIN_LABEL = Object.fromEntries(WALLET_CHAINS.map(c => [c.value, c.label]));
+
+const WALLET_STATUS_BADGE = {
+  draft:  { label: 'Draft',  bg: 'rgba(255,255,255,0.06)', bd: 'rgba(255,255,255,0.15)', fg: 'rgba(255,255,255,0.6)' },
+  posted: { label: 'Posted', bg: 'rgba(59,165,92,0.12)',   bd: 'rgba(59,165,92,0.4)',    fg: '#3ba55c' },
+  closed: { label: 'Closed', bg: 'rgba(237,66,69,0.12)',   bd: 'rgba(237,66,69,0.4)',    fg: '#ed4245' },
+};
+
+const WALLET_EDITOR_DEFAULTS = {
+  name: '', blockchain: 'evm', channel_id: '', required_role_id: '',
+  ping_role_ids: [], embed_title: '', embed_description: '', embed_color: '',
+  button_label: '', modal_title: '', modal_field_label: '', modal_placeholder: '',
+};
+
+const WalletCollectionsSection = ({ sid }) => {
+  const [list,    setList]    = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState(null);
+  const [activeId, setActiveId] = useState(null);
+
+  const [editor, setEditor] = useState({ ...WALLET_EDITOR_DEFAULTS });
+  const setEd = k => v => setEditor(p => ({ ...p, [k]: v }));
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg]   = useState('');
+  const [msgKind, setMsgKind] = useState('ok');
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  const [subs, setSubs] = useState([]);
+  const [subsLoading, setSubsLoading] = useState(false);
+  const [subFilter, setSubFilter] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const showMsg = (text, kind = 'ok') => {
+    setMsg(text); setMsgKind(kind);
+    setTimeout(() => setMsg(''), 4500);
+  };
+
+  const doFetch = async () => {
+    if (!sid) return;
+    const { collections } = await listWalletCollections(sid);
+    setList(collections || []);
+  };
+
+  useEffect(() => {
+    if (!sid) { setLoading(false); return; }
+    setLoading(true); setActiveId(null); setList([]);
+    listWalletCollections(sid)
+      .then(({ collections }) => { setList(collections || []); setError(null); })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [sid]); // eslint-disable-line
+
+  const active = list.find(c => c.id === activeId) || null;
+
+  // Hydrate the editor + load submissions when a collection opens.
+  useEffect(() => {
+    const row = list.find(x => x.id === activeId);
+    if (!row) return;
+    setEditor({
+      name:              row.name || '',
+      blockchain:        row.blockchain || 'evm',
+      channel_id:        row.channel_id || '',
+      required_role_id:  row.required_role_id || '',
+      ping_role_ids:     Array.isArray(row.ping_role_ids) ? row.ping_role_ids : [],
+      embed_title:       row.embed_title || '',
+      embed_description: row.embed_description || '',
+      embed_color:       row.embed_color || '',
+      button_label:      row.button_label || '',
+      modal_title:       row.modal_title || '',
+      modal_field_label: row.modal_field_label || '',
+      modal_placeholder: row.modal_placeholder || '',
+    });
+    setMsg(''); setSubFilter(''); setCopied(false);
+    setSubsLoading(true); setSubs([]);
+    fetchWalletSubmissions(sid, row.id)
+      .then(r => setSubs(r.submissions || []))
+      .catch(e => showMsg(e.message, 'err'))
+      .finally(() => setSubsLoading(false));
+  }, [activeId, list]); // eslint-disable-line
+
+  const editorToPayload = () => ({
+    name:              editor.name,
+    blockchain:        editor.blockchain,
+    channel_id:        editor.channel_id,
+    required_role_id:  editor.required_role_id || '',
+    ping_role_ids:     editor.ping_role_ids || [],
+    embed_title:       editor.embed_title,
+    embed_description: editor.embed_description,
+    embed_color:       editor.embed_color || null,
+    button_label:      editor.button_label,
+    modal_title:       editor.modal_title,
+    modal_field_label: editor.modal_field_label,
+    modal_placeholder: editor.modal_placeholder,
+  });
+
+  const handleCreate = async () => {
+    if (!sid) return;
+    try {
+      const created = await createWalletCollection(sid, { name: 'New Collection', blockchain: 'evm' });
+      await doFetch();
+      setActiveId(created.id);
+    } catch (e) { setError(e.message); }
+  };
+
+  const handleSave = async () => {
+    if (!sid || !activeId || busy) return;
+    setBusy(true);
+    try {
+      const res = await updateWalletCollection(sid, activeId, editorToPayload());
+      showMsg(res?.live_edit === 'edited' ? 'Saved (live message updated)' : 'Saved');
+      await doFetch();
+    } catch (e) { showMsg(e.message, 'err'); }
+    finally { setBusy(false); }
+  };
+
+  const handlePost = async () => {
+    if (!sid || !activeId || busy) return;
+    setBusy(true);
+    try {
+      await updateWalletCollection(sid, activeId, editorToPayload());
+      await postWalletCollection(sid, activeId);
+      showMsg('Posted to channel.');
+      await doFetch();
+    } catch (e) { showMsg(e.message, 'err'); }
+    finally { setBusy(false); }
+  };
+
+  const handleClose = async () => {
+    if (!sid || !activeId || busy) return;
+    setBusy(true);
+    try {
+      await closeWalletCollection(sid, activeId);
+      showMsg('Closed. Button disabled on the posted message.');
+      await doFetch();
+    } catch (e) { showMsg(e.message, 'err'); }
+    finally { setBusy(false); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!sid || !id) return;
+    setBusy(true);
+    try {
+      await deleteWalletCollection(sid, id);
+      if (activeId === id) setActiveId(null);
+      setConfirmDel(null);
+      await doFetch();
+    } catch (e) { showMsg(e.message, 'err'); }
+    finally { setBusy(false); }
+  };
+
+  const filteredSubs = subs.filter(s => {
+    if (!subFilter.trim()) return true;
+    const q = subFilter.trim().toLowerCase();
+    return (s.username || '').toLowerCase().includes(q)
+        || (s.wallet_address || '').toLowerCase().includes(q)
+        || (s.user_id || '').includes(q);
+  });
+
+  const copyAll = async () => {
+    // One wallet per line, no other text, ready to paste into a sheet.
+    const text = filteredSubs.map(s => s.wallet_address).join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (_) { showMsg('Clipboard blocked by the browser.', 'err'); }
+  };
+
+  const isDraft  = active?.status === 'draft';
+  const isPosted = active?.status === 'posted';
+
+  return (
+    <div style={{ marginTop: '32px' }}>
+      <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '28px' }}>
+        <PageHeader icon="💼" title="Wallet Collections" badge="ENGAGE"
+          desc="Collect member wallet addresses behind a role gate for mint whitelists. Validates each address against the chain you pick." />
+      </div>
+
+      {error && (
+        <div style={{ background: 'rgba(237,66,69,0.1)', border: '1px solid rgba(237,66,69,0.3)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', color: C.red, fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {error}
+          <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '18px' }}>×</button>
+        </div>
+      )}
+
+      {/* ── List ── */}
+      <SettingsCard>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px', gap: '12px' }}>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Collections</div>
+            <div style={{ fontSize: '12px', color: C.muted, marginTop: '4px' }}>
+              Drafts stay private. Post to drop the embed and open submissions. Closing disables the button.
+            </div>
+          </div>
+          <button onClick={handleCreate}
+            style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '9px 16px', color: '#0A0A0F', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, flexShrink: 0 }}>
+            + New Collection
+          </button>
+        </div>
+
+        {loading ? (
+          <div style={{ color: C.muted, fontSize: '13px', padding: '16px 0' }}>Loading…</div>
+        ) : list.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '32px 0', color: C.muted }}>
+            <div style={{ fontSize: '28px', marginBottom: '10px' }}>💼</div>
+            <div style={{ fontSize: '14px' }}>
+              No wallet collections yet. Create one to get started.
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {list.map(row => {
+              const isOpen = activeId === row.id;
+              const badge  = WALLET_STATUS_BADGE[row.status] || WALLET_STATUS_BADGE.draft;
+              return (
+                <div key={row.id}
+                  style={{ background: isOpen ? 'rgba(200,168,78,0.07)' : 'rgba(0,0,0,0.2)', border: `1px solid ${isOpen ? C.gold : 'rgba(255,255,255,0.07)'}`, borderRadius: '10px', padding: '14px 16px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ flex: 1, minWidth: '180px' }}>
+                    <div style={{ fontWeight: 700, fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {row.name || '(unnamed)'}
+                    </div>
+                    <div style={{ fontSize: '11px', color: C.muted, marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ background: 'rgba(88,101,242,0.12)', border: '1px solid rgba(88,101,242,0.35)', color: '#8b95f5', padding: '2px 8px', borderRadius: '100px', fontSize: '10px', fontWeight: 700, letterSpacing: '0.04em' }}>
+                        {WALLET_CHAIN_LABEL[row.blockchain] || row.blockchain}
+                      </span>
+                      <span style={{ background: badge.bg, border: `1px solid ${badge.bd}`, color: badge.fg, padding: '2px 8px', borderRadius: '100px', fontSize: '10px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{badge.label}</span>
+                      <span>{(row.submission_count || 0).toLocaleString()} wallet{row.submission_count === 1 ? '' : 's'}</span>
+                      {row.channel_id && <span>· channel {row.channel_id}</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button onClick={() => setActiveId(isOpen ? null : row.id)}
+                      style={{ background: isOpen ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isOpen ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '6px', padding: '5px 12px', color: isOpen ? C.gold : '#fff', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
+                      {isOpen ? '▲ Close' : '✏️ Edit'}
+                    </button>
+                    {confirmDel === row.id ? (
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11px', color: C.red }}>Delete?</span>
+                        <button onClick={() => handleDelete(row.id)} disabled={busy}
+                          style={{ background: 'rgba(237,66,69,0.2)', border: '1px solid rgba(237,66,69,0.4)', borderRadius: '6px', padding: '4px 10px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>Yes</button>
+                        <button onClick={() => setConfirmDel(null)}
+                          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '4px 10px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>No</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setConfirmDel(row.id)} title="Delete this collection"
+                        style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px', padding: '4px 6px', lineHeight: 1 }}>🗑</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SettingsCard>
+
+      {/* ── Editor ── */}
+      {active && (
+        <>
+          <SettingsCard title="Collection">
+            <FieldRow>
+              <Field label="Name" hint="Used in commands and the dashboard">
+                <Input value={editor.name} onChange={setEd('name')} placeholder="e.g. Genesis Mint WL" />
+              </Field>
+              <Field label="Blockchain" hint="Wallets are validated against this chain">
+                <Select value={editor.blockchain} onChange={setEd('blockchain')} options={WALLET_CHAINS} />
+              </Field>
+            </FieldRow>
+            <FieldRow>
+              <Field label="Channel" hint="Where the embed is posted (name or ID)">
+                <Input value={editor.channel_id} onChange={setEd('channel_id')} placeholder="#whitelist or channel ID" />
+              </Field>
+              <Field label="Required Role (optional)" hint="Role ID needed to submit. Blank = open to all">
+                <Input value={editor.required_role_id} onChange={setEd('required_role_id')} placeholder="Role ID (blank = everyone)" />
+              </Field>
+            </FieldRow>
+            <Field label="Ping Roles on Post (optional)" hint="Comma-separated role IDs mentioned when posted">
+              <Input
+                value={(Array.isArray(editor.ping_role_ids) ? editor.ping_role_ids : []).join(', ')}
+                onChange={v => setEd('ping_role_ids')(v.split(',').map(x => x.trim()).filter(Boolean))}
+                placeholder="Role ID, Role ID..."
+              />
+            </Field>
+          </SettingsCard>
+
+          <SettingsCard title="Embed">
+            <FieldRow>
+              <Field label="Embed Title">
+                <Input value={editor.embed_title} onChange={setEd('embed_title')} placeholder="Submit Your Wallet" />
+              </Field>
+              <Field label="Embed Color" hint="#RRGGBB hex, blank = brand gold">
+                <Input value={editor.embed_color} onChange={setEd('embed_color')} placeholder="#C8A84E" />
+              </Field>
+            </FieldRow>
+            <Field label="Embed Description">
+              <Textarea value={editor.embed_description} onChange={setEd('embed_description')} rows={3}
+                placeholder="Click the button below to submit your wallet address for the mint whitelist." />
+            </Field>
+            <Field label="Button Label">
+              <Input value={editor.button_label} onChange={setEd('button_label')} placeholder="Submit Wallet" />
+            </Field>
+          </SettingsCard>
+
+          <SettingsCard title="Submission Form">
+            <FieldRow>
+              <Field label="Modal Title">
+                <Input value={editor.modal_title} onChange={setEd('modal_title')} placeholder="Submit Your Wallet" />
+              </Field>
+              <Field label="Field Label">
+                <Input value={editor.modal_field_label} onChange={setEd('modal_field_label')} placeholder="Your EVM wallet address" />
+              </Field>
+            </FieldRow>
+            <Field label="Field Placeholder (optional)">
+              <Input value={editor.modal_placeholder} onChange={setEd('modal_placeholder')} placeholder="0x..." />
+            </Field>
+          </SettingsCard>
+
+          {/* ── Submissions ── */}
+          <SettingsCard title="Submissions">
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <div style={{ flex: 1, minWidth: '180px' }}>
+                <Input value={subFilter} onChange={setSubFilter} placeholder="Filter by username or wallet…" />
+              </div>
+              <button onClick={copyAll} disabled={filteredSubs.length === 0}
+                style={{ background: copied ? 'rgba(59,165,92,0.2)' : 'rgba(200,168,78,0.12)', border: `1px solid ${copied ? 'rgba(59,165,92,0.5)' : 'rgba(200,168,78,0.4)'}`, borderRadius: '8px', padding: '9px 16px', color: copied ? C.green : C.gold, cursor: filteredSubs.length ? 'pointer' : 'not-allowed', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, flexShrink: 0, opacity: filteredSubs.length ? 1 : 0.5 }}>
+                {copied ? '✓ Copied' : `📋 Copy All Wallets (${filteredSubs.length})`}
+              </button>
+            </div>
+
+            {subsLoading ? (
+              <div style={{ color: C.muted, fontSize: '13px', padding: '12px 0' }}>Loading submissions…</div>
+            ) : filteredSubs.length === 0 ? (
+              <div style={{ color: C.muted, fontSize: '13px', padding: '12px 0' }}>
+                {subs.length === 0 ? 'No wallets submitted yet.' : 'No submissions match your filter.'}
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ color: C.muted, textAlign: 'left', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      <th style={{ padding: '8px 10px', width: '36px' }}>#</th>
+                      <th style={{ padding: '8px 10px' }}>Discord User</th>
+                      <th style={{ padding: '8px 10px' }}>Wallet Address</th>
+                      <th style={{ padding: '8px 10px' }}>Submitted</th>
+                      <th style={{ padding: '8px 10px' }}>Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSubs.map((s, i) => (
+                      <tr key={s.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                        <td style={{ padding: '8px 10px', color: C.muted }}>{i + 1}</td>
+                        <td style={{ padding: '8px 10px' }}>{s.username ? `@${s.username}` : `(${s.user_id})`}</td>
+                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: '12px', wordBreak: 'break-all' }}>{s.wallet_address}</td>
+                        <td style={{ padding: '8px 10px', color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>{(s.submitted_at || '').replace('T', ' ').slice(0, 16)}</td>
+                        <td style={{ padding: '8px 10px', color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>{(s.updated_at || '').replace('T', ' ').slice(0, 16)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SettingsCard>
+
+          {/* ── Action bar ── */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', marginTop: '4px' }}>
+            <button onClick={handleSave} disabled={busy}
+              style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '10px 20px', color: '#0A0A0F', cursor: busy ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, opacity: busy ? 0.6 : 1 }}>
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+            {isDraft && (
+              <button onClick={handlePost} disabled={busy}
+                style={{ background: 'rgba(59,165,92,0.15)', border: '1px solid rgba(59,165,92,0.45)', borderRadius: '8px', padding: '10px 20px', color: C.green, cursor: busy ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700 }}>
+                🚀 Post to Channel
+              </button>
+            )}
+            {isPosted && (
+              <button onClick={handleClose} disabled={busy}
+                style={{ background: 'rgba(237,66,69,0.12)', border: '1px solid rgba(237,66,69,0.4)', borderRadius: '8px', padding: '10px 20px', color: C.red, cursor: busy ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700 }}>
+                Close Collection
+              </button>
+            )}
+            {msg && (
+              <span style={{ fontSize: '13px', color: msgKind === 'err' ? C.red : C.green }}>{msg}</span>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 // ── Engage ────────────────────────────────────────────────────────────────────
 
 const EngageSettings = () => {
@@ -3196,6 +3602,8 @@ const EngageSettings = () => {
       {toast && !toast.startsWith('✓') && (
         <div style={{ marginTop: '8px', fontSize: '13px', color: C.red }}>{toast}</div>
       )}
+
+      <WalletCollectionsSection sid={sid} />
     </div>
   );
 };
