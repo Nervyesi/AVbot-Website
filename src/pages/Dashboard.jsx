@@ -5384,7 +5384,7 @@ const GIVEAWAY_TASK_KIND_META = {
 // Client-side validators mirror the backend so the admin gets an inline error
 // before the save round-trips. The backend re-validates regardless.
 const RE_X_USERNAME = /^[A-Za-z0-9_]{1,15}$/;
-const RE_SNOWFLAKE  = /^\d{17,19}$/;
+const RE_SNOWFLAKE  = /^\d{17,20}$/;
 const RE_TWEET_REF  = /(?:status\/)?(\d{10,25})/;
 // Flexible invite accept + canonical code extraction (Issue 5).
 const RE_DISCORD_INVITE = /^(https?:\/\/)?(www\.)?discord\.(gg|com\/invite)\/[a-zA-Z0-9]+\/?$/i;
