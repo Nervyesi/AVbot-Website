@@ -3033,10 +3033,15 @@ const WALLET_STATUS_BADGE = {
 const WALLET_EDITOR_DEFAULTS = {
   name: '', blockchain: 'evm', channel_id: '', required_role_id: '',
   ping_role_ids: [], embed_title: '', embed_description: '', embed_color: '',
+  embed_thumbnail_url: '', embed_image_url: '',
   button_label: '', modal_title: '', modal_field_label: '', modal_placeholder: '',
 };
 
 const WalletCollectionsSection = ({ sid }) => {
+  // isPremium gates the visual customization (color picker + image uploads),
+  // exactly like every other module. Non-premium guilds see the controls but
+  // get the standard "coming soon" modal on change.
+  const { isPremium } = useContext(DashboardContext);
   const [list,    setList]    = useState([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
@@ -3089,6 +3094,8 @@ const WalletCollectionsSection = ({ sid }) => {
       embed_title:       row.embed_title || '',
       embed_description: row.embed_description || '',
       embed_color:       row.embed_color || '',
+      embed_thumbnail_url: row.embed_thumbnail_url || '',
+      embed_image_url:     row.embed_image_url || '',
       button_label:      row.button_label || '',
       modal_title:       row.modal_title || '',
       modal_field_label: row.modal_field_label || '',
@@ -3111,6 +3118,8 @@ const WalletCollectionsSection = ({ sid }) => {
     embed_title:       editor.embed_title,
     embed_description: editor.embed_description,
     embed_color:       editor.embed_color || null,
+    embed_thumbnail_url: editor.embed_thumbnail_url || '',
+    embed_image_url:     editor.embed_image_url || '',
     button_label:      editor.button_label,
     modal_title:       editor.modal_title,
     modal_field_label: editor.modal_field_label,
@@ -3305,18 +3314,24 @@ const WalletCollectionsSection = ({ sid }) => {
           </SettingsCard>
 
           <SettingsCard title="Embed">
-            <FieldRow>
-              <Field label="Embed Title">
-                <Input value={editor.embed_title} onChange={setEd('embed_title')} placeholder="Submit Your Wallet" />
-              </Field>
-              <Field label="Embed Color" hint="#RRGGBB hex, blank = brand gold">
-                <Input value={editor.embed_color} onChange={setEd('embed_color')} placeholder="#C8A84E" />
-              </Field>
-            </FieldRow>
-            <Field label="Embed Description">
-              <Textarea value={editor.embed_description} onChange={setEd('embed_description')} rows={3}
-                placeholder="Click the button below to submit your wallet address for the mint whitelist." />
-            </Field>
+            <EmbedPreview
+              serverId={sid}
+              isPremium={isPremium}
+              title={editor.embed_title}
+              description={editor.embed_description}
+              thumbnailUrl={editor.embed_thumbnail_url}
+              imageUrl={editor.embed_image_url}
+              color={editor.embed_color || '#C8A84E'}
+              footerText={''}
+              onTitleChange={setEd('embed_title')}
+              onDescriptionChange={setEd('embed_description')}
+              onThumbnailChange={setEd('embed_thumbnail_url')}
+              onImageChange={setEd('embed_image_url')}
+              onColorChange={setEd('embed_color')}
+              onFooterTextChange={() => {}}
+              showImage={true}
+              bodySize="base"
+            />
             <Field label="Button Label">
               <Input value={editor.button_label} onChange={setEd('button_label')} placeholder="Submit Wallet" />
             </Field>
