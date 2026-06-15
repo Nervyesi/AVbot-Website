@@ -3194,11 +3194,9 @@ const WalletCollectionsSection = ({ sid }) => {
   const isPosted = active?.status === 'posted';
 
   return (
-    <div style={{ marginTop: '32px' }}>
-      <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '28px' }}>
-        <PageHeader icon="💼" title="Wallet Collections" badge="GIVEAWAY"
-          desc="Collect member wallet addresses behind a role gate for mint whitelists. Validates each address against the chain you pick." />
-      </div>
+    <div>
+      <PageHeader icon="💼" title="Wallet Collections" badge="GIVEAWAY"
+        desc="Collect member wallet addresses behind a role gate for mint whitelists. Validates each address against the chain you pick." />
 
       {error && (
         <div style={{ background: 'rgba(237,66,69,0.1)', border: '1px solid rgba(237,66,69,0.3)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', color: C.red, fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -5543,6 +5541,11 @@ const GiveawaySettings = () => {
   const [entrants, setEntrants] = useState([]);
   const [entrantsLoading, setEntrantsLoading] = useState(false);
 
+  // Top-level sub-tab inside the Giveaway module. Defaults to 'giveaways' so
+  // existing admins land on the familiar list first. 'wallet' shows the Wallet
+  // Collections area. Mirrors the Radar module's topic tab bar.
+  const [activeTab, setActiveTab] = useState('giveaways');
+
   const doFetch = async () => {
     if (!serverId) return;
     try {
@@ -5751,6 +5754,25 @@ const GiveawaySettings = () => {
         </div>
       )}
 
+      {/* Sub-tab bar (matches the Radar module's topic tab bar). */}
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '18px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${C.border}`, borderRadius: '12px', padding: '8px' }}>
+        {[
+          { id: 'giveaways', label: 'Giveaways',         icon: '🎉' },
+          { id: 'wallet',    label: 'Wallet Collections', icon: '💼' },
+        ].map(t => {
+          const active = activeTab === t.id;
+          return (
+            <button key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 14px', background: active ? 'rgba(200,168,78,0.14)' : 'transparent', border: active ? '1px solid rgba(200,168,78,0.4)' : '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', color: active ? C.gold : 'rgba(255,255,255,0.7)', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+              <span style={{ display: 'inline-flex', width: '16px', height: '16px', alignItems: 'center', justifyContent: 'center' }}>{t.icon}</span>
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeTab === 'giveaways' && (<>
       {/* ── List ── */}
       <SettingsCard>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px', gap: '12px' }}>
@@ -6067,10 +6089,11 @@ const GiveawaySettings = () => {
           </div>
         </div>
       )}
+      </>)}
 
-      {/* Wallet Collections lives under Giveaway. Its own top divider (built
-          into the component) separates it from the giveaway list and editor. */}
-      <WalletCollectionsSection sid={serverId} />
+      {/* Wallet Collections tab. Tab switching provides the separation, so the
+          section renders without its own top divider here. */}
+      {activeTab === 'wallet' && <WalletCollectionsSection sid={serverId} />}
     </div>
   );
 };
