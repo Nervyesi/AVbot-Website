@@ -3196,7 +3196,7 @@ const WalletCollectionsSection = ({ sid }) => {
   return (
     <div style={{ marginTop: '32px' }}>
       <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '28px' }}>
-        <PageHeader icon="💼" title="Wallet Collections" badge="ENGAGE"
+        <PageHeader icon="💼" title="Wallet Collections" badge="GIVEAWAY"
           desc="Collect member wallet addresses behind a role gate for mint whitelists. Validates each address against the chain you pick." />
       </div>
 
@@ -3602,8 +3602,6 @@ const EngageSettings = () => {
       {toast && !toast.startsWith('✓') && (
         <div style={{ marginTop: '8px', fontSize: '13px', color: C.red }}>{toast}</div>
       )}
-
-      <WalletCollectionsSection sid={sid} />
     </div>
   );
 };
@@ -6069,6 +6067,10 @@ const GiveawaySettings = () => {
           </div>
         </div>
       )}
+
+      {/* Wallet Collections lives under Giveaway. Its own top divider (built
+          into the component) separates it from the giveaway list and editor. */}
+      <WalletCollectionsSection sid={serverId} />
     </div>
   );
 };
