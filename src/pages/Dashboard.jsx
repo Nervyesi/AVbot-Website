@@ -3321,7 +3321,7 @@ const WalletCollectionsSection = ({ sid }) => {
               description={editor.embed_description}
               thumbnailUrl={editor.embed_thumbnail_url}
               imageUrl={editor.embed_image_url}
-              color={editor.embed_color || '#C8A84E'}
+              color={editor.embed_color || '#94730D'}
               footerText={''}
               onTitleChange={setEd('embed_title')}
               onDescriptionChange={setEd('embed_description')}
@@ -5369,12 +5369,15 @@ const GIVEAWAY_EDITOR_DEFAULTS = {
 
 // Giveaway entry-task types. value matches the backend enum; the target field
 // shape changes per type (handled in the editor).
-const GIVEAWAY_TASK_TYPES = [
-  { value: 'twitter_follow',  label: 'Follow X Account' },
-  { value: 'twitter_like',    label: 'Like X Post' },
-  { value: 'twitter_retweet', label: 'Retweet X Post' },
-  { value: 'discord_member',  label: 'Join Discord Server' },
-  { value: 'discord_role',    label: 'Hold Role in Discord Server' },
+// Logical task kinds shown in the "Configure Tasks" checkbox modal. Like and
+// Retweet are one logical kind (engagement) that stores as separate
+// twitter_like / twitter_retweet rows under the hood, so backend verification
+// and legacy data are untouched.
+const GIVEAWAY_TASK_KINDS = [
+  { kind: 'follow',         label: 'Follow on X' },
+  { kind: 'engagement',     label: 'Like / Retweet on X' },
+  { kind: 'discord_member', label: 'Member of a Discord server' },
+  { kind: 'discord_role',   label: 'Hold a role in a Discord server' },
 ];
 
 // Client-side validators mirror the backend so the admin gets an inline error
@@ -5382,30 +5385,136 @@ const GIVEAWAY_TASK_TYPES = [
 const RE_X_USERNAME = /^[A-Za-z0-9_]{1,15}$/;
 const RE_SNOWFLAKE  = /^\d{17,19}$/;
 const RE_TWEET_REF  = /(?:status\/)?(\d{10,25})/;
+const RE_DISCORD_INVITE = /^https:\/\/(discord\.gg\/|discord\.com\/invite\/)\S+$/;
 
-function validateGiveawayTasks(tasks) {
-  for (let i = 0; i < (tasks || []).length; i++) {
-    const t = tasks[i];
-    const n = i + 1;
-    const target = String(t.target || '').trim();
-    if (!target) return `Task ${n}: target is required`;
-    if (t.type === 'twitter_follow') {
-      if (!RE_X_USERNAME.test(target.replace(/^@/, '')))
-        return `Task ${n}: "${target}" is not a valid X username`;
-    } else if (t.type === 'twitter_like' || t.type === 'twitter_retweet') {
-      if (!RE_TWEET_REF.test(target))
-        return `Task ${n}: "${target}" is not a valid tweet URL or ID`;
+// Stable key for merging a like + retweet that target the same tweet.
+function tweetKey(target) {
+  const m = String(target || '').match(/(?:status\/)?(\d{10,25})/);
+  return m ? m[1] : String(target || '').trim().toLowerCase();
+}
+
+// Flat entry_tasks array -> logical units for the editor. Merges a
+// twitter_like + twitter_retweet on the same tweet into one engagement unit.
+function tasksToLogical(tasks) {
+  const units = [];
+  const engByKey = {};
+  for (const t of (tasks || [])) {
+    if (t.type === 'twitter_like' || t.type === 'twitter_retweet') {
+      const key = tweetKey(t.target);
+      let u = engByKey[key];
+      if (!u) { u = { kind: 'engagement', target: t.target || '', like: false, retweet: false, label: '' }; engByKey[key] = u; units.push(u); }
+      if (t.type === 'twitter_like') u.like = true; else u.retweet = true;
+      if (!u.label && t.label) u.label = t.label;
+    } else if (t.type === 'twitter_follow') {
+      units.push({ kind: 'follow', target: t.target || '', label: t.label || '' });
     } else if (t.type === 'discord_member') {
-      if (!RE_SNOWFLAKE.test(target))
-        return `Task ${n}: "${target}" is not a valid Discord server ID`;
+      units.push({ kind: 'discord_member', guildId: t.target || '', invite_url: t.invite_url || '', label: t.label || '' });
     } else if (t.type === 'discord_role') {
-      const parts = target.split(':');
-      if (parts.length !== 2 || !RE_SNOWFLAKE.test((parts[0] || '').trim()) || !RE_SNOWFLAKE.test((parts[1] || '').trim()))
-        return `Task ${n}: role target must be serverID:roleID (both numeric)`;
+      const [g = '', r = ''] = String(t.target || '').split(':');
+      units.push({ kind: 'discord_role', guildId: g.trim(), roleId: r.trim(), invite_url: t.invite_url || '', label: t.label || '' });
+    }
+  }
+  return units;
+}
+
+// Logical units -> flat entry_tasks array for storage.
+function logicalToTasks(units) {
+  const out = [];
+  for (const u of (units || [])) {
+    if (u.kind === 'follow') {
+      out.push({ type: 'twitter_follow', target: (u.target || '').trim(), label: (u.label || '').trim() });
+    } else if (u.kind === 'engagement') {
+      const target = (u.target || '').trim();
+      const label  = (u.label || '').trim();
+      if (u.like)    out.push({ type: 'twitter_like',    target, label });
+      if (u.retweet) out.push({ type: 'twitter_retweet', target, label });
+    } else if (u.kind === 'discord_member') {
+      out.push({ type: 'discord_member', target: (u.guildId || '').trim(), invite_url: (u.invite_url || '').trim(), label: (u.label || '').trim() });
+    } else if (u.kind === 'discord_role') {
+      out.push({ type: 'discord_role', target: `${(u.guildId || '').trim()}:${(u.roleId || '').trim()}`, invite_url: (u.invite_url || '').trim(), label: (u.label || '').trim() });
+    }
+  }
+  return out;
+}
+
+function newTaskUnit(kind) {
+  if (kind === 'follow')         return { kind, target: '', label: '' };
+  if (kind === 'engagement')     return { kind, target: '', like: true, retweet: true, label: '' };
+  if (kind === 'discord_member') return { kind, guildId: '', invite_url: '', label: '' };
+  if (kind === 'discord_role')   return { kind, guildId: '', roleId: '', invite_url: '', label: '' };
+  return { kind, label: '' };
+}
+
+// Validate the LOGICAL units (what the editor holds). Returns an error string
+// or null. invite_url is required on Discord tasks per the owner's spec.
+function validateGiveawayUnits(units) {
+  for (let i = 0; i < (units || []).length; i++) {
+    const u = units[i];
+    const n = i + 1;
+    if (u.kind === 'follow') {
+      const handle = String(u.target || '').trim().replace(/^@/, '');
+      if (!RE_X_USERNAME.test(handle)) return `Task ${n} (Follow): enter a valid X username`;
+    } else if (u.kind === 'engagement') {
+      if (!u.like && !u.retweet) return `Task ${n} (Like / Retweet): select Like, Retweet, or both`;
+      if (!RE_TWEET_REF.test(String(u.target || '').trim())) return `Task ${n} (Like / Retweet): enter a valid tweet URL or ID`;
+    } else if (u.kind === 'discord_member') {
+      if (!RE_SNOWFLAKE.test(String(u.guildId || '').trim())) return `Task ${n} (Discord Member): enter a valid server ID`;
+      if (!RE_DISCORD_INVITE.test(String(u.invite_url || '').trim())) return `Task ${n} (Discord Member): enter a discord.gg invite URL`;
+    } else if (u.kind === 'discord_role') {
+      if (!RE_SNOWFLAKE.test(String(u.guildId || '').trim())) return `Task ${n} (Discord Role): enter a valid server ID`;
+      if (!RE_SNOWFLAKE.test(String(u.roleId || '').trim())) return `Task ${n} (Discord Role): enter a valid role ID`;
+      if (!RE_DISCORD_INVITE.test(String(u.invite_url || '').trim())) return `Task ${n} (Discord Role): enter a discord.gg invite URL`;
     }
   }
   return null;
 }
+
+// Validate the flat entry_tasks (used at save time on editor.entry_tasks).
+function validateGiveawayTasks(tasks) {
+  return validateGiveawayUnits(tasksToLogical(tasks));
+}
+
+// Winner count control: free text typing + minus/plus buttons. Validates to a
+// positive integer 1..1000 on blur, resetting to the last valid value on bad
+// input (Fix 1).
+const WinnerCountInput = ({ value, onChange, disabled }) => {
+  const [text, setText] = useState(String(value ?? 1));
+  useEffect(() => { setText(String(value ?? 1)); }, [value]);
+  const commit = (raw) => {
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < 1) { setText(String(value)); return; }
+    const clamped = Math.min(1000, Math.max(1, n));
+    setText(String(clamped));
+    onChange(clamped);
+  };
+  const step = (delta) => {
+    if (disabled) return;
+    const base = Number.isInteger(parseInt(text, 10)) ? parseInt(text, 10) : (value || 1);
+    const next = Math.min(1000, Math.max(1, base + delta));
+    setText(String(next));
+    onChange(next);
+  };
+  const btn = {
+    width: '34px', height: '38px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: '8px', color: '#fff', cursor: disabled ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif',
+    fontSize: '16px', fontWeight: 700, opacity: disabled ? 0.5 : 1, flexShrink: 0,
+  };
+  return (
+    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+      <button type="button" onClick={() => step(-1)} disabled={disabled} style={btn}>−</button>
+      <input
+        value={text}
+        disabled={disabled}
+        inputMode="numeric"
+        onChange={e => setText(e.target.value.replace(/[^0-9]/g, ''))}
+        onBlur={e => commit(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+        style={{ width: '70px', textAlign: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 8px', color: '#fff', fontSize: '14px', fontFamily: 'Sora, sans-serif', outline: 'none', opacity: disabled ? 0.55 : 1 }}
+      />
+      <button type="button" onClick={() => step(1)} disabled={disabled} style={btn}>+</button>
+    </div>
+  );
+};
 
 // Tolerant parser used by the dashboard inputs: accept any combination of
 // commas, whitespace, and newlines as separators. Drops empty tokens. Does
@@ -5455,83 +5564,152 @@ const STATUS_BADGE = {
   cancelled: { label: 'Cancelled', bg: 'rgba(237,66,69,0.10)',   fg: '#ed4245',                bd: 'rgba(237,66,69,0.35)'    },
 };
 
-// Repeatable entry-task list editor. The target field shape changes by task
-// type (X username, tweet URL/ID, server ID, or server ID + role ID). Discord
-// tasks carry a static reminder that AVbot must be in the target server.
-const GiveawayTasksEditor = ({ tasks, onChange }) => {
-  const setTask = (i, patch) => onChange(tasks.map((t, idx) => idx === i ? { ...t, ...patch } : t));
-  const addTask = () => onChange([...tasks, { type: 'twitter_follow', target: '', label: '' }]);
-  const removeTask = (i) => onChange(tasks.filter((_, idx) => idx !== i));
+// Small labeled checkbox used in the task selection modal and the Like/Retweet
+// sub-options.
+const TaskCheckbox = ({ checked, onToggle, label }) => (
+  <div onClick={onToggle}
+    style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 4px', cursor: 'pointer' }}>
+    <div style={{ width: '18px', height: '18px', borderRadius: '5px', flexShrink: 0, border: `1px solid ${checked ? C.gold : 'rgba(255,255,255,0.25)'}`, background: checked ? `linear-gradient(135deg,${C.gold},${C.goldDark})` : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0A0A0F', fontSize: '12px', fontWeight: 800 }}>
+      {checked ? '✓' : ''}
+    </div>
+    <span style={{ fontSize: '13px', color: '#fff' }}>{label}</span>
+  </div>
+);
 
-  // discord_role keeps two visible inputs but stores one "guildID:roleID" target.
-  const roleParts = (target) => {
-    const [g = '', r = ''] = String(target || '').split(':');
-    return { g: g.trim(), r: r.trim() };
+// Bold type header above each configured task's inputs (Fix 3).
+const TaskHeader = ({ children }) => (
+  <div style={{ fontSize: '12px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
+    {children}
+  </div>
+);
+
+// Entry-task editor. A single "Configure Tasks" button opens a checkbox modal
+// to pick which task kinds are required; each selected kind renders one config
+// row below with its type header and inputs (Fixes 2 to 5). Like / Retweet is
+// one row with sub-checkboxes; storage stays as separate rows under the hood.
+const GiveawayTasksEditor = ({ tasks, onChange }) => {
+  const units = tasksToLogical(tasks);
+  const present = new Set(units.map(u => u.kind));
+  const [modalOpen, setModalOpen] = useState(false);
+  const [draft, setDraft] = useState(new Set());
+
+  const emit = (nextUnits) => onChange(logicalToTasks(nextUnits));
+  const editUnit = (idx, patch) => emit(units.map((u, i) => i === idx ? { ...u, ...patch } : u));
+  const removeUnit = (idx) => emit(units.filter((_, i) => i !== idx));
+
+  const openModal = () => { setDraft(new Set(present)); setModalOpen(true); };
+  const toggleDraft = (kind) => setDraft(prev => {
+    const n = new Set(prev);
+    n.has(kind) ? n.delete(kind) : n.add(kind);
+    return n;
+  });
+  const applyModal = () => {
+    let next = units.filter(u => draft.has(u.kind));   // remove unchecked kinds
+    for (const k of draft) if (!present.has(k)) next.push(newTaskUnit(k));  // add new
+    emit(next);
+    setModalOpen(false);
   };
+
+  const engagementHeader = (u) =>
+    (u.like && u.retweet) ? 'Like & Retweet:' : (u.like ? 'Like:' : (u.retweet ? 'Retweet:' : 'Like / Retweet:'));
+
+  const toggleEngagement = (idx, field) => {
+    const u = units[idx];
+    const nextVal = !u[field];
+    const other = field === 'like' ? u.retweet : u.like;
+    if (!nextVal && !other) return;   // keep at least one action selected
+    editUnit(idx, { [field]: nextVal });
+  };
+
+  const discordNote = (
+    <div style={{ fontSize: '11px', color: C.orange, marginTop: '6px' }}>
+      AVbot must be in this server for verification to work.
+    </div>
+  );
 
   return (
     <div style={{ marginTop: '6px', marginBottom: '18px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
         <Label hint="Members must complete these before they can enter.">Entry tasks (optional)</Label>
-        <button type="button" onClick={addTask}
+        <button type="button" onClick={openModal}
           style={{ background: 'rgba(200,168,78,0.12)', border: '1px solid rgba(200,168,78,0.4)', borderRadius: '8px', padding: '6px 12px', color: C.gold, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 700 }}>
-          + Add task
+          Configure Tasks
         </button>
       </div>
 
-      {tasks.length === 0 ? (
+      {units.length === 0 ? (
         <div style={{ fontSize: '12px', color: C.muted, padding: '8px 0' }}>
           No tasks. Members enter directly (subject to role and cost rules).
         </div>
-      ) : tasks.map((t, i) => {
-        const isDiscordRole = t.type === 'discord_role';
-        const isDiscordMember = t.type === 'discord_member';
-        const isFollow = t.type === 'twitter_follow';
-        const parts = roleParts(t.target);
-        return (
-          <div key={i} style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '12px 14px', marginBottom: '10px' }}>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-              <div style={{ minWidth: '180px' }}>
-                <Select value={t.type}
-                  onChange={v => setTask(i, { type: v, target: '' })}
-                  options={GIVEAWAY_TASK_TYPES} />
+      ) : units.map((u, i) => (
+        <div key={`${u.kind}:${i}`} style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '12px 14px', marginBottom: '10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {u.kind === 'follow' && (<>
+                <TaskHeader>Follow:</TaskHeader>
+                <Input value={u.target} onChange={v => editUnit(i, { target: v })} placeholder="X username (without @)" />
+              </>)}
+
+              {u.kind === 'engagement' && (<>
+                <TaskHeader>{engagementHeader(u)}</TaskHeader>
+                <Input value={u.target} onChange={v => editUnit(i, { target: v })} placeholder="Tweet URL or ID" />
+                <div style={{ display: 'flex', gap: '18px', marginTop: '6px' }}>
+                  <TaskCheckbox checked={!!u.like}    onToggle={() => toggleEngagement(i, 'like')}    label="Like" />
+                  <TaskCheckbox checked={!!u.retweet} onToggle={() => toggleEngagement(i, 'retweet')} label="Retweet" />
+                </div>
+              </>)}
+
+              {u.kind === 'discord_member' && (<>
+                <TaskHeader>Discord Member:</TaskHeader>
+                <Input value={u.guildId} onChange={v => editUnit(i, { guildId: v })} placeholder="Discord server ID" />
+                <div style={{ marginTop: '8px' }}>
+                  <Input value={u.invite_url} onChange={v => editUnit(i, { invite_url: v })} placeholder="Server invite URL (https://discord.gg/...)" />
+                </div>
+                {discordNote}
+              </>)}
+
+              {u.kind === 'discord_role' && (<>
+                <TaskHeader>Discord Role:</TaskHeader>
+                <Input value={u.guildId} onChange={v => editUnit(i, { guildId: v })} placeholder="Discord server ID" />
+                <div style={{ marginTop: '8px' }}>
+                  <Input value={u.invite_url} onChange={v => editUnit(i, { invite_url: v })} placeholder="Server invite URL (https://discord.gg/...)" />
+                </div>
+                <div style={{ marginTop: '8px' }}>
+                  <Input value={u.roleId} onChange={v => editUnit(i, { roleId: v })} placeholder="Role ID" />
+                </div>
+                {discordNote}
+              </>)}
+
+              <div style={{ marginTop: '8px' }}>
+                <Input value={u.label || ''} onChange={v => editUnit(i, { label: v })}
+                  placeholder="Display text shown to users (optional)" />
               </div>
-              <div style={{ flex: 1, minWidth: '200px' }}>
-                {isDiscordRole ? (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <Input value={parts.g}
-                      onChange={v => setTask(i, { target: `${v.trim()}:${parts.r}` })}
-                      placeholder="Discord server ID" />
-                    <Input value={parts.r}
-                      onChange={v => setTask(i, { target: `${parts.g}:${v.trim()}` })}
-                      placeholder="Role ID" />
-                  </div>
-                ) : (
-                  <Input value={t.target}
-                    onChange={v => setTask(i, { target: v })}
-                    placeholder={
-                      isFollow ? 'X username (without @)' :
-                      isDiscordMember ? 'Discord server ID' :
-                      'Tweet URL or ID'
-                    } />
-                )}
-                {(isDiscordMember || isDiscordRole) && (
-                  <div style={{ fontSize: '11px', color: C.orange, marginTop: '6px' }}>
-                    AVbot must be in this server for verification to work.
-                  </div>
-                )}
-              </div>
-              <button type="button" onClick={() => removeTask(i)} title="Remove task"
-                style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px', padding: '6px', lineHeight: 1 }}>🗑</button>
             </div>
-            <div style={{ marginTop: '8px' }}>
-              <Input value={t.label}
-                onChange={v => setTask(i, { label: v })}
-                placeholder="Display text shown to users (optional)" />
+            <button type="button" onClick={() => removeUnit(i)} title="Remove task"
+              style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px', padding: '6px', lineHeight: 1, flexShrink: 0 }}>🗑</button>
+          </div>
+        </div>
+      ))}
+
+      {modalOpen && (
+        <div onClick={() => setModalOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#14141b', border: `1px solid ${C.border}`, borderRadius: '14px', padding: '24px', width: '380px', maxWidth: '92vw', boxShadow: '0 16px 48px rgba(0,0,0,0.6)' }}>
+            <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>Select task types to require for entry</div>
+            <div style={{ fontSize: '12px', color: C.muted, marginBottom: '14px' }}>Unchecking a type removes its configuration.</div>
+            {GIVEAWAY_TASK_KINDS.map(k => (
+              <TaskCheckbox key={k.kind} checked={draft.has(k.kind)} onToggle={() => toggleDraft(k.kind)} label={k.label} />
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '18px' }}>
+              <button type="button" onClick={() => setModalOpen(false)}
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 16px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px' }}>Cancel</button>
+              <button type="button" onClick={applyModal}
+                style={{ background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: 'none', borderRadius: '8px', padding: '8px 18px', color: '#0A0A0F', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700 }}>Done</button>
             </div>
           </div>
-        );
-      })}
+        </div>
+      )}
     </div>
   );
 };
@@ -5925,12 +6103,11 @@ const GiveawaySettings = () => {
                 </div>
               </Field>
               <Field label="Winner count"
-                hint={isActive ? 'Locked while active.' : 'How many winners are drawn.'}>
-                <Input type="number"
-                  value={String(editor.winner_count)}
-                  onChange={v => setEd('winner_count')(Math.max(1, Number(v) || 1))}
-                  placeholder="1"
-                  style={{ maxWidth: '120px' }} />
+                hint={isActive ? 'Locked while active.' : 'Type a number or use the buttons. 1 to 1000.'}>
+                <WinnerCountInput
+                  value={Number(editor.winner_count) || 1}
+                  onChange={v => setEd('winner_count')(v)}
+                  disabled={isActive} />
               </Field>
             </FieldRow>
             <FieldRow>
@@ -5975,6 +6152,7 @@ const GiveawaySettings = () => {
             </FieldRow>
 
             <GiveawayTasksEditor
+              key={activeId}
               tasks={editor.entry_tasks || []}
               onChange={setEd('entry_tasks')} />
             <FieldRow>
