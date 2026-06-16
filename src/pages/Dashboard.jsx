@@ -31,6 +31,7 @@ import {
   listWalletCollections, createWalletCollection, updateWalletCollection,
   deleteWalletCollection, fetchWalletSubmissions, postWalletCollection,
   closeWalletCollection,
+  resolveDiscordServer, fetchDiscordRoles,
   fetchSettings, updateBrand, updateAccess, updateLevels,
   fetchLogs, downloadLogs, fetchFlags, resolveFlag,
   fetchUserPoints, adjustPoints, fetchLeaderboard,
@@ -3053,6 +3054,7 @@ const WalletCollectionsSection = ({ sid }) => {
   const [msg, setMsg]   = useState('');
   const [msgKind, setMsgKind] = useState('ok');
   const [confirmDel, setConfirmDel] = useState(null);
+  const [baseline, setBaseline] = useState('');
 
   const [subs, setSubs] = useState([]);
   const [subsLoading, setSubsLoading] = useState(false);
@@ -3085,7 +3087,7 @@ const WalletCollectionsSection = ({ sid }) => {
   useEffect(() => {
     const row = list.find(x => x.id === activeId);
     if (!row) return;
-    setEditor({
+    const hydrated = {
       name:              row.name || '',
       blockchain:        row.blockchain || 'evm',
       channel_id:        row.channel_id || '',
@@ -3100,7 +3102,9 @@ const WalletCollectionsSection = ({ sid }) => {
       modal_title:       row.modal_title || '',
       modal_field_label: row.modal_field_label || '',
       modal_placeholder: row.modal_placeholder || '',
-    });
+    };
+    setEditor(hydrated);
+    setBaseline(JSON.stringify(hydrated));
     setMsg(''); setSubFilter(''); setCopied(false);
     setSubsLoading(true); setSubs([]);
     fetchWalletSubmissions(sid, row.id)
@@ -3108,6 +3112,12 @@ const WalletCollectionsSection = ({ sid }) => {
       .catch(e => showMsg(e.message, 'err'))
       .finally(() => setSubsLoading(false));
   }, [activeId, list]); // eslint-disable-line
+
+  const dirty = !!baseline && JSON.stringify(editor) !== baseline;
+  const goToList = () => {
+    if (dirty && !window.confirm('Discard changes?')) return;
+    setActiveId(null); setMsg('');
+  };
 
   const editorToPayload = () => ({
     name:              editor.name,
@@ -3140,8 +3150,9 @@ const WalletCollectionsSection = ({ sid }) => {
     setBusy(true);
     try {
       const res = await updateWalletCollection(sid, activeId, editorToPayload());
-      showMsg(res?.live_edit === 'edited' ? 'Saved (live message updated)' : 'Saved');
       await doFetch();
+      setActiveId(null);   // return to list view (page navigation)
+      showMsg(res?.live_edit === 'edited' ? 'Saved (live message updated)' : 'Saved');
     } catch (e) { showMsg(e.message, 'err'); }
     finally { setBusy(false); }
   };
@@ -3214,7 +3225,8 @@ const WalletCollectionsSection = ({ sid }) => {
         </div>
       )}
 
-      {/* ── List ── */}
+      {/* ── List view (hidden while editing/creating) ── */}
+      {!active && (
       <SettingsCard>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px', gap: '12px' }}>
           <div>
@@ -3260,22 +3272,12 @@ const WalletCollectionsSection = ({ sid }) => {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <button onClick={() => setActiveId(isOpen ? null : row.id)}
-                      style={{ background: isOpen ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isOpen ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '6px', padding: '5px 12px', color: isOpen ? C.gold : '#fff', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
-                      {isOpen ? '▲ Close' : '✏️ Edit'}
+                    <button onClick={() => setActiveId(row.id)}
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '5px 12px', color: '#fff', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
+                      ✏️ Edit
                     </button>
-                    {confirmDel === row.id ? (
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        <span style={{ fontSize: '11px', color: C.red }}>Delete?</span>
-                        <button onClick={() => handleDelete(row.id)} disabled={busy}
-                          style={{ background: 'rgba(237,66,69,0.2)', border: '1px solid rgba(237,66,69,0.4)', borderRadius: '6px', padding: '4px 10px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>Yes</button>
-                        <button onClick={() => setConfirmDel(null)}
-                          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '4px 10px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>No</button>
-                      </div>
-                    ) : (
-                      <button onClick={() => setConfirmDel(row.id)} title="Delete this collection"
-                        style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px', padding: '4px 6px', lineHeight: 1 }}>🗑</button>
-                    )}
+                    <button onClick={() => setConfirmDel(row.id)} title="Delete this collection"
+                      style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px', padding: '4px 6px', lineHeight: 1 }}>🗑</button>
                   </div>
                 </div>
               );
@@ -3283,10 +3285,42 @@ const WalletCollectionsSection = ({ sid }) => {
           </div>
         )}
       </SettingsCard>
+      )}
 
-      {/* ── Editor ── */}
+      {/* Delete confirmation modal */}
+      {confirmDel != null && (
+        <div onClick={() => setConfirmDel(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: '20px' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#16161e', border: `1px solid ${C.border}`, borderRadius: '14px', padding: '24px', maxWidth: '420px', width: '100%' }}>
+            <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '8px' }}>Delete this collection?</div>
+            <div style={{ fontSize: '13px', color: C.muted, lineHeight: 1.6, marginBottom: '20px' }}>
+              This removes the collection and all collected wallet submissions. This action cannot be undone.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button onClick={() => setConfirmDel(null)}
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 16px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px' }}>Cancel</button>
+              <button onClick={() => handleDelete(confirmDel)} disabled={busy}
+                style={{ background: 'rgba(237,66,69,0.2)', border: '1px solid rgba(237,66,69,0.45)', borderRadius: '8px', padding: '8px 18px', color: C.red, cursor: busy ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, opacity: busy ? 0.6 : 1 }}>
+                {busy ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Create / Edit view (replaces the list) ── */}
       {active && (
         <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+            <button onClick={goToList}
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 14px', color: '#fff', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 600 }}>
+              ‹ Back to list
+            </button>
+            <span style={{ fontSize: '13px', color: C.muted }}>
+              {active.status === 'draft' ? 'New collection' : 'Editing'}{active.name ? `: ${active.name}` : ''}
+            </span>
+          </div>
           <SettingsCard title="Collection">
             <FieldRow>
               <Field label="Name" hint="Used in commands and the dashboard">
@@ -5488,10 +5522,10 @@ function validateGiveawayUnit(u) {
     if (!u.like && !u.retweet) return 'Select Like, Retweet, or both';
     if (!RE_TWEET_REF.test(String(u.target || '').trim())) return 'Enter a valid tweet URL or ID';
   } else if (u.kind === 'discord') {
-    if (!RE_SNOWFLAKE.test(String(u.server_id || '').trim())) return 'Enter a valid Discord server ID';
-    if (!normalizeInvite(u.invite_url)) return 'Enter a valid Discord invite URL';
+    if (!RE_SNOWFLAKE.test(String(u.server_id || '').trim())) return 'Resolve a Discord server first';
+    if (String(u.invite_url || '').trim() && !normalizeInvite(u.invite_url)) return 'Enter a valid Discord invite URL';
     for (const r of (u.roles || [])) {
-      if (!RE_SNOWFLAKE.test(String(r.role_id || '').trim())) return 'Each role needs a valid role ID';
+      if (!RE_SNOWFLAKE.test(String(r.role_id || '').trim())) return 'Select a role for every role multiplier row';
       const m = Number(r.multiplier);
       if (!Number.isInteger(m) || m < 1 || m > 100) return 'Role multiplier must be 1 to 100';
     }
@@ -5636,7 +5670,7 @@ function giveawayTaskSummary(u) {
 
 // Inline configuration form for one task (add or edit). Holds its own draft so
 // empty fields never vanish; commits on Add/Save after client validation.
-const TaskConfigForm = ({ initial, isEdit, onCommit, onCancel }) => {
+const TaskConfigForm = ({ sid, initial, isEdit, onCommit, onCancel }) => {
   const [u, setU] = useState(initial);
   const [err, setErr] = useState('');
   const set = (patch) => setU(p => ({ ...p, ...patch }));
@@ -5649,6 +5683,46 @@ const TaskConfigForm = ({ initial, isEdit, onCommit, onCancel }) => {
     if (!nextVal && !other) return;
     set({ [field]: nextVal });
   };
+
+  // Discord server resolution (Issue 2). Paste invite URL or ID, resolve to a
+  // server card, then pick roles from a dropdown when the bot is in the server.
+  const [resolveInput, setResolveInput] = useState(initial.invite_url || initial.server_id || '');
+  const [resolved, setResolved] = useState(null);
+  const [resolving, setResolving] = useState(false);
+  const [resolveErr, setResolveErr] = useState('');
+  const [roleOptions, setRoleOptions] = useState([]);
+
+  const loadRoles = async (gid) => {
+    try {
+      const r = await fetchDiscordRoles(sid, gid);
+      setRoleOptions(r.roles || []);
+    } catch (_) { setRoleOptions([]); }
+  };
+
+  const doResolve = async (inputOverride) => {
+    const q = (inputOverride != null ? inputOverride : resolveInput).trim();
+    if (!q) { setResolveErr('Enter an invite URL or server ID'); return; }
+    setResolving(true); setResolveErr('');
+    try {
+      const r = await resolveDiscordServer(sid, q);
+      setResolved(r);
+      const serverChanged = String(r.server_id) !== String(u.server_id || '');
+      set({ server_id: r.server_id, invite_url: r.invite_url || '', ...(serverChanged ? { roles: [] } : {}) });
+      if (r.bot_in_server) loadRoles(r.server_id); else setRoleOptions([]);
+    } catch (e) {
+      setResolveErr(e.message); setResolved(null); setRoleOptions([]);
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  // Auto-resolve when editing an existing Discord task so the card + roles show.
+  useEffect(() => {
+    if (u.kind === 'discord' && (initial.server_id || initial.invite_url)) {
+      doResolve(initial.invite_url || initial.server_id);
+    }
+  }, []); // eslint-disable-line
+
   const commit = () => {
     const e = validateGiveawayUnit(u);
     if (e) { setErr(e); return; }
@@ -5658,9 +5732,11 @@ const TaskConfigForm = ({ initial, isEdit, onCommit, onCancel }) => {
   };
 
   const numStyle = { background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 8px', color: '#fff', fontSize: '14px', fontFamily: 'Sora, sans-serif', outline: 'none', textAlign: 'center' };
+  const selStyle = { background: '#1a1a22', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', fontFamily: 'Sora, sans-serif', outline: 'none', cursor: 'pointer', width: '100%' };
   const pill = (active) => ({ background: active ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${active ? C.gold : 'rgba(255,255,255,0.12)'}`, borderRadius: '7px', padding: '7px 12px', color: active ? C.gold : 'rgba(255,255,255,0.7)', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '11px', fontWeight: 700 });
   const xStyle = { background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '18px', lineHeight: 1, padding: '4px 6px', flexShrink: 0 };
   const meta = GIVEAWAY_TASK_KIND_META[u.kind] || { label: 'Task' };
+  const botIn = resolved && resolved.bot_in_server;
 
   return (
     <div style={{ background: 'rgba(200,168,78,0.05)', border: '1px solid rgba(200,168,78,0.3)', borderRadius: '10px', padding: '14px', marginBottom: '10px' }}>
@@ -5679,41 +5755,81 @@ const TaskConfigForm = ({ initial, isEdit, onCommit, onCancel }) => {
       </>)}
 
       {u.kind === 'discord' && (<>
-        <Input value={u.server_id} onChange={v => set({ server_id: v })} placeholder="Discord server ID" />
-        <div style={{ marginTop: '8px' }}>
-          <Input value={u.invite_url} onChange={v => set({ invite_url: v })} placeholder="Server invite URL (discord.gg/...)" />
-        </div>
-        <div style={{ fontSize: '11px', color: C.orange, marginTop: '6px' }}>AVbot must be in this server for verification to work.</div>
-        <div style={{ marginTop: '14px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'rgba(255,255,255,0.8)' }}>Role Multipliers (optional)</span>
-            <button type="button" onClick={addRole}
-              style={{ background: 'rgba(200,168,78,0.12)', border: '1px solid rgba(200,168,78,0.4)', borderRadius: '7px', padding: '5px 10px', color: C.gold, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '11px', fontWeight: 700 }}>
-              + Add Role
-            </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+          <div style={{ flex: 1 }}>
+            <Input value={resolveInput} onChange={setResolveInput}
+              onBlur={() => { if (resolveInput.trim() && !resolved) doResolve(); }}
+              placeholder="Discord server invite URL or ID" />
           </div>
-          {(u.roles || []).length === 0 ? (
-            <div style={{ fontSize: '11px', color: C.muted }}>No roles. Task requires server membership only.</div>
-          ) : (u.roles || []).map((r, ri) => (
-            <div key={ri} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: '130px' }}>
-                <Input value={r.role_id} onChange={v => setRole(ri, { role_id: v })} placeholder="Role ID" />
-              </div>
-              <input type="number" min="1" max="100" value={String(r.multiplier)}
-                onChange={e => setRole(ri, { multiplier: Math.max(1, Math.min(100, Number(e.target.value) || 1)) })}
-                style={{ width: '64px', ...numStyle }} />
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {['BASE', 'STACK'].map(tp => (
-                  <button key={tp} type="button" onClick={() => setRole(ri, { type: tp })} style={pill(r.type === tp)}>{tp}</button>
-                ))}
-              </div>
-              <button type="button" onClick={() => removeRole(ri)} title="Remove role" style={xStyle}>×</button>
+          <button type="button" onClick={() => doResolve()} disabled={resolving}
+            style={{ background: 'rgba(200,168,78,0.12)', border: '1px solid rgba(200,168,78,0.4)', borderRadius: '8px', padding: '10px 16px', color: C.gold, cursor: resolving ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, flexShrink: 0, opacity: resolving ? 0.6 : 1 }}>
+            {resolving ? 'Resolving…' : 'Resolve'}
+          </button>
+        </div>
+        {resolveErr && <div style={{ fontSize: '12px', color: C.red, marginTop: '8px' }}>{resolveErr}</div>}
+
+        {resolved && (
+          <div style={{ marginTop: '10px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {resolved.icon_url
+              ? <img src={resolved.icon_url} alt="" style={{ width: '40px', height: '40px', borderRadius: '10px', flexShrink: 0 }} />
+              : <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(200,168,78,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: C.gold, fontWeight: 800 }}>{(resolved.name || '?')[0]}</div>}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: '14px' }}>✓ {resolved.name}</div>
+              {resolved.member_count != null && (
+                <div style={{ fontSize: '12px', color: C.muted }}>~{Number(resolved.member_count).toLocaleString()} members</div>
+              )}
+              {botIn
+                ? <span style={{ display: 'inline-block', marginTop: '5px', fontSize: '10px', fontWeight: 700, color: C.green, background: 'rgba(59,165,92,0.12)', border: '1px solid rgba(59,165,92,0.4)', borderRadius: '100px', padding: '2px 8px' }}>Bot is in this server</span>
+                : <span style={{ display: 'inline-block', marginTop: '5px', fontSize: '10px', fontWeight: 700, color: C.orange, background: 'rgba(255,140,66,0.1)', border: '1px solid rgba(255,140,66,0.35)', borderRadius: '100px', padding: '2px 8px' }}>AVbot is not in this server. Invite the bot for verification to work.</span>}
             </div>
-          ))}
-          <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px' }}>
-            BASE: highest matched multiplier counts. STACK: added on top. Tickets weight the draw.
           </div>
-        </div>
+        )}
+
+        {resolved && (
+          <div style={{ marginTop: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'rgba(255,255,255,0.8)' }}>Role Multipliers (optional)</span>
+              {botIn && (
+                <button type="button" onClick={addRole}
+                  style={{ background: 'rgba(200,168,78,0.12)', border: '1px solid rgba(200,168,78,0.4)', borderRadius: '7px', padding: '5px 10px', color: C.gold, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '11px', fontWeight: 700 }}>
+                  + Add Role
+                </button>
+              )}
+            </div>
+            {!botIn ? (
+              <div style={{ fontSize: '11px', color: C.orange }}>AVbot must be in this server before role multipliers can be configured. You can still save this as a membership only task.</div>
+            ) : (u.roles || []).length === 0 ? (
+              <div style={{ fontSize: '11px', color: C.muted }}>No roles. Task requires server membership only.</div>
+            ) : (u.roles || []).map((r, ri) => {
+              const hasOpt = roleOptions.some(o => String(o.id) === String(r.role_id));
+              return (
+                <div key={ri} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: '150px' }}>
+                    <select value={r.role_id} onChange={e => setRole(ri, { role_id: e.target.value })} style={selStyle}>
+                      <option value="">Select a role…</option>
+                      {roleOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                      {r.role_id && !hasOpt && <option value={r.role_id}>Role {r.role_id}</option>}
+                    </select>
+                  </div>
+                  <input type="number" min="1" max="100" value={String(r.multiplier)}
+                    onChange={e => setRole(ri, { multiplier: Math.max(1, Math.min(100, Number(e.target.value) || 1)) })}
+                    style={{ width: '64px', ...numStyle }} />
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {['BASE', 'STACK'].map(tp => (
+                      <button key={tp} type="button" onClick={() => setRole(ri, { type: tp })} style={pill(r.type === tp)}>{tp}</button>
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => removeRole(ri)} title="Remove role" style={xStyle}>×</button>
+                </div>
+              );
+            })}
+            {botIn && (
+              <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px' }}>
+                BASE: highest matched multiplier counts. STACK: added on top. Tickets weight the draw.
+              </div>
+            )}
+          </div>
+        )}
       </>)}
 
       {err && <div style={{ fontSize: '12px', color: C.red, marginTop: '10px' }}>{err}</div>}
@@ -5735,7 +5851,7 @@ const TaskConfigForm = ({ initial, isEdit, onCommit, onCancel }) => {
 // type picker (Follow / Like-Retweet / Discord, capped per Issue 7); choosing a
 // type opens that type's config form inline. Existing rows show a summary with
 // Edit / Remove. No custom label field.
-const GiveawayTasksEditor = ({ tasks, onChange }) => {
+const GiveawayTasksEditor = ({ tasks, onChange, sid }) => {
   const units = tasksToLogical(tasks);
   const [panel, setPanel] = useState(null);  // null | {mode:'select'} | {mode:'new',draft} | {mode:'edit',index,draft}
 
@@ -5766,7 +5882,7 @@ const GiveawayTasksEditor = ({ tasks, onChange }) => {
 
       {units.map((u, i) => (
         (panel && panel.mode === 'edit' && panel.index === i)
-          ? <TaskConfigForm key={i} initial={panel.draft} isEdit onCommit={onCommit} onCancel={() => setPanel(null)} />
+          ? <TaskConfigForm key={i} sid={sid} initial={panel.draft} isEdit onCommit={onCommit} onCancel={() => setPanel(null)} />
           : (
             <div key={i} style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '10px 14px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '13px', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{giveawayTaskSummary(u)}</span>
@@ -5801,7 +5917,7 @@ const GiveawayTasksEditor = ({ tasks, onChange }) => {
       )}
 
       {panel && panel.mode === 'new' && (
-        <TaskConfigForm initial={panel.draft} onCommit={onCommit} onCancel={() => setPanel(null)} />
+        <TaskConfigForm sid={sid} initial={panel.draft} onCommit={onCommit} onCancel={() => setPanel(null)} />
       )}
 
       {!panel && (
@@ -5859,12 +5975,16 @@ const GiveawaySettings = () => {
       .finally(() => setLoading(false));
   }, [serverId]); // eslint-disable-line
 
-  // When a row becomes active in the editor, hydrate the form.
+  const [baseline, setBaseline] = useState('');
+
+  // When a row becomes active in the editor, hydrate the form. entry_tasks are
+  // kept as full objects (the API returns the canonical shape, including the
+  // unified discord type with server_id / invite_url / role_multipliers).
   useEffect(() => {
     const row = list.find(x => x.id === activeId);
     if (!row) return;
     const dur = secondsToFriendly(row.duration_seconds || 3600);
-    setEditor({
+    const hydrated = {
       title:             row.title || '',
       description:       row.description || '',
       prize:             row.prize || '',
@@ -5881,12 +6001,19 @@ const GiveawaySettings = () => {
       winner_count:      row.winner_count || 1,
       entry_cost_points: row.entry_cost_points || 0,
       cost_source:       row.cost_source || 'community',
-      entry_tasks:       Array.isArray(row.entry_tasks)
-        ? row.entry_tasks.map(t => ({ type: t.type, target: t.target || '', label: t.label || '' }))
-        : [],
-    });
+      entry_tasks:       Array.isArray(row.entry_tasks) ? row.entry_tasks : [],
+    };
+    setEditor(hydrated);
+    setBaseline(JSON.stringify(hydrated));
     setMsg('');
   }, [activeId, list]);
+
+  const dirty = !!baseline && JSON.stringify(editor) !== baseline;
+  const goToList = () => {
+    if (dirty && !window.confirm('Discard changes?')) return;
+    setActiveId(null);
+    setMsg('');
+  };
 
   const active = list.find(g => g.id === activeId) || null;
   const isActive    = active?.status === 'active';
@@ -5950,8 +6077,9 @@ const GiveawaySettings = () => {
         delete payload.cost_source;   // locked once active (matches backend)
       }
       const res = await updateGiveaway(serverId, activeId, payload);
-      showMsg(res?.live_edit === 'edited' ? 'Saved (live message updated)' : 'Saved');
       await doFetch();
+      setActiveId(null);   // return to list view (page navigation)
+      showMsg(res?.live_edit === 'edited' ? 'Saved (live message updated)' : 'Saved');
     } catch (e) { showMsg(e.message, 'err'); }
     finally { setBusy(false); }
   };
@@ -5966,8 +6094,9 @@ const GiveawaySettings = () => {
       const payload = editorToPayload();
       await updateGiveaway(serverId, activeId, payload);
       const res = await startGiveaway(serverId, activeId);
-      showMsg(`Started. Ends ${giveawayRelative(res.ends_at)}.`);
       await doFetch();
+      setActiveId(null);   // return to list view
+      showMsg(`Started. Ends ${giveawayRelative(res.ends_at)}.`);
     } catch (e) { showMsg(e.message, 'err'); }
     finally { setBusy(false); }
   };
@@ -6066,7 +6195,8 @@ const GiveawaySettings = () => {
       </div>
 
       {activeTab === 'giveaways' && (<>
-      {/* ── List ── */}
+      {/* ── List view (hidden while editing/creating) ── */}
+      {!active && (
       <SettingsCard>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px', gap: '12px' }}>
           <div>
@@ -6122,9 +6252,9 @@ const GiveawaySettings = () => {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <button onClick={() => setActiveId(isOpen ? null : row.id)}
-                      style={{ background: isOpen ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isOpen ? 'rgba(200,168,78,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '6px', padding: '5px 12px', color: isOpen ? C.gold : '#fff', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
-                      {isOpen ? '▲ Close' : '✏️ Edit'}
+                    <button onClick={() => setActiveId(row.id)}
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '5px 12px', color: '#fff', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>
+                      ✏️ Edit
                     </button>
                     {row.status !== 'draft' && (
                       <button onClick={() => openEntrants(row.id)}
@@ -6133,20 +6263,14 @@ const GiveawaySettings = () => {
                         👥 {row.entry_count}
                       </button>
                     )}
-                    {row.status === 'draft' && (
-                      confirm?.id === row.id && confirm.action === 'delete' ? (
-                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                          <span style={{ fontSize: '11px', color: C.red }}>Delete?</span>
-                          <button onClick={() => handleDelete(row.id)} disabled={busy}
-                            style={{ background: 'rgba(237,66,69,0.2)', border: '1px solid rgba(237,66,69,0.4)', borderRadius: '6px', padding: '4px 10px', color: C.red, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px', fontWeight: 600 }}>Yes</button>
-                          <button onClick={() => setConfirm(null)}
-                            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '4px 10px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '12px' }}>No</button>
-                        </div>
-                      ) : (
-                        <button onClick={() => setConfirm({ id: row.id, action: 'delete' })}
-                          title="Delete this draft"
-                          style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px', padding: '4px 6px', lineHeight: 1 }}>🗑</button>
-                      )
+                    {(row.status === 'active' || row.status === 'drawing') ? (
+                      <button disabled
+                        title="Active giveaways cannot be deleted. Cancel or wait for it to end first."
+                        style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.2)', cursor: 'not-allowed', fontSize: '16px', padding: '4px 6px', lineHeight: 1 }}>🗑</button>
+                    ) : (
+                      <button onClick={() => setConfirm({ id: row.id, action: 'delete' })}
+                        title="Delete this giveaway"
+                        style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '16px', padding: '4px 6px', lineHeight: 1 }}>🗑</button>
                     )}
                   </div>
                 </div>
@@ -6155,10 +6279,20 @@ const GiveawaySettings = () => {
           </div>
         )}
       </SettingsCard>
+      )}
 
-      {/* ── Editor ── */}
+      {/* ── Create / Edit view (replaces the list) ── */}
       {active && (
         <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+            <button onClick={goToList}
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 14px', color: '#fff', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 600 }}>
+              ‹ Back to list
+            </button>
+            <span style={{ fontSize: '13px', color: C.muted }}>
+              {isDraft ? 'New giveaway' : 'Editing'}{active.title ? `: ${active.title}` : ''}
+            </span>
+          </div>
           <SettingsCard title="Giveaway">
             <EmbedPreview
               serverId={serverId}
@@ -6253,6 +6387,7 @@ const GiveawaySettings = () => {
 
             <GiveawayTasksEditor
               key={activeId}
+              sid={serverId}
               tasks={editor.entry_tasks || []}
               onChange={setEd('entry_tasks')} />
             <FieldRow>
@@ -6341,6 +6476,27 @@ const GiveawaySettings = () => {
       )}
 
       {/* ── Entrants modal ── */}
+      {confirm?.action === 'delete' && (
+        <div onClick={() => setConfirm(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: '20px' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#16161e', border: `1px solid ${C.border}`, borderRadius: '14px', padding: '24px', maxWidth: '420px', width: '100%' }}>
+            <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '8px' }}>Delete this giveaway?</div>
+            <div style={{ fontSize: '13px', color: C.muted, lineHeight: 1.6, marginBottom: '20px' }}>
+              This will also remove all entries and prevent re-drawing. This action cannot be undone.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button onClick={() => setConfirm(null)}
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 16px', color: C.muted, cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px' }}>Cancel</button>
+              <button onClick={() => handleDelete(confirm.id)} disabled={busy}
+                style={{ background: 'rgba(237,66,69,0.2)', border: '1px solid rgba(237,66,69,0.45)', borderRadius: '8px', padding: '8px 18px', color: C.red, cursor: busy ? 'default' : 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, opacity: busy ? 0.6 : 1 }}>
+                {busy ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {entrantsFor != null && (
         <div onClick={() => setEntrantsFor(null)}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}>

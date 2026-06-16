@@ -342,6 +342,14 @@ export const deleteGiveaway = (sid, gid) =>
 export const fetchGiveawayEntries = (sid, gid) =>
   apiFetch(`/api/servers/${sid}/giveaways/${gid}/entries`);
 
+// ── Discord server resolution (giveaway Discord tasks) ───────────────────────
+
+export const resolveDiscordServer = (sid, q) =>
+  apiFetch(`/api/servers/${sid}/discord-servers/resolve?q=${encodeURIComponent(q)}`);
+
+export const fetchDiscordRoles = (sid, targetServerId) =>
+  apiFetch(`/api/servers/${sid}/discord-servers/${targetServerId}/roles`);
+
 // ── Raid ───────────────────────────────────────────────────────────────────
 
 export const fetchRaidSettings = (sid) =>
