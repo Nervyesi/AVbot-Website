@@ -5654,6 +5654,68 @@ const TaskHeader = ({ children }) => (
   </div>
 );
 
+// Searchable role select (Issue 2, Option B). Shows the selected role NAME,
+// type to filter by name (case-insensitive substring), arrow keys to navigate,
+// Enter to pick, Escape / outside click to close. Stores the role ID. Legacy
+// IDs not in the fetched list still display as "Role {id}".
+const RoleCombobox = ({ value, options, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [hi, setHi] = useState(0);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setQuery(''); } };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const selected = (options || []).find(o => String(o.id) === String(value));
+  const display = selected ? selected.name : (value ? `Role ${value}` : '');
+  const q = query.trim().toLowerCase();
+  const filtered = q ? (options || []).filter(o => o.name.toLowerCase().includes(q)) : (options || []);
+  const pick = (o) => { onChange(o.id); setOpen(false); setQuery(''); };
+
+  const onKey = (e) => {
+    if (!open && (e.key === 'ArrowDown' || e.key === 'Enter')) { setOpen(true); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => Math.min(filtered.length - 1, h + 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(0, h - 1)); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (filtered[hi]) pick(filtered[hi]); }
+    else if (e.key === 'Escape') { setOpen(false); setQuery(''); }
+  };
+
+  const inputStyle = { width: '100%', background: 'rgba(0,0,0,0.3)', border: `1px solid ${open ? 'rgba(200,168,78,0.5)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', fontFamily: 'Sora, sans-serif', outline: 'none', boxSizing: 'border-box' };
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input
+        value={open ? query : display}
+        placeholder={display || 'Select a role…'}
+        onFocus={() => { setOpen(true); setHi(0); }}
+        onChange={e => { setQuery(e.target.value); setHi(0); if (!open) setOpen(true); }}
+        onKeyDown={onKey}
+        style={inputStyle} />
+      {open && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 60, background: '#1a1a22', border: `1px solid ${C.border}`, borderRadius: '8px', maxHeight: '210px', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}>
+          {(options || []).length === 0 ? (
+            <div style={{ padding: '10px 12px', fontSize: '12px', color: C.orange }}>AVbot must be in this server to load roles</div>
+          ) : filtered.length === 0 ? (
+            <div style={{ padding: '10px 12px', fontSize: '12px', color: C.muted }}>No roles match.</div>
+          ) : filtered.map((o, idx) => (
+            <div key={o.id}
+              onMouseDown={(e) => { e.preventDefault(); pick(o); }}
+              onMouseEnter={() => setHi(idx)}
+              style={{ padding: '9px 12px', fontSize: '13px', cursor: 'pointer', color: idx === hi ? C.gold : '#fff', background: idx === hi ? 'rgba(200,168,78,0.12)' : (String(o.id) === String(value) ? 'rgba(200,168,78,0.06)' : 'transparent') }}>
+              {o.name}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // One-line summary for a collapsed configured-task row.
 function giveawayTaskSummary(u) {
   if (u.kind === 'follow') return `Follow: @${String(u.target || '').replace(/^@/, '') || '(not set)'}`;
@@ -5732,7 +5794,6 @@ const TaskConfigForm = ({ sid, initial, isEdit, onCommit, onCancel }) => {
   };
 
   const numStyle = { background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 8px', color: '#fff', fontSize: '14px', fontFamily: 'Sora, sans-serif', outline: 'none', textAlign: 'center' };
-  const selStyle = { background: '#1a1a22', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px', fontFamily: 'Sora, sans-serif', outline: 'none', cursor: 'pointer', width: '100%' };
   const pill = (active) => ({ background: active ? 'rgba(200,168,78,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${active ? C.gold : 'rgba(255,255,255,0.12)'}`, borderRadius: '7px', padding: '7px 12px', color: active ? C.gold : 'rgba(255,255,255,0.7)', cursor: 'pointer', fontFamily: 'Sora, sans-serif', fontSize: '11px', fontWeight: 700 });
   const xStyle = { background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '18px', lineHeight: 1, padding: '4px 6px', flexShrink: 0 };
   const meta = GIVEAWAY_TASK_KIND_META[u.kind] || { label: 'Task' };
@@ -5800,16 +5861,11 @@ const TaskConfigForm = ({ sid, initial, isEdit, onCommit, onCancel }) => {
               <div style={{ fontSize: '11px', color: C.orange }}>AVbot must be in this server before role multipliers can be configured. You can still save this as a membership only task.</div>
             ) : (u.roles || []).length === 0 ? (
               <div style={{ fontSize: '11px', color: C.muted }}>No roles. Task requires server membership only.</div>
-            ) : (u.roles || []).map((r, ri) => {
-              const hasOpt = roleOptions.some(o => String(o.id) === String(r.role_id));
-              return (
+            ) : (u.roles || []).map((r, ri) => (
                 <div key={ri} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: '150px' }}>
-                    <select value={r.role_id} onChange={e => setRole(ri, { role_id: e.target.value })} style={selStyle}>
-                      <option value="">Select a role…</option>
-                      {roleOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                      {r.role_id && !hasOpt && <option value={r.role_id}>Role {r.role_id}</option>}
-                    </select>
+                    <RoleCombobox value={r.role_id} options={roleOptions}
+                      onChange={(id) => setRole(ri, { role_id: id })} />
                   </div>
                   <input type="number" min="1" max="100" value={String(r.multiplier)}
                     onChange={e => setRole(ri, { multiplier: Math.max(1, Math.min(100, Number(e.target.value) || 1)) })}
@@ -5821,8 +5877,7 @@ const TaskConfigForm = ({ sid, initial, isEdit, onCommit, onCancel }) => {
                   </div>
                   <button type="button" onClick={() => removeRole(ri)} title="Remove role" style={xStyle}>×</button>
                 </div>
-              );
-            })}
+            ))}
             {botIn && (
               <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px' }}>
                 BASE: highest matched multiplier counts. STACK: added on top. Tickets weight the draw.
@@ -6051,11 +6106,12 @@ const GiveawaySettings = () => {
     winner_count:      Math.max(1, Number(editor.winner_count) || 1),
     entry_cost_points: Math.max(0, Number(editor.entry_cost_points) || 0),
     cost_source:       editor.cost_source === 'engage' ? 'engage' : 'community',
-    entry_tasks:       (editor.entry_tasks || []).map(t => ({
-      type: t.type,
-      target: String(t.target || '').trim(),
-      label: String(t.label || '').trim(),
-    })),
+    // Send entry tasks as-is. They are already in the canonical flat shape
+    // (the tasks editor writes them via logicalToTasks), so a Discord task
+    // keeps its server_id / invite_url / role_multipliers. Do NOT remap to
+    // {type,target,label} here — that dropped server_id and made the backend
+    // reject Discord tasks with "not a valid Discord server ID".
+    entry_tasks:       editor.entry_tasks || [],
   });
 
   const handleSave = async () => {
