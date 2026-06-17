@@ -3201,8 +3201,12 @@ const WalletCollectionsSection = ({ sid }) => {
   });
 
   const copyAll = async () => {
-    // One wallet per line, no other text, ready to paste into a sheet.
-    const text = filteredSubs.map(s => s.wallet_address).join('\n');
+    // "display name <TAB> wallet" per line so a paste into a spreadsheet lands
+    // the name in column A and the wallet in column B. Members who left the
+    // server fall back to "(left server)".
+    const text = filteredSubs
+      .map(s => `${s.username || '(left server)'}\t${s.wallet_address}`)
+      .join('\n');
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -3392,8 +3396,9 @@ const WalletCollectionsSection = ({ sid }) => {
                 <Input value={subFilter} onChange={setSubFilter} placeholder="Filter by username or wallet…" />
               </div>
               <button onClick={copyAll} disabled={filteredSubs.length === 0}
+                title="Copies name and wallet, tab separated, ready to paste into a spreadsheet"
                 style={{ background: copied ? 'rgba(59,165,92,0.2)' : 'rgba(200,168,78,0.12)', border: `1px solid ${copied ? 'rgba(59,165,92,0.5)' : 'rgba(200,168,78,0.4)'}`, borderRadius: '8px', padding: '9px 16px', color: copied ? C.green : C.gold, cursor: filteredSubs.length ? 'pointer' : 'not-allowed', fontFamily: 'Sora, sans-serif', fontSize: '13px', fontWeight: 700, flexShrink: 0, opacity: filteredSubs.length ? 1 : 0.5 }}>
-                {copied ? '✓ Copied' : `📋 Copy All Wallets (${filteredSubs.length})`}
+                {copied ? '✓ Copied' : `📋 Copy All (paste into spreadsheet) (${filteredSubs.length})`}
               </button>
             </div>
 
