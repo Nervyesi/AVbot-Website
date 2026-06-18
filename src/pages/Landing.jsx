@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 import CursorGas from '../components/CursorGas';
 import HeroCenterpiece from '../components/HeroCenterpiece';
+import ModulesOverview from '../components/ModulesOverview';
 import ScrollJourney from '../components/ScrollJourney';
 import WhySection from '../components/WhySection';
 import FinalCTA from '../components/FinalCTA';
@@ -85,9 +86,117 @@ function SecondaryCTA({ href, children }) {
   );
 }
 
+// ── Live stat strip ──────────────────────────────────────────────────────────
+
+const MONO = 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace';
+
+// Compact, round-DOWN formatting: 947 / 1.2K / 9.9K / 10K / 47K / 120K / 1.2M.
+function fmtStat(n) {
+  n = Math.max(0, Math.floor(Number(n) || 0));
+  if (n < 1000) return String(n);
+  if (n < 10000) {
+    const v = Math.floor(n / 100) / 10;       // one decimal, rounded down
+    return `${(v % 1 === 0 ? v.toFixed(0) : v.toFixed(1))}K`;
+  }
+  if (n < 1000000) return `${Math.floor(n / 1000)}K`;
+  const v = Math.floor(n / 100000) / 10;
+  return `${(v % 1 === 0 ? v.toFixed(0) : v.toFixed(1))}M`;
+}
+
+// Count-up to `target`, formatted compactly each frame. Runs once when active.
+function CountUpStat({ target, active }) {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const dur = 1400;
+    const start = performance.now();
+    let raf;
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / dur);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setV(Math.floor(target * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, active]);
+  return <>{fmtStat(v)}+</>;
+}
+
+function SkeletonNum() {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        display: 'inline-block',
+        width: '34px',
+        height: '12px',
+        borderRadius: '3px',
+        background: 'rgba(200,168,78,0.18)',
+        animation: 'av-fade-in 1.1s ease-in-out infinite alternate',
+        verticalAlign: 'middle',
+      }}
+    />
+  );
+}
+
+// stats: null while loading, false if the fetch failed (strip hidden), else
+// the loaded object. Renders a monospace gold strip with count-ups, or skeleton
+// bars while loading.
+function HeroStatStrip({ stats }) {
+  if (stats === false) return null; // failed entirely → hide
+  const loaded = stats && typeof stats === 'object';
+  // Empty deploy guard: if everything is zero, do not show "0+ members".
+  if (loaded) {
+    const allZero =
+      !stats.members_total && !stats.servers_count &&
+      !stats.tasks_verified_total && !stats.engagements_tracked;
+    if (allZero) return null;
+  }
+
+  const blocks = [
+    { key: 'members_total',        label: 'members' },
+    { key: 'servers_count',        label: 'servers' },
+    { key: 'tasks_verified_total', label: 'tasks verified' },
+    { key: 'engagements_tracked',  label: 'engagements tracked' },
+  ];
+
+  return (
+    <motion.div
+      initial={{ y: 14, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.8, delay: 2.0, ease: [0.22, 0.6, 0.2, 1] }}
+      style={{
+        marginTop: '22px',
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '10px 14px',
+        fontFamily: MONO,
+        fontSize: 'clamp(11px, 1.3vw, 13px)',
+        color: 'rgba(228,228,231,0.55)',
+        textShadow: '0 1px 10px rgba(0,0,0,0.7)',
+      }}
+    >
+      {blocks.map((b, i) => (
+        <React.Fragment key={b.key}>
+          {i > 0 && <span style={{ color: 'rgba(200,168,78,0.4)' }}>·</span>}
+          <span>
+            <span style={{ color: 'var(--av-gold-light)', fontWeight: 700 }}>
+              {loaded ? <CountUpStat target={stats[b.key] || 0} active /> : <SkeletonNum />}
+            </span>
+            {' '}{b.label}
+          </span>
+        </React.Fragment>
+      ))}
+    </motion.div>
+  );
+}
+
 // ── Hero ───────────────────────────────────────────────────────────────────
 
-function HeroSection({ inviteUrl }) {
+function HeroSection({ inviteUrl, stats }) {
   return (
     <section
       style={{
@@ -133,7 +242,7 @@ function HeroSection({ inviteUrl }) {
               textAlign: 'center',
             }}
           >
-            Web3 deserved a real engine, so we built one.
+            Web3 deserved a real engine.
           </motion.div>
           <motion.div
             initial={{ y: 8, opacity: 0 }}
@@ -219,7 +328,22 @@ function HeroSection({ inviteUrl }) {
               filter: 'drop-shadow(0 0 36px rgba(148,115,13,0.18))',
             }}
           >
-            deserves better
+            deserves an engine.
+          </motion.span>
+          <motion.span
+            initial={{ y: 24, opacity: 0, filter: 'blur(6px)' }}
+            animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }}
+            transition={{ duration: 0.9, delay: 1.65, ease: [0.22, 0.6, 0.2, 1] }}
+            style={{
+              display: 'block',
+              marginTop: '0.18em',
+              fontSize: '0.5em',
+              fontWeight: 700,
+              letterSpacing: '-0.02em',
+              color: 'rgba(228,228,231,0.6)',
+            }}
+          >
+            Not a collection of bots.
           </motion.span>
         </h1>
 
@@ -240,8 +364,11 @@ function HeroSection({ inviteUrl }) {
             textShadow: '0 1px 12px rgba(0,0,0,0.6)',
           }}
         >
-          AVbot turns your Discord into a living Web3 community engine.
+          Fourteen modules. One bot. Built for Web3, used by communities across raid pools, NFT mints, giveaways, and partner servers.
         </motion.p>
+
+        {/* Live stat strip */}
+        <HeroStatStrip stats={stats} />
 
         {/* CTAs */}
         <motion.div
@@ -291,6 +418,8 @@ function HeroSection({ inviteUrl }) {
 
 const Landing = () => {
   const [inviteUrl, setInviteUrl] = useState(ADD_TO_DISCORD_URL);
+  // null = loading (skeleton), false = failed (strip hidden), object = loaded.
+  const [stats, setStats] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -298,6 +427,10 @@ const Landing = () => {
       .then((r) => r.json())
       .then((d) => { if (!cancelled && d?.invite_url) setInviteUrl(d.invite_url); })
       .catch(() => {});
+    fetch(`${API_BASE_URL}/api/public/stats`)
+      .then((r) => { if (!r.ok) throw new Error('stats http ' + r.status); return r.json(); })
+      .then((d) => { if (!cancelled) setStats(d && typeof d === 'object' ? d : false); })
+      .catch(() => { if (!cancelled) setStats(false); });
     return () => { cancelled = true; };
   }, []);
 
@@ -315,7 +448,8 @@ const Landing = () => {
       <CursorGas />
 
       <div style={{ position: 'relative', zIndex: 1 }}>
-        <HeroSection inviteUrl={inviteUrl} />
+        <HeroSection inviteUrl={inviteUrl} stats={stats} />
+        <ModulesOverview />
         <ScrollJourney />
         <WhySection />
         <FinalCTA inviteUrl={inviteUrl} />

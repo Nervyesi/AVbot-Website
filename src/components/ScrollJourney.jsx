@@ -143,7 +143,7 @@ export default function ScrollJourney() {
             lineHeight: 1.08,
             textShadow: '0 2px 22px rgba(0,0,0,0.75)',
           }}>
-            Nine modules. <span style={{ color: 'var(--av-gold)' }}>One engine.</span>
+            Fourteen modules. <span style={{ color: 'var(--av-gold)' }}>One engine.</span>
           </h2>
           <p style={{
             marginTop: '16px',

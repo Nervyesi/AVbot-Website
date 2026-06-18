@@ -67,7 +67,7 @@ export default function FinalCTA({ inviteUrl }) {
             textShadow: '0 1px 12px rgba(0,0,0,0.7)',
           }}
         >
-          Free to add. Free to use. Nine modules, one bot, zero friction.
+          Free to add. Free to use. Fourteen modules, one bot, zero friction.
         </motion.p>
 
         <motion.div

@@ -34,6 +34,8 @@ const COMPARISON_ROWS = [
   { feature: 'Unified analytics and logs',        avbot: 'yes',  general: 'partial', web3bot: 'no'      },
   { feature: 'Fully branded to your community',   avbot: 'yes',  general: 'no',      web3bot: 'no'      },
   { feature: 'All in one bot',                    avbot: 'yes',  general: 'no',      web3bot: 'no'      },
+  { feature: 'Role based ticket multipliers in giveaways', avbot: 'yes', general: 'no', web3bot: 'no' },
+  { feature: 'Multi chain wallet collection',     avbot: 'yes',  general: 'no',      web3bot: 'no'      },
   { feature: 'Cost',                              avbot: 'free', general: 'subs',    web3bot: 'subs'    },
 ];
 
@@ -336,14 +338,14 @@ export default function WhySection() {
               marginBottom: '18px',
               lineHeight: 1.3,
             }}>
-              One bot. Nine modules. One dashboard. Free.
+              One bot. Fourteen modules. One dashboard. Free.
             </div>
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(3, 1fr)',
               gap: '8px',
             }}>
-              {['📊 Analytics', '✅ Verify', '🎭 Roles', '📝 Forms', '🎫 Tickets', '⚔️ Raid', '🔁 Engage', '🛡️ Protect', '📋 Logs'].map((m) => (
+              {['📊 Analytics', '✅ Verification', '🎭 Role Selection', '📝 Forms', '🎫 Tickets', '⚔️ Raid', '🔁 Engage', '🛡️ Protection', '📋 Logs', '🎁 Giveaway', '💼 Wallet Collection', '📡 Radar', '💬 Embed Messages', '⚙️ Server Settings'].map((m) => (
                 <div
                   key={m}
                   style={{
