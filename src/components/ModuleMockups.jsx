@@ -1325,6 +1325,118 @@ export function RadarMockup() {
   );
 }
 
+export function ProtectionGuardMockup() {
+  const [ref, inView] = useInViewOnce(0.3);
+  const [phase, setPhase] = useState('raid'); // 'raid' then 'clear'
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    if (!inView) return;
+    const timers = [];
+    [0, 1, 2].forEach((i) => timers.push(setTimeout(() => setShown(i + 1), 600 + i * 550)));
+    timers.push(setTimeout(() => setPhase('clear'), 3000));
+    return () => timers.forEach(clearTimeout);
+  }, [inView]);
+
+  const intercepts = [
+    { who: 'nitro-gift-x', reason: 'Phishing link blocked' },
+    { who: 'user-2h-old', reason: 'Account age 2h rejected' },
+    { who: 'bulk-join-07', reason: 'Verified human required' },
+  ];
+
+  const raidMode = phase === 'raid';
+
+  return (
+    <div ref={ref} style={{ ...mockupCardStyle, overflow: 'hidden' }}>
+      <BotHeader subtitle="Protection • Live" accent={raidMode ? '#ff8c42' : '#3ba55c'} />
+
+      {/* Lockdown bar */}
+      <div style={{
+        position: 'relative',
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '9px 13px', borderRadius: 7, marginBottom: 14,
+        overflow: 'hidden',
+        background: raidMode ? 'rgba(255,140,66,0.12)' : 'rgba(59,165,92,0.12)',
+        border: `1px solid ${raidMode ? 'rgba(255,140,66,0.5)' : 'rgba(59,165,92,0.45)'}`,
+        transition: 'all 0.5s',
+      }}>
+        <span style={{
+          width: 8, height: 8, borderRadius: '50%',
+          background: raidMode ? '#ff8c42' : '#7adc9a',
+          boxShadow: `0 0 10px ${raidMode ? '#ff8c42' : '#7adc9a'}`,
+          flexShrink: 0,
+        }} />
+        <span style={{
+          fontSize: 12, fontWeight: 800, letterSpacing: '0.1em',
+          color: raidMode ? '#ffb37d' : '#a8e7bc',
+        }}>
+          {raidMode ? 'RAID MODE ACTIVE' : 'ALL CLEAR'}
+        </span>
+        {raidMode && (
+          <span aria-hidden="true" style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(115deg, transparent 40%, rgba(255,140,66,0.25) 50%, transparent 60%)',
+            animation: 'av-shine 1.8s linear infinite',
+          }} />
+        )}
+      </div>
+
+      {/* Intercepted join attempts */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 14, minHeight: 132 }}>
+        {intercepts.map((it, i) => (
+          <motion.div
+            key={it.who}
+            initial={{ x: -18, opacity: 0 }}
+            animate={shown > i ? { x: 0, opacity: 1 } : { x: -18, opacity: 0 }}
+            transition={{ duration: 0.4 }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '8px 11px', borderRadius: 6,
+              background: 'rgba(255,140,66,0.06)',
+              border: '1px solid rgba(255,140,66,0.28)',
+            }}
+          >
+            <span style={{
+              width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(255,140,66,0.18)', color: '#ff8c42', fontSize: 11, fontWeight: 800,
+            }}>✕</span>
+            <span style={{ fontSize: 12, fontWeight: 700, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>@{it.who}</span>
+            <span style={{ fontSize: 10.5, color: '#ffb37d', fontFamily: monoFont, whiteSpace: 'nowrap' }}>{it.reason}</span>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Threat counter */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)',
+        marginBottom: phase === 'clear' ? 12 : 0,
+      }}>
+        <span style={labelStyle}>Actions today</span>
+        <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--av-gold)' }}>
+          <Counter target={47} inView={inView} duration={1400} />
+        </span>
+      </div>
+
+      {/* Calm state */}
+      {phase === 'clear' && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '9px 12px', borderRadius: 7,
+          background: 'rgba(59,165,92,0.08)',
+          border: '1px solid rgba(59,165,92,0.3)',
+          animation: 'av-fade-in 0.5s ease both',
+        }}>
+          <span style={{ fontSize: 15 }}>🛡️</span>
+          <span style={{ fontSize: 12, color: '#a8e7bc', fontWeight: 600 }}>
+            Server calm. Protected by AVbot.
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Aggregated panel metadata ───────────────────────────────────────────────
 
 export const MODULE_PANELS = [

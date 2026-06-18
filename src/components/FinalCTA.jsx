@@ -86,7 +86,7 @@ export default function FinalCTA({ inviteUrl }) {
               animation: 'av-shine 7s ease-in-out infinite',
             }}
           >
-            will ever need.
+            will ever need
           </span>
         </motion.h2>
 
@@ -155,7 +155,46 @@ export default function FinalCTA({ inviteUrl }) {
             />
           </a>
         </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true, amount: 0.6 }}
+          transition={{ duration: 0.8, delay: 0.45 }}
+          style={{ marginTop: 'clamp(28px, 4vw, 44px)' }}
+        >
+          <FinalCredit />
+        </motion.div>
       </div>
     </section>
+  );
+}
+
+function FinalCredit() {
+  const [hover, setHover] = useState(false);
+  return (
+    <div style={{
+      fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace',
+      fontSize: '12px',
+      letterSpacing: '0.06em',
+      color: 'rgba(228,228,231,0.4)',
+    }}>
+      Vibecoded by{' '}
+      <a
+        href="https://x.com/Nervyesi"
+        target="_blank"
+        rel="noopener noreferrer"
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        style={{
+          color: hover ? 'var(--av-gold-light)' : 'var(--av-gold)',
+          textDecoration: 'none',
+          fontWeight: 700,
+          transition: 'color 0.18s',
+        }}
+      >
+        Nervyesi
+      </a>
+    </div>
   );
 }

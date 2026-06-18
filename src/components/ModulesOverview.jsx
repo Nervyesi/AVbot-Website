@@ -34,7 +34,7 @@ const CATEGORIES = [
       { icon: '🔁', name: 'Engage-for-Engage' },
       { icon: '⚔️', name: 'Raid' },
       { icon: '🎁', name: 'Giveaway' },
-      { icon: '💼', name: 'Wallet Collection' },
+      { icon: '💼', name: 'Wallet Collection', sub: 'Role gated, multi chain' },
     ],
   },
   {
@@ -182,7 +182,7 @@ export default function ModulesOverview() {
               animation: 'av-shine 7s ease-in-out infinite',
             }}>
               needs
-            </span>.
+            </span>
           </h2>
           <p style={{
             marginTop: '16px',

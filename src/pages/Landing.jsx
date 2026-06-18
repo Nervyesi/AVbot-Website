@@ -276,15 +276,15 @@ function HeroSection({ inviteUrl, stats, boot }) {
     target: sectionRef,
     offset: ['start start', 'end start'],
   });
-  // Centerpiece recedes and is fully gone (opacity 0) by 85% of the hero,
-  // so no orbital ghosts bleed into the next section.
-  const cpY = useTransform(scrollYProgress, [0, 0.85], [0, -240]);
-  const cpScale = useTransform(scrollYProgress, [0, 0.85], [1, 1.22]);
-  const cpOpacity = useTransform(scrollYProgress, [0, 0.55, 0.85], [1, 0.25, 0]);
+  // Centerpiece recedes and is FULLY gone (opacity 0) by ~62% of the hero,
+  // so the orbital has cleared well before the next section enters view.
+  const cpY = useTransform(scrollYProgress, [0, 0.62], [0, -260]);
+  const cpScale = useTransform(scrollYProgress, [0, 0.62], [1, 1.25]);
+  const cpOpacity = useTransform(scrollYProgress, [0, 0.38, 0.6], [1, 0.3, 0]);
   // Content drifts up gently (parallax depth).
   const contentY = useTransform(scrollYProgress, [0, 1], [0, -70]);
-  // Bottom edge break fades in as the user scrolls out of the hero.
-  const edgeOpacity = useTransform(scrollYProgress, [0.25, 0.75], [0, 1]);
+  // Bottom edge break fades in early so the hero ends decisively.
+  const edgeOpacity = useTransform(scrollYProgress, [0.15, 0.55], [0, 1]);
 
   return (
     <section
@@ -391,7 +391,7 @@ function HeroSection({ inviteUrl, stats, boot }) {
             <WordsReveal text="Your community" boot={boot} baseDelay={1.2} />
           </span>
           <span style={{ display: 'block' }}>
-            <WordsReveal text="deserves an engine." boot={boot} baseDelay={1.5} wordStyle={GOLD_GRADIENT_WORD} />
+            <WordsReveal text="deserves an engine" boot={boot} baseDelay={1.5} wordStyle={GOLD_GRADIENT_WORD} />
           </span>
         </h1>
 
@@ -412,7 +412,7 @@ function HeroSection({ inviteUrl, stats, boot }) {
             textShadow: '0 1px 12px rgba(0,0,0,0.6)',
           }}
         >
-          Engagement, intelligence, and protection. All woven into one bot.
+          Engagement, intelligence, and protection. All woven into one bot
         </motion.p>
 
         {/* Live stat strip */}
@@ -436,19 +436,20 @@ function HeroSection({ inviteUrl, stats, boot }) {
         </motion.div>
       </motion.div>
 
-      {/* Bottom edge break: grounds the hero and fades in on scroll-out */}
+      {/* Bottom edge break: a pronounced fade-to-dark plus a bold gold rule so
+          the hero ends decisively before the next section begins. */}
       <motion.div
         aria-hidden="true"
         style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 2, opacity: edgeOpacity, pointerEvents: 'none' }}
       >
         <div style={{
-          height: '160px',
-          background: 'linear-gradient(to bottom, rgba(10,10,10,0) 0%, rgba(10,10,10,0.55) 100%)',
+          height: '34vh',
+          background: 'linear-gradient(to bottom, rgba(10,10,10,0) 0%, rgba(10,10,10,0.6) 55%, rgba(10,10,10,0.94) 100%)',
         }} />
         <div style={{
-          height: '1px',
-          background: 'linear-gradient(90deg, transparent 0%, rgba(200,168,78,0.5) 50%, transparent 100%)',
-          boxShadow: '0 0 16px rgba(200,168,78,0.4)',
+          height: '2px',
+          background: 'linear-gradient(90deg, transparent 0%, rgba(200,168,78,0.85) 50%, transparent 100%)',
+          boxShadow: '0 0 22px rgba(200,168,78,0.6)',
         }} />
       </motion.div>
 

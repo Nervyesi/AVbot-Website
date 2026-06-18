@@ -213,7 +213,7 @@ export default function WhySection() {
             lineHeight: 1.1,
             textShadow: '0 2px 22px rgba(0,0,0,0.75)',
           }}>
-            One bot. <span style={{ color: 'var(--av-gold)' }}>Or twelve.</span>
+            One bot. <span style={{ color: 'var(--av-gold)', whiteSpace: 'nowrap' }}>Or twelve</span>
           </h2>
           <p style={{
             marginTop: '16px',
@@ -405,7 +405,7 @@ export default function WhySection() {
               lineHeight: 1.15,
               textShadow: '0 2px 18px rgba(0,0,0,0.6)',
             }}>
-              How AVbot compares.
+              How AVbot compares
             </h3>
           </motion.div>
           <ComparisonTable />

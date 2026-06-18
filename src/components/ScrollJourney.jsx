@@ -4,7 +4,7 @@ import ChapterBreak from './ChapterBreak';
 import {
   FlywheelMockup,
   GiveawayMockup,
-  WalletMockup,
+  ProtectionGuardMockup,
   RadarMockup,
   AnalyticsMockup,
   VerifyMockup,
@@ -29,8 +29,8 @@ const STATIONS = [
   {
     id: 'flywheel',
     kicker: 'X Engagement',
-    white: 'Two angles.',
-    gold: 'One engine.',
+    white: 'Two angles',
+    gold: 'One engine',
     copy:
       'Whether you are amplifying a creator or running a peer flywheel, AVbot turns Twitter engagement into a community habit. Raids reward members for boosting your posts with live verification and anti cheat. Engage lets members earn points on each other, then spend them to post their own. Both feed one shared leaderboard.',
     features: [
@@ -44,7 +44,7 @@ const STATIONS = [
     id: 'giveaway',
     kicker: 'Giveaways',
     white: 'Rewards that respect',
-    gold: 'your real members.',
+    gold: 'your real members',
     copy:
       'Role based ticket multipliers make every draw fair and Web3 native. Base roles set the starting weight, stacking roles add on top, and the draw is weighted random so your most invested members have better odds without locking anyone out.',
     features: [
@@ -55,24 +55,24 @@ const STATIONS = [
     Mockup: GiveawayMockup,
   },
   {
-    id: 'wallet',
-    kicker: 'Wallet Collection',
-    white: 'Whitelist mints,',
-    gold: 'without spreadsheets.',
+    id: 'protection',
+    kicker: 'Protection',
+    white: 'Sleep through the night',
+    gold: 'we stand guard',
     copy:
-      'Collect holder wallets across eight chains right inside Discord. Members submit in a click, the dashboard table fills in real time, and one button exports everything clean. No more chasing addresses across DMs and threads.',
+      'Anti raid, anti spam, and anti scam guardrails work silently while you rest. Phishing links are stripped, fresh accounts are gated, and a sudden flood of joins trips an automatic lockdown. Every action lands in the log for the morning.',
     features: [
-      { icon: '⛓️', text: 'Eight chains supported' },
-      { icon: '📥', text: 'Discord native submit' },
-      { icon: '📋', text: 'One click export' },
+      { icon: '🚫', text: 'Phishing blocklist' },
+      { icon: '⏳', text: 'Account age gates' },
+      { icon: '🔒', text: 'Auto lockdown' },
     ],
-    Mockup: WalletMockup,
+    Mockup: ProtectionGuardMockup,
   },
   {
     id: 'radar',
     kicker: 'Web3 Intelligence',
-    white: 'The market never sleeps.',
-    gold: 'Neither does Radar.',
+    white: 'The market never sleeps',
+    gold: 'neither does Radar',
     copy:
       'Five live feeds in one place. Crypto prices, NFT floors, trending memes, forex pairs, and commodities, all watched continuously. Smart alerts fire on the moves that matter and a daily digest rolls straight into your channels.',
     features: [
@@ -86,7 +86,7 @@ const STATIONS = [
     id: 'analytics',
     kicker: 'Analytics',
     white: "Your community's",
-    gold: 'heartbeat, live.',
+    gold: 'heartbeat, live',
     copy:
       'Real time dashboards track member growth, engagement, raids, and giveaways. Sparklines draw themselves, counters tick, and a now live pulse shows the room breathing. Decisions get obvious when the data is in front of you.',
     features: [
@@ -99,8 +99,8 @@ const STATIONS = [
   {
     id: 'verify',
     kicker: 'Verification',
-    white: 'Bots stay out.',
-    gold: 'Holders get in.',
+    white: 'Bots stay out',
+    gold: 'holders get in',
     copy:
       'Token gated, role based access. Every member proves they belong through a challenge that fits your brand, then an on chain check confirms the wallet and assigns the right role. Generic captcha bots cannot follow.',
     features: [
@@ -148,11 +148,12 @@ function StationCopy({ station, onRight }) {
       <h2 style={{
         margin: '0 0 18px',
         fontSize: 'clamp(1.8rem, 4vw, 3rem)',
-        fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.05,
+        fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.06,
         color: 'var(--av-text)', textShadow: '0 2px 22px rgba(0,0,0,0.7)',
       }}>
-        {station.white}{' '}
+        <span style={{ display: 'block' }}>{station.white}</span>
         <span style={{
+          display: 'block',
           background: 'linear-gradient(115deg, #94730D 22%, #f1d586 50%, #94730D 78%)',
           backgroundSize: '250% 100%',
           WebkitBackgroundClip: 'text', backgroundClip: 'text',
@@ -292,7 +293,7 @@ function CondensedGrid() {
             color: 'var(--av-text)', lineHeight: 1.1,
             textShadow: '0 2px 22px rgba(0,0,0,0.75)',
           }}>
-            Eight more modules, ready to go.
+            Eight more modules, ready to go
           </h2>
         </motion.div>
 
@@ -337,7 +338,7 @@ export default function ScrollJourney() {
             color: 'var(--av-text)', lineHeight: 1.08,
             textShadow: '0 2px 22px rgba(0,0,0,0.75)',
           }}>
-            Fourteen modules. <span style={{ color: 'var(--av-gold)' }}>One engine.</span>
+            Fourteen modules. <span style={{ color: 'var(--av-gold)', whiteSpace: 'nowrap' }}>One engine</span>
           </h2>
           <p style={{
             marginTop: '16px', marginBottom: 0,
