@@ -276,15 +276,15 @@ function HeroSection({ inviteUrl, stats, boot }) {
     target: sectionRef,
     offset: ['start start', 'end start'],
   });
-  // Centerpiece recedes and is FULLY gone (opacity 0) by ~62% of the hero,
-  // so the orbital has cleared well before the next section enters view.
-  const cpY = useTransform(scrollYProgress, [0, 0.62], [0, -260]);
-  const cpScale = useTransform(scrollYProgress, [0, 0.62], [1, 1.25]);
-  const cpOpacity = useTransform(scrollYProgress, [0, 0.38, 0.6], [1, 0.3, 0]);
+  // Centerpiece recedes and is FULLY gone (opacity 0) by ~42% of the hero,
+  // so the orbital has cleared long before the next section enters view.
+  const cpY = useTransform(scrollYProgress, [0, 0.45], [0, -300]);
+  const cpScale = useTransform(scrollYProgress, [0, 0.45], [1, 1.12]);
+  const cpOpacity = useTransform(scrollYProgress, [0, 0.22, 0.42], [1, 0.4, 0]);
   // Content drifts up gently (parallax depth).
   const contentY = useTransform(scrollYProgress, [0, 1], [0, -70]);
   // Bottom edge break fades in early so the hero ends decisively.
-  const edgeOpacity = useTransform(scrollYProgress, [0.15, 0.55], [0, 1]);
+  const edgeOpacity = useTransform(scrollYProgress, [0.12, 0.5], [0, 1]);
 
   return (
     <section
@@ -301,13 +301,15 @@ function HeroSection({ inviteUrl, stats, boot }) {
         overflow: 'hidden',
       }}
     >
-      {/* Parallax centerpiece layer */}
+      {/* Parallax centerpiece layer. overflow:hidden caps it to the hero box
+          so it can never extend visually into the next section. */}
       <motion.div
         style={{
           position: 'absolute', inset: 0,
           y: cpY, scale: cpScale, opacity: cpOpacity,
           zIndex: 0,
           pointerEvents: 'none',
+          overflow: 'hidden',
         }}
       >
         <HeroCenterpiece boot={boot} />

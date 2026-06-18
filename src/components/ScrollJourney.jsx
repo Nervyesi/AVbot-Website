@@ -32,11 +32,11 @@ const STATIONS = [
     white: 'Two angles',
     gold: 'One engine',
     copy:
-      'Whether you are amplifying a creator or running a peer flywheel, AVbot turns Twitter engagement into a community habit. Raids reward members for boosting your posts with live verification and anti cheat. Engage lets members earn points on each other, then spend them to post their own. Both feed one shared leaderboard.',
+      'Whether you are amplifying a creator or running a peer flywheel, AVbot turns Twitter engagement into a community habit. Raids reward members for boosting your posts with live verification and anti cheat. Engage hands members a daily set of tweets to like, then earns them the right to post their own.',
     features: [
       { icon: '✅', text: 'Live X verification' },
       { icon: '🛡️', text: 'Anti cheat detection' },
-      { icon: '🏆', text: 'Unified leaderboard' },
+      { icon: '🔁', text: 'Daily engage sets' },
     ],
     Mockup: FlywheelMockup,
   },
@@ -100,12 +100,12 @@ const STATIONS = [
     id: 'verify',
     kicker: 'Verification',
     white: 'Bots stay out',
-    gold: 'holders get in',
+    gold: 'humans get in',
     copy:
-      'Token gated, role based access. Every member proves they belong through a challenge that fits your brand, then an on chain check confirms the wallet and assigns the right role. Generic captcha bots cannot follow.',
+      'Captcha challenges and human verification keep bot accounts out of your server. Real members solve a quick check and get their role assigned automatically. Generic raid bots cannot pass through.',
     features: [
-      { icon: '🤖', text: 'Bot challenge' },
-      { icon: '🔗', text: 'Wallet signature' },
+      { icon: '🧩', text: 'Captcha challenge' },
+      { icon: '👤', text: 'Human check' },
       { icon: '🎭', text: 'Auto roles' },
     ],
     Mockup: VerifyMockup,

@@ -131,20 +131,62 @@ function BotHeader({ subtitle, accent }) {
 
 // ── Module mockups ──────────────────────────────────────────────────────────
 
+const ANALYTICS_RANGES = {
+  0: { // 1D, spiky
+    label: 'last 24h',
+    stats: [
+      { label: 'Members', target: 9978, trend: '↗ +18' },
+      { label: 'Active',  target: 642,  trend: '↗ +12' },
+      { label: 'Engages', target: 510,  trend: '↗ +44' },
+      { label: 'Raids',   target: 6,    trend: '↗ +2' },
+    ],
+    spark: [0.30, 0.62, 0.34, 0.78, 0.42, 0.90, 0.50, 0.84, 0.38, 0.70, 0.46, 0.95, 0.60, 1.00],
+  },
+  1: { // 7D, steady climb
+    label: 'last 7d',
+    stats: [
+      { label: 'Members', target: 9978, trend: '↗ +124' },
+      { label: 'Active',  target: 1420, trend: '↗ +38' },
+      { label: 'Engages', target: 3840, trend: '↗ +212' },
+      { label: 'Raids',   target: 47,   trend: '↘ -3' },
+    ],
+    spark: [0.32, 0.40, 0.36, 0.48, 0.56, 0.51, 0.62, 0.74, 0.69, 0.82, 0.78, 0.90, 0.94, 1.00],
+  },
+  2: { // 30D, smooth
+    label: 'last 30d',
+    stats: [
+      { label: 'Members', target: 9978,  trend: '↗ +1.2k' },
+      { label: 'Active',  target: 5832,  trend: '↗ +640' },
+      { label: 'Engages', target: 14200, trend: '↗ +3.1k' },
+      { label: 'Raids',   target: 156,   trend: '↗ +22' },
+    ],
+    spark: [0.20, 0.26, 0.31, 0.35, 0.42, 0.48, 0.53, 0.60, 0.66, 0.72, 0.79, 0.86, 0.93, 1.00],
+  },
+};
+
 export function AnalyticsMockup() {
   const [ref, inView] = useInViewOnce();
-  const [tab, setTab] = useState(1); // 0=1d, 1=7d, 2=30d
-  // Sparkline points (normalized 0..1)
-  const spark = [0.32, 0.40, 0.36, 0.48, 0.56, 0.51, 0.62, 0.74, 0.69, 0.82, 0.78, 0.90, 0.94, 1.00];
+  const [tab, setTab] = useState(1); // start on 7D
 
-  // SVG path for the sparkline
+  // Auto-cycle 7D -> 30D -> 1D -> 7D while in view, so it reads as interactive.
+  useEffect(() => {
+    if (!inView) return;
+    const order = [1, 2, 0];
+    let idx = 0;
+    const id = setInterval(() => {
+      idx = (idx + 1) % order.length;
+      setTab(order[idx]);
+    }, 2400);
+    return () => clearInterval(id);
+  }, [inView]);
+
+  const range = ANALYTICS_RANGES[tab];
   const W = 380, H = 60;
-  const pathD = spark.map((v, i) => {
-    const x = (i / (spark.length - 1)) * W;
+  const pathD = range.spark.map((v, i) => {
+    const x = (i / (range.spark.length - 1)) * W;
     const y = H - v * H * 0.85 - 4;
     return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
   }).join(' ');
-  // Compute fill area
   const fillPathD = pathD + ` L ${W} ${H} L 0 ${H} Z`;
 
   return (
@@ -172,7 +214,7 @@ export function AnalyticsMockup() {
               fontWeight: 700,
               cursor: 'pointer',
               fontFamily: 'Sora, sans-serif',
-              transition: 'all 0.15s',
+              transition: 'all 0.2s',
             }}
           >{l}</button>
         ))}
@@ -182,15 +224,10 @@ export function AnalyticsMockup() {
         display: 'grid', gridTemplateColumns: '1fr 1fr',
         gap: 16, marginBottom: 16,
       }}>
-        {[
-          { label: 'Members', target: 9978, trend: '↗ +124' },
-          { label: 'Active',  target: 1420, trend: '↗ +38' },
-          { label: 'Engages', target: 3840, trend: '↗ +212' },
-          { label: 'Raids',   target: 47,   trend: '↘ -3' },
-        ].map((s) => (
+        {range.stats.map((s) => (
           <div key={s.label}>
             <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--av-gold)', lineHeight: 1.1 }}>
-              <Counter target={s.target} inView={inView} />
+              <Counter target={s.target} inView={inView} duration={900} />
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 2 }}>
               <div style={labelStyle}>{s.label}</div>
@@ -212,7 +249,7 @@ export function AnalyticsMockup() {
           alignItems: 'baseline', marginBottom: 4,
         }}>
           <span style={labelStyle}>Member growth</span>
-          <span style={{ fontSize: 10, color: 'rgba(228,228,231,0.4)', fontFamily: monoFont }}>last 7d</span>
+          <span style={{ fontSize: 10, color: 'rgba(228,228,231,0.4)', fontFamily: monoFont }}>{range.label}</span>
         </div>
         <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
           <defs>
@@ -221,28 +258,25 @@ export function AnalyticsMockup() {
               <stop offset="100%" stopColor="rgba(148,115,13,0)" />
             </linearGradient>
           </defs>
-          <path
-            d={fillPathD}
-            fill="url(#ax-spark)"
-            style={{
-              opacity: inView ? 1 : 0,
-              transition: 'opacity 1s ease 0.4s',
-            }}
-          />
-          <path
-            d={pathD}
-            stroke="var(--av-gold)"
-            strokeWidth="1.5"
-            fill="none"
-            vectorEffect="non-scaling-stroke"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{
-              strokeDasharray: 700,
-              strokeDashoffset: inView ? 0 : 700,
-              transition: 'stroke-dashoffset 1.4s cubic-bezier(0.22, 0.6, 0.2, 1) 0.3s',
-            }}
-          />
+          {inView && (
+            <g key={tab}>
+              <path
+                d={fillPathD}
+                fill="url(#ax-spark)"
+                style={{ opacity: 0, animation: 'av-fade-in 0.7s ease 0.25s forwards' }}
+              />
+              <path
+                d={pathD}
+                stroke="var(--av-gold)"
+                strokeWidth="1.5"
+                fill="none"
+                vectorEffect="non-scaling-stroke"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ strokeDasharray: 700, animation: 'av-draw 1.2s cubic-bezier(0.22, 0.6, 0.2, 1) forwards' }}
+              />
+            </g>
+          )}
         </svg>
       </div>
     </div>
@@ -251,25 +285,60 @@ export function AnalyticsMockup() {
 
 export function VerifyMockup() {
   const [ref, inView] = useInViewOnce();
-  // 0 = idle, 1 = verifying, 2 = verified
+  // 0 = challenge shown, 1 = solving, 2 = verified
   const [stage, setStage] = useState(0);
+  const [selected, setSelected] = useState([]);
   useEffect(() => {
     if (!inView) return;
-    const t1 = setTimeout(() => setStage(1), 700);
-    const t2 = setTimeout(() => setStage(2), 1900);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    const timers = [
+      setTimeout(() => { setStage(1); setSelected([1]); }, 800),
+      setTimeout(() => setSelected([1, 4]), 1500),
+      setTimeout(() => setStage(2), 2500),
+    ];
+    return () => timers.forEach(clearTimeout);
   }, [inView]);
+
+  // Tiles 1 and 4 are the coins (the correct answer).
+  const tiles = ['🤖', '🪙', '🎲', '🌐', '🪙', '🎮'];
 
   return (
     <div ref={ref} style={mockupCardStyle}>
-      <BotHeader subtitle="Verification panel" />
+      <BotHeader subtitle="Verification • Human check" />
 
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--av-text)', marginBottom: 6 }}>
           Welcome to AmeretaVerse
         </div>
         <div style={{ fontSize: 13, color: 'rgba(228,228,231,0.7)', lineHeight: 1.55 }}>
-          Verify yourself to unlock the creator channels. Takes ten seconds.
+          Solve a quick check to prove you are human.
+        </div>
+      </div>
+
+      {/* Captcha challenge */}
+      <div style={{
+        background: '#13141a', border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: 8, padding: 12, marginBottom: 12,
+      }}>
+        <div style={{ ...labelStyle, marginBottom: 10 }}>Select every coin</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7 }}>
+          {tiles.map((t, i) => {
+            const on = selected.includes(i);
+            return (
+              <div key={i} style={{
+                aspectRatio: '1 / 1',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 22, borderRadius: 7, position: 'relative',
+                background: on ? 'rgba(200,168,78,0.18)' : 'rgba(255,255,255,0.035)',
+                border: `2px solid ${on ? 'var(--av-gold)' : 'rgba(255,255,255,0.08)'}`,
+                transition: 'all 0.3s',
+              }}>
+                {t}
+                {on && (
+                  <span style={{ position: 'absolute', top: 3, right: 4, fontSize: 10, color: 'var(--av-gold)', fontWeight: 800 }}>✓</span>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -283,7 +352,7 @@ export function VerifyMockup() {
           fontWeight: 700,
           fontSize: 14,
           fontFamily: 'Sora, sans-serif',
-          color: stage === 2 ? '#0a0a0a' : '#0a0a0a',
+          color: '#0a0a0a',
           background: stage === 2 ? '#3ba55c' : 'var(--av-gold)',
           display: 'inline-flex',
           alignItems: 'center',
@@ -296,7 +365,7 @@ export function VerifyMockup() {
             : '0 0 28px -10px rgba(200,168,78,0.55)',
         }}
       >
-        {stage === 0 && <>○ Click to verify</>}
+        {stage === 0 && <>Solve the challenge</>}
         {stage === 1 && (
           <>
             <span style={{
@@ -306,7 +375,7 @@ export function VerifyMockup() {
               animation: 'av-spin 0.8s linear infinite',
               display: 'inline-block',
             }} />
-            Verifying
+            Checking
           </>
         )}
         {stage === 2 && <>✓ Verified</>}
@@ -327,7 +396,7 @@ export function VerifyMockup() {
           animation: 'av-fade-in 0.5s ease 0.1s both',
         }}>
           <span>🎭</span>
-          Role granted: <span style={{ fontWeight: 700, color: '#a8e7bc' }}>Builder</span>
+          Role granted: <span style={{ fontWeight: 700, color: '#a8e7bc' }}>Member</span>
         </div>
       )}
     </div>
@@ -912,133 +981,126 @@ export function LogsMockup() {
 
 export function FlywheelMockup() {
   const [ref, inView] = useInViewOnce(0.25);
-  // Raid task chips light up in sequence.
-  const [tasks, setTasks] = useState({ like: false, comment: false, retweet: false });
+
+  // Engage: /engage lists 10 tweets that materialise, then complete one by one.
+  const [revealed, setRevealed] = useState(0);
+  const [done, setDone] = useState(0);
+  // Raid: tasks light up; participants tick 12 -> 23 -> 34.
+  const [tasks, setTasks] = useState({ like: false, retweet: false, reply: false });
+  const [parts, setParts] = useState(12);
+
   useEffect(() => {
     if (!inView) return;
-    const a = setTimeout(() => setTasks((s) => ({ ...s, like: true })), 500);
-    const b = setTimeout(() => setTasks((s) => ({ ...s, comment: true })), 1000);
-    const c = setTimeout(() => setTasks((s) => ({ ...s, retweet: true })), 1500);
-    return () => { clearTimeout(a); clearTimeout(b); clearTimeout(c); };
+    const timers = [];
+    for (let i = 1; i <= 10; i++) timers.push(setTimeout(() => setRevealed(i), i * 90));
+    for (let i = 1; i <= 10; i++) timers.push(setTimeout(() => setDone(i), 1150 + i * 120));
+    timers.push(setTimeout(() => setTasks((s) => ({ ...s, like: true })), 700));
+    timers.push(setTimeout(() => setTasks((s) => ({ ...s, retweet: true })), 1300));
+    timers.push(setTimeout(() => setTasks((s) => ({ ...s, reply: true })), 1900));
+    timers.push(setTimeout(() => setParts(23), 1300));
+    timers.push(setTimeout(() => setParts(34), 2300));
+    return () => timers.forEach(clearTimeout);
   }, [inView]);
 
+  const engageList = [
+    'cryptowizard', 'degenmsa', 'web3kid', 'floorsweep', 'gmfren',
+    'nftqueen', 'onchain_al', 'memelord', 'averse_fan', 'satoshilite',
+  ];
   const raidTasks = [
     { key: 'like', icon: '❤️', label: 'Like' },
-    { key: 'comment', icon: '💬', label: 'Reply' },
-    { key: 'retweet', icon: '🔁', label: 'Repost' },
-  ];
-
-  const submissions = [
-    { who: 'nervyesi', pts: 22 },
-    { who: 'degenmsa', pts: 18 },
-    { who: 'web3kid', pts: 15 },
-  ];
-
-  // Shared leaderboard fed by both sides.
-  const board = [
-    { who: 'degenmsa', pts: 1840, tag: 'RAID + ENGAGE' },
-    { who: 'nervyesi', pts: 1610, tag: 'RAID + ENGAGE' },
-    { who: 'web3kid', pts: 1230, tag: 'ENGAGE' },
+    { key: 'retweet', icon: '🔄', label: 'RT' },
+    { key: 'reply', icon: '💬', label: 'Reply' },
   ];
 
   const paneLabel = {
-    fontSize: 10, fontWeight: 800, letterSpacing: '0.16em',
+    fontSize: 10, fontWeight: 800, letterSpacing: '0.14em',
     textTransform: 'uppercase', color: 'var(--av-gold)', marginBottom: 8,
     display: 'flex', alignItems: 'center', gap: 6,
   };
+  const embedShell = {
+    flex: '1 1 240px', minWidth: 0,
+    background: '#13141a', border: '1px solid rgba(255,255,255,0.06)',
+    borderLeft: '3px solid var(--av-gold)',
+    borderRadius: 8, padding: '12px 13px',
+  };
 
   return (
-    <div ref={ref} style={{ ...mockupCardStyle, maxWidth: 580 }}>
-      <BotHeader subtitle="X Engagement Flywheel • Live" accent="var(--av-gold)" />
+    <div ref={ref} style={{ ...mockupCardStyle, maxWidth: 600 }}>
+      <BotHeader subtitle="X Engagement • Live" accent="var(--av-gold)" />
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
-        {/* RAID pane */}
-        <div style={{
-          flex: '1 1 220px', minWidth: 0,
-          background: '#13141a', border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: 8, padding: '12px 13px',
-        }}>
-          <div style={paneLabel}><span>⚔️</span> Raid</div>
-          <div style={{ fontSize: 11, color: 'rgba(228,228,231,0.7)', lineHeight: 1.45, marginBottom: 10 }}>
-            A creator posts. The community amplifies, verified live.
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+        {/* ENGAGE pane: the /engage tweet list */}
+        <div style={embedShell}>
+          <div style={paneLabel}><span>🔁</span> /engage</div>
+          <div style={{ fontSize: 11, color: 'rgba(228,228,231,0.7)', marginBottom: 9 }}>
+            Engage with these tweets
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {raidTasks.map((t) => {
-              const on = tasks[t.key];
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {engageList.map((u, i) => {
+              const show = revealed > i;
+              const checked = done > i;
               return (
-                <div key={t.key} style={{
-                  flex: 1, padding: '7px 4px', borderRadius: 6, textAlign: 'center',
-                  fontSize: 10, fontWeight: 600,
-                  background: on ? 'rgba(59,165,92,0.16)' : 'rgba(255,255,255,0.035)',
-                  border: `1px solid ${on ? 'rgba(59,165,92,0.5)' : 'rgba(255,255,255,0.08)'}`,
-                  color: on ? '#7adc9a' : 'rgba(228,228,231,0.5)',
-                  transition: 'all 0.4s ease',
+                <div key={u} style={{
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  padding: '3px 6px', borderRadius: 4, fontSize: 10.5,
+                  opacity: show ? 1 : 0,
+                  transform: show ? 'translateX(0)' : 'translateX(-6px)',
+                  transition: 'opacity 0.25s, transform 0.25s, background 0.3s',
+                  background: checked ? 'rgba(59,165,92,0.1)' : 'transparent',
                 }}>
-                  <div style={{ fontSize: 13 }}>{t.icon}</div>
-                  {t.label}{on ? ' ✓' : ''}
+                  <span style={{ color: 'rgba(228,228,231,0.4)', fontFamily: monoFont, width: 16, flexShrink: 0 }}>{i + 1}.</span>
+                  <span style={{ fontWeight: 600, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>@{u}</span>
+                  <span style={{ fontSize: 9.5, fontWeight: 700, color: checked ? '#7adc9a' : 'rgba(228,228,231,0.4)' }}>
+                    {checked ? '✓ liked' : 'tap to like'}
+                  </span>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* ENGAGE pane */}
-        <div style={{
-          flex: '1 1 220px', minWidth: 0,
-          background: '#13141a', border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: 8, padding: '12px 13px',
-        }}>
-          <div style={paneLabel}><span>🔁</span> Engage</div>
-          <div style={{ fontSize: 11, color: 'rgba(228,228,231,0.7)', lineHeight: 1.45, marginBottom: 10 }}>
-            Members engage each other, earn points, post their own.
+        {/* RAID pane: a #raids notification */}
+        <div style={embedShell}>
+          <div style={paneLabel}><span>⚔️</span> #raids</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 800, color: '#ffb37d', marginBottom: 6 }}>
+            🚨 New raid
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {submissions.map((s, i) => (
-              <motion.div
-                key={s.who}
-                initial={{ x: 14, opacity: 0 }}
-                animate={inView ? { x: 0, opacity: 1 } : { x: 14, opacity: 0 }}
-                transition={{ duration: 0.4, delay: 0.4 + i * 0.35 }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '5px 8px', borderRadius: 5,
-                  background: 'rgba(255,255,255,0.035)',
-                }}
-              >
-                <span style={{ fontSize: 11, fontWeight: 700, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>@{s.who}</span>
-                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--av-gold)', fontFamily: monoFont }}>+{s.pts}</span>
-              </motion.div>
-            ))}
+          <div style={{ fontSize: 11, color: 'rgba(228,228,231,0.85)', fontWeight: 600 }}>
+            Post by @ameretaverse
           </div>
-        </div>
-      </div>
-
-      {/* Unified leaderboard */}
-      <div style={{
-        background: 'rgba(200,168,78,0.05)',
-        border: '1px solid rgba(200,168,78,0.2)',
-        borderRadius: 8, padding: '12px 14px',
-      }}>
-        <div style={{ ...labelStyle, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 13 }}>🏆</span> One shared leaderboard
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-          {board.map((b, i) => (
-            <div key={b.who} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{
-                width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 10, fontWeight: 800,
-                background: i === 0 ? 'var(--av-gold)' : 'rgba(200,168,78,0.18)',
-                color: i === 0 ? '#0a0a0a' : 'var(--av-gold)',
-              }}>{i + 1}</span>
-              <span style={{ fontSize: 12, fontWeight: 700, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>@{b.who}</span>
-              <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '0.08em', color: 'rgba(228,228,231,0.4)', fontFamily: monoFont }}>{b.tag}</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--av-gold)', fontFamily: monoFont, minWidth: 48, textAlign: 'right' }}>
-                <Counter target={b.pts} inView={inView} duration={1600} />
-              </span>
-            </div>
-          ))}
+          <div style={{
+            fontSize: 11, color: 'rgba(228,228,231,0.6)', fontStyle: 'italic',
+            lineHeight: 1.45, margin: '5px 0 11px',
+            borderLeft: '2px solid rgba(255,255,255,0.1)', paddingLeft: 8,
+          }}>
+            "Web3 communities run on real engagement..."
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 11 }}>
+            {raidTasks.map((t) => {
+              const on = tasks[t.key];
+              return (
+                <div key={t.key} style={{
+                  flex: 1, padding: '6px 4px', borderRadius: 6, textAlign: 'center',
+                  fontSize: 10, fontWeight: 600,
+                  background: on ? 'rgba(59,165,92,0.16)' : 'rgba(255,255,255,0.035)',
+                  border: `1px solid ${on ? 'rgba(59,165,92,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                  color: on ? '#7adc9a' : 'rgba(228,228,231,0.5)',
+                  transition: 'all 0.4s ease',
+                }}>
+                  <span>{t.icon}</span> {t.label}{on ? ' ✓' : ''}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: 'rgba(228,228,231,0.6)' }}>
+              Reward <span style={{ color: 'var(--av-gold)', fontWeight: 700 }}>50 pts</span>
+            </span>
+            <span style={{ fontSize: 11, color: 'rgba(228,228,231,0.6)' }}>
+              Participants{' '}
+              <span style={{ color: 'var(--av-gold)', fontWeight: 700, fontFamily: monoFont }}>{parts}</span>
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -1258,8 +1320,8 @@ export function RadarMockup() {
 
   const feeds = [
     { k: 'Crypto', sym: 'BTC', val: '$67,420', chg: '+3.2%', up: true },
-    { k: 'NFT', sym: 'Floor', val: 'Ξ 1.84', chg: '+0.6%', up: true },
-    { k: 'Meme', sym: 'DOGE', val: '$0.162', chg: '-1.1%', up: false },
+    { k: 'NFT', sym: 'Pudgy Penguins', val: 'Ξ 9.42', chg: '+2.3%', up: true },
+    { k: 'Meme', sym: 'PEPE', val: '$0.000084', chg: '-1.1%', up: false },
     { k: 'Forex', sym: 'EUR/USD', val: '1.0892', chg: '+0.1%', up: true },
     { k: 'Commodities', sym: 'Gold', val: '$2,412', chg: '+0.4%', up: true },
   ];
@@ -1339,8 +1401,8 @@ export function ProtectionGuardMockup() {
 
   const intercepts = [
     { who: 'nitro-gift-x', reason: 'Phishing link blocked' },
-    { who: 'user-2h-old', reason: 'Account age 2h rejected' },
-    { who: 'bulk-join-07', reason: 'Verified human required' },
+    { who: 'user-2h-old', reason: 'Suspicious user detected' },
+    { who: 'bulk-join-07', reason: 'Spam detected, user muted' },
   ];
 
   const raidMode = phase === 'raid';
