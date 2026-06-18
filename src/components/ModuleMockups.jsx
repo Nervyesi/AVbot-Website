@@ -910,6 +910,141 @@ export function LogsMockup() {
   );
 }
 
+export function FlywheelMockup() {
+  const [ref, inView] = useInViewOnce(0.25);
+  // Raid task chips light up in sequence.
+  const [tasks, setTasks] = useState({ like: false, comment: false, retweet: false });
+  useEffect(() => {
+    if (!inView) return;
+    const a = setTimeout(() => setTasks((s) => ({ ...s, like: true })), 500);
+    const b = setTimeout(() => setTasks((s) => ({ ...s, comment: true })), 1000);
+    const c = setTimeout(() => setTasks((s) => ({ ...s, retweet: true })), 1500);
+    return () => { clearTimeout(a); clearTimeout(b); clearTimeout(c); };
+  }, [inView]);
+
+  const raidTasks = [
+    { key: 'like', icon: '❤️', label: 'Like' },
+    { key: 'comment', icon: '💬', label: 'Reply' },
+    { key: 'retweet', icon: '🔁', label: 'Repost' },
+  ];
+
+  const submissions = [
+    { who: 'nervyesi', pts: 22 },
+    { who: 'degenmsa', pts: 18 },
+    { who: 'web3kid', pts: 15 },
+  ];
+
+  // Shared leaderboard fed by both sides.
+  const board = [
+    { who: 'degenmsa', pts: 1840, tag: 'RAID + ENGAGE' },
+    { who: 'nervyesi', pts: 1610, tag: 'RAID + ENGAGE' },
+    { who: 'web3kid', pts: 1230, tag: 'ENGAGE' },
+  ];
+
+  const paneLabel = {
+    fontSize: 10, fontWeight: 800, letterSpacing: '0.16em',
+    textTransform: 'uppercase', color: 'var(--av-gold)', marginBottom: 8,
+    display: 'flex', alignItems: 'center', gap: 6,
+  };
+
+  return (
+    <div ref={ref} style={{ ...mockupCardStyle, maxWidth: 580 }}>
+      <BotHeader subtitle="X Engagement Flywheel • Live" accent="var(--av-gold)" />
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+        {/* RAID pane */}
+        <div style={{
+          flex: '1 1 220px', minWidth: 0,
+          background: '#13141a', border: '1px solid rgba(255,255,255,0.06)',
+          borderRadius: 8, padding: '12px 13px',
+        }}>
+          <div style={paneLabel}><span>⚔️</span> Raid</div>
+          <div style={{ fontSize: 11, color: 'rgba(228,228,231,0.7)', lineHeight: 1.45, marginBottom: 10 }}>
+            A creator posts. The community amplifies, verified live.
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {raidTasks.map((t) => {
+              const on = tasks[t.key];
+              return (
+                <div key={t.key} style={{
+                  flex: 1, padding: '7px 4px', borderRadius: 6, textAlign: 'center',
+                  fontSize: 10, fontWeight: 600,
+                  background: on ? 'rgba(59,165,92,0.16)' : 'rgba(255,255,255,0.035)',
+                  border: `1px solid ${on ? 'rgba(59,165,92,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                  color: on ? '#7adc9a' : 'rgba(228,228,231,0.5)',
+                  transition: 'all 0.4s ease',
+                }}>
+                  <div style={{ fontSize: 13 }}>{t.icon}</div>
+                  {t.label}{on ? ' ✓' : ''}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ENGAGE pane */}
+        <div style={{
+          flex: '1 1 220px', minWidth: 0,
+          background: '#13141a', border: '1px solid rgba(255,255,255,0.06)',
+          borderRadius: 8, padding: '12px 13px',
+        }}>
+          <div style={paneLabel}><span>🔁</span> Engage</div>
+          <div style={{ fontSize: 11, color: 'rgba(228,228,231,0.7)', lineHeight: 1.45, marginBottom: 10 }}>
+            Members engage each other, earn points, post their own.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {submissions.map((s, i) => (
+              <motion.div
+                key={s.who}
+                initial={{ x: 14, opacity: 0 }}
+                animate={inView ? { x: 0, opacity: 1 } : { x: 14, opacity: 0 }}
+                transition={{ duration: 0.4, delay: 0.4 + i * 0.35 }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '5px 8px', borderRadius: 5,
+                  background: 'rgba(255,255,255,0.035)',
+                }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 700, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>@{s.who}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--av-gold)', fontFamily: monoFont }}>+{s.pts}</span>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Unified leaderboard */}
+      <div style={{
+        background: 'rgba(200,168,78,0.05)',
+        border: '1px solid rgba(200,168,78,0.2)',
+        borderRadius: 8, padding: '12px 14px',
+      }}>
+        <div style={{ ...labelStyle, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 13 }}>🏆</span> One shared leaderboard
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          {board.map((b, i) => (
+            <div key={b.who} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{
+                width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 10, fontWeight: 800,
+                background: i === 0 ? 'var(--av-gold)' : 'rgba(200,168,78,0.18)',
+                color: i === 0 ? '#0a0a0a' : 'var(--av-gold)',
+              }}>{i + 1}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>@{b.who}</span>
+              <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '0.08em', color: 'rgba(228,228,231,0.4)', fontFamily: monoFont }}>{b.tag}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--av-gold)', fontFamily: monoFont, minWidth: 48, textAlign: 'right' }}>
+                <Counter target={b.pts} inView={inView} duration={1600} />
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Aggregated panel metadata ───────────────────────────────────────────────
 
 export const MODULE_PANELS = [

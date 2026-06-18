@@ -1,15 +1,30 @@
-import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useEffect, useRef, useState } from 'react';
+import { motion, useScroll, useTransform } from 'framer-motion';
 import { ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
-import CursorGas from '../components/CursorGas';
+import AmbientBackground from '../components/AmbientBackground';
 import HeroCenterpiece from '../components/HeroCenterpiece';
 import ModulesOverview from '../components/ModulesOverview';
+import FlywheelStation from '../components/FlywheelStation';
 import ScrollJourney from '../components/ScrollJourney';
 import WhySection from '../components/WhySection';
 import FinalCTA from '../components/FinalCTA';
 import Footer from '../components/Footer';
 
 const LOGO_URL = 'https://cdn.avbot.app/1199707792706117642/2e6734d8c9fc47fab6b8525a57374de3.png';
+
+// Decide once, synchronously, whether to play the cinematic boot sequence.
+// First visit in a browser session boots; revisits go straight to steady
+// state. Reduced-motion users never boot.
+function shouldBoot() {
+  try {
+    if (typeof window === 'undefined') return false;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+    if (window.sessionStorage && window.sessionStorage.getItem('av_hero_booted')) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // ── CTA buttons ────────────────────────────────────────────────────────────
 
@@ -44,6 +59,18 @@ function PrimaryCTA({ href, children }) {
         transition: 'background-color 0.25s, transform 0.18s, box-shadow 0.25s',
       }}
     >
+      {/* Idle pulsing glow ring */}
+      <span
+        aria-hidden="true"
+        style={{
+          position: 'absolute', inset: -2,
+          borderRadius: '14px',
+          boxShadow: '0 0 0 1px rgba(248,225,138,0.5)',
+          opacity: hover ? 0 : 0.6,
+          animation: 'av-core-pulse 3s ease-in-out infinite',
+          pointerEvents: 'none',
+        }}
+      />
       <span style={{ position: 'relative', zIndex: 1 }}>{children}</span>
       <span
         aria-hidden="true"
@@ -143,7 +170,7 @@ function SkeletonNum() {
 // stats: null while loading, false if the fetch failed (strip hidden), else
 // the loaded object. Renders a monospace gold strip with count-ups, or skeleton
 // bars while loading.
-function HeroStatStrip({ stats }) {
+function HeroStatStrip({ stats, delay }) {
   if (stats === false) return null; // failed entirely → hide
   const loaded = stats && typeof stats === 'object';
   // Empty deploy guard: if everything is zero, do not show "0+ members".
@@ -165,17 +192,22 @@ function HeroStatStrip({ stats }) {
     <motion.div
       initial={{ y: 14, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.8, delay: 2.0, ease: [0.22, 0.6, 0.2, 1] }}
+      transition={{ duration: 0.8, delay, ease: [0.22, 0.6, 0.2, 1] }}
       style={{
-        marginTop: '22px',
+        marginTop: '24px',
         display: 'flex',
         flexWrap: 'wrap',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: '10px 14px',
+        gap: '10px 16px',
+        padding: '12px 20px',
+        borderRadius: '12px',
+        background: 'rgba(14,14,18,0.5)',
+        border: '1px solid rgba(200,168,78,0.16)',
+        backdropFilter: 'blur(8px)',
         fontFamily: MONO,
         fontSize: 'clamp(11px, 1.3vw, 13px)',
-        color: 'rgba(228,228,231,0.55)',
+        color: 'rgba(228,228,231,0.6)',
         textShadow: '0 1px 10px rgba(0,0,0,0.7)',
       }}
     >
@@ -194,14 +226,70 @@ function HeroStatStrip({ stats }) {
   );
 }
 
+// ── Per-word headline reveal ─────────────────────────────────────────────────
+
+// Splits a line into words and rises each up behind an overflow mask, with a
+// per-word stagger. When not booting, snaps in quickly.
+function WordsReveal({ text, boot, baseDelay = 0, wordStyle }) {
+  const words = text.split(' ');
+  return (
+    <span style={{ display: 'inline' }}>
+      {words.map((w, i) => (
+        <span
+          key={i}
+          style={{ display: 'inline-block', overflow: 'hidden', verticalAlign: 'top', lineHeight: 1.04 }}
+        >
+          <motion.span
+            initial={{ y: '115%', opacity: 0 }}
+            animate={{ y: '0%', opacity: 1 }}
+            transition={{
+              duration: boot ? 0.75 : 0.5,
+              delay: (boot ? baseDelay : 0) + i * (boot ? 0.06 : 0.025),
+              ease: [0.22, 0.7, 0.2, 1],
+            }}
+            style={{ display: 'inline-block', ...wordStyle }}
+          >
+            {w}
+          </motion.span>
+          {i < words.length - 1 ? ' ' : ''}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 // ── Hero ───────────────────────────────────────────────────────────────────
 
-function HeroSection({ inviteUrl, stats }) {
+const GOLD_GRADIENT_WORD = {
+  background: 'linear-gradient(115deg, #94730D 18%, #f1d586 50%, #94730D 82%)',
+  backgroundSize: '250% 100%',
+  WebkitBackgroundClip: 'text',
+  backgroundClip: 'text',
+  color: 'transparent',
+  WebkitTextFillColor: 'transparent',
+  animation: 'av-shine 7s ease-in-out 2.6s infinite',
+  filter: 'drop-shadow(0 0 36px rgba(148,115,13,0.2))',
+};
+
+function HeroSection({ inviteUrl, stats, boot }) {
+  const sectionRef = useRef(null);
+  const { scrollYProgress } = useScroll({
+    target: sectionRef,
+    offset: ['start start', 'end start'],
+  });
+  // Centerpiece recedes and fades as the user scrolls through the hero.
+  const cpY = useTransform(scrollYProgress, [0, 1], [0, -160]);
+  const cpScale = useTransform(scrollYProgress, [0, 1], [1, 1.18]);
+  const cpOpacity = useTransform(scrollYProgress, [0, 1], [1, 0.12]);
+  // Content drifts up gently and fades a touch (parallax depth).
+  const contentY = useTransform(scrollYProgress, [0, 1], [0, -60]);
+
   return (
     <section
+      ref={sectionRef}
       style={{
         position: 'relative',
-        minHeight: '100vh',
+        minHeight: '110vh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -211,68 +299,67 @@ function HeroSection({ inviteUrl, stats }) {
         overflow: 'hidden',
       }}
     >
-      <HeroCenterpiece />
+      {/* Parallax centerpiece layer */}
+      <motion.div
+        style={{
+          position: 'absolute', inset: 0,
+          y: cpY, scale: cpScale, opacity: cpOpacity,
+          zIndex: 0,
+        }}
+      >
+        <HeroCenterpiece boot={boot} />
+      </motion.div>
 
-      {/* Content column. Sits above the centerpiece. */}
-      <div style={{
-        position: 'relative',
-        zIndex: 3,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        maxWidth: '1100px',
-        width: '100%',
-      }}>
-        {/* Cinematic kicker. Two sequenced lines that open the film. */}
-        <div style={{
-          marginBottom: '28px',
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          gap: '6px',
-        }}>
-          <motion.div
-            initial={{ y: 8, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.9, delay: 0.25, ease: [0.22, 0.6, 0.2, 1] }}
-            style={{
-              fontSize: 'clamp(10px, 1vw, 11px)',
-              fontWeight: 700,
-              letterSpacing: '0.32em',
-              textTransform: 'uppercase',
-              color: 'var(--av-gold)',
-              textAlign: 'center',
-            }}
-          >
-            Web3 deserved a real engine.
-          </motion.div>
-          <motion.div
-            initial={{ y: 8, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.9, delay: 0.85, ease: [0.22, 0.6, 0.2, 1] }}
-            style={{
-              fontSize: 'clamp(10px, 1vw, 11px)',
-              fontWeight: 700,
-              letterSpacing: '0.32em',
-              textTransform: 'uppercase',
-              color: 'rgba(255,255,255,0.55)',
-              textAlign: 'center',
-            }}
-          >
-            From Web3, for Web3.
-          </motion.div>
-        </div>
+      {/* Content column */}
+      <motion.div
+        style={{
+          position: 'relative',
+          zIndex: 3,
+          y: contentY,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          maxWidth: '1100px',
+          width: '100%',
+        }}
+      >
+        {/* Kicker with blinking cursor */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.7, delay: boot ? 0.9 : 0 }}
+          style={{
+            marginBottom: '26px',
+            display: 'inline-flex', alignItems: 'center', gap: '8px',
+            fontFamily: MONO,
+            fontSize: 'clamp(10px, 1.05vw, 12px)',
+            fontWeight: 600,
+            letterSpacing: '0.16em',
+            textTransform: 'uppercase',
+            color: 'var(--av-gold)',
+            textShadow: '0 0 24px rgba(0,0,0,0.85)',
+          }}
+        >
+          Built for Web3. Battle tested in production.
+          <span style={{
+            display: 'inline-block', width: '8px', height: '14px',
+            background: 'var(--av-gold)',
+            animation: 'av-blink 1.1s steps(1) infinite',
+          }} />
+        </motion.div>
 
         {/* Logo */}
         <motion.div
-          initial={{ scale: 0.86, opacity: 0, filter: 'blur(10px)' }}
+          initial={boot ? { scale: 0.86, opacity: 0, filter: 'blur(10px)' } : { scale: 1, opacity: 1, filter: 'blur(0px)' }}
           animate={{ scale: 1, opacity: 1, filter: 'blur(0px)' }}
-          transition={{ duration: 1.1, delay: 0.55, ease: [0.16, 0.7, 0.18, 1] }}
+          transition={boot ? { duration: 1.1, delay: 0.7, ease: [0.16, 0.7, 0.18, 1] } : { duration: 0.5 }}
           style={{
             position: 'relative',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             width: '100%',
-            marginBottom: '32px',
+            marginBottom: '30px',
           }}
         >
           <img
@@ -281,9 +368,9 @@ function HeroSection({ inviteUrl, stats }) {
             draggable="false"
             style={{
               position: 'relative',
-              width: 'clamp(180px, 22vw, 260px)',
+              width: 'clamp(170px, 21vw, 250px)',
               height: 'auto',
-              maxHeight: '160px',
+              maxHeight: '150px',
               objectFit: 'contain',
               userSelect: 'none',
               display: 'block',
@@ -296,85 +383,60 @@ function HeroSection({ inviteUrl, stats }) {
         {/* Headline */}
         <h1 style={{
           margin: 0,
-          fontSize: 'clamp(2.2rem, 6.4vw, 4.75rem)',
+          fontSize: 'clamp(2.6rem, 8vw, 6rem)',
           fontWeight: 800,
           lineHeight: 1.02,
-          letterSpacing: '-0.045em',
+          letterSpacing: '-0.05em',
           fontFamily: 'Sora, sans-serif',
           textAlign: 'center',
           textShadow: '0 2px 24px rgba(0,0,0,0.6)',
         }}>
-          <motion.span
-            initial={{ y: 24, opacity: 0, filter: 'blur(6px)' }}
-            animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }}
-            transition={{ duration: 0.9, delay: 1.1, ease: [0.22, 0.6, 0.2, 1] }}
-            style={{ display: 'block', color: 'var(--av-text)' }}
-          >
-            Your community
-          </motion.span>
-          <motion.span
-            initial={{ y: 28, opacity: 0, filter: 'blur(8px)' }}
-            animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }}
-            transition={{ duration: 0.95, delay: 1.4, ease: [0.22, 0.6, 0.2, 1] }}
-            style={{
-              display: 'block',
-              background: 'linear-gradient(115deg, #94730D 22%, #f1d586 50%, #94730D 78%)',
-              backgroundSize: '250% 100%',
-              WebkitBackgroundClip: 'text',
-              backgroundClip: 'text',
-              color: 'transparent',
-              WebkitTextFillColor: 'transparent',
-              animation: 'av-shine 7s ease-in-out 2.6s infinite',
-              filter: 'drop-shadow(0 0 36px rgba(148,115,13,0.18))',
-            }}
-          >
-            deserves an engine.
-          </motion.span>
-          <motion.span
-            initial={{ y: 24, opacity: 0, filter: 'blur(6px)' }}
-            animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }}
-            transition={{ duration: 0.9, delay: 1.65, ease: [0.22, 0.6, 0.2, 1] }}
-            style={{
-              display: 'block',
-              marginTop: '0.18em',
-              fontSize: '0.5em',
-              fontWeight: 700,
-              letterSpacing: '-0.02em',
-              color: 'rgba(228,228,231,0.6)',
-            }}
-          >
-            Not a collection of bots.
-          </motion.span>
+          <span style={{ display: 'block', color: 'var(--av-text)' }}>
+            <WordsReveal text="Fourteen modules." boot={boot} baseDelay={1.2} />
+          </span>
+          <span style={{ display: 'block' }}>
+            <WordsReveal text="One engine." boot={boot} baseDelay={1.5} wordStyle={GOLD_GRADIENT_WORD} />
+          </span>
+          <span style={{
+            display: 'block',
+            marginTop: '0.22em',
+            fontSize: '0.42em',
+            fontWeight: 700,
+            letterSpacing: '-0.02em',
+            color: 'rgba(228,228,231,0.6)',
+          }}>
+            <WordsReveal text="Built so your community runs itself." boot={boot} baseDelay={1.8} />
+          </span>
         </h1>
 
         {/* Subline */}
         <motion.p
           initial={{ y: 18, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.85, delay: 1.75, ease: [0.22, 0.6, 0.2, 1] }}
+          transition={{ duration: boot ? 0.85 : 0.5, delay: boot ? 2.0 : 0.1, ease: [0.22, 0.6, 0.2, 1] }}
           style={{
-            marginTop: '24px',
+            marginTop: '26px',
             marginBottom: 0,
-            fontSize: 'clamp(1rem, 1.85vw, 1.2rem)',
+            fontSize: 'clamp(1rem, 1.85vw, 1.22rem)',
             lineHeight: 1.6,
-            maxWidth: '640px',
+            maxWidth: '660px',
             color: 'rgba(228,228,231,0.78)',
             fontFamily: 'Sora, sans-serif',
             textAlign: 'center',
             textShadow: '0 1px 12px rgba(0,0,0,0.6)',
           }}
         >
-          Fourteen modules. One bot. Built for Web3, used by communities across raid pools, NFT mints, giveaways, and partner servers.
+          Engagement, intelligence, and protection, woven into one bot that already powers 10,000+ Web3 members.
         </motion.p>
 
         {/* Live stat strip */}
-        <HeroStatStrip stats={stats} />
+        <HeroStatStrip stats={stats} delay={boot ? 2.2 : 0.2} />
 
         {/* CTAs */}
         <motion.div
           initial={{ y: 24, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.9, delay: 2.05, ease: [0.22, 0.6, 0.2, 1] }}
+          transition={{ duration: boot ? 0.9 : 0.5, delay: boot ? 2.35 : 0.25, ease: [0.22, 0.6, 0.2, 1] }}
           style={{
             marginTop: 'clamp(28px, 4vh, 44px)',
             display: 'flex',
@@ -384,18 +446,18 @@ function HeroSection({ inviteUrl, stats }) {
           }}
         >
           <PrimaryCTA href={inviteUrl}>Add AVbot to Discord</PrimaryCTA>
-          <SecondaryCTA href="#showcase">See It in Action</SecondaryCTA>
+          <SecondaryCTA href="#flywheel">See It in Action</SecondaryCTA>
         </motion.div>
-      </div>
+      </motion.div>
 
       {/* Scroll indicator */}
       <motion.a
-        href="#showcase"
+        href="#flywheel"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1, y: [0, 8, 0] }}
         transition={{
-          opacity: { delay: 2.6, duration: 0.8 },
-          y:       { duration: 2.2, repeat: Infinity, delay: 2.6, ease: 'easeInOut' },
+          opacity: { delay: boot ? 2.6 : 0.6, duration: 0.8 },
+          y: { duration: 2.2, repeat: Infinity, delay: boot ? 2.6 : 0.6, ease: 'easeInOut' },
         }}
         style={{
           position: 'absolute',
@@ -420,6 +482,12 @@ const Landing = () => {
   const [inviteUrl, setInviteUrl] = useState(ADD_TO_DISCORD_URL);
   // null = loading (skeleton), false = failed (strip hidden), object = loaded.
   const [stats, setStats] = useState(null);
+  // Computed once, synchronously, so there is no steady-state flash before boot.
+  const [boot] = useState(shouldBoot);
+
+  useEffect(() => {
+    try { window.sessionStorage && window.sessionStorage.setItem('av_hero_booted', '1'); } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -441,15 +509,14 @@ const Landing = () => {
       color: 'var(--av-text)',
       minHeight: '100vh',
       fontFamily: 'Sora, sans-serif',
-      // Faint global radial so the page bg has depth around the centerpiece.
-      backgroundImage:
-        'radial-gradient(ellipse at 50% 30%, rgba(200,168,78,0.04) 0%, rgba(10,10,10,0) 50%)',
     }}>
-      <CursorGas />
+      {/* Ambient layer sits behind everything at zIndex 0 (CursorGas retired). */}
+      <AmbientBackground />
 
       <div style={{ position: 'relative', zIndex: 1 }}>
-        <HeroSection inviteUrl={inviteUrl} stats={stats} />
+        <HeroSection inviteUrl={inviteUrl} stats={stats} boot={boot} />
         <ModulesOverview />
+        <FlywheelStation />
         <ScrollJourney />
         <WhySection />
         <FinalCTA inviteUrl={inviteUrl} />

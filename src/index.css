@@ -171,6 +171,35 @@
   0%, 100% { transform-origin: center; }
 }
 
+/* ── Phase 2 cinematic ambient ───────────────────────────────────────────── */
+
+/* Slow vertical scan sweep across the viewport. Plays on a long loop so it
+   is felt more than seen. */
+@keyframes av-scan-sweep {
+  0%   { transform: translateY(-20vh); opacity: 0; }
+  4%   { opacity: 0.7; }
+  12%  { opacity: 0; }
+  100% { transform: translateY(120vh); opacity: 0; }
+}
+
+/* Expanding ring pulse, used for the hero core ignite and CTA emphasis. */
+@keyframes av-pulse-ring {
+  0%   { transform: translate(-50%, -50%) scale(0.5); opacity: 0.55; }
+  100% { transform: translate(-50%, -50%) scale(2.6); opacity: 0; }
+}
+
+/* Steady orbit for the module-icon ring and its upright counter-rotation.
+   Same duration, opposite direction keeps each glyph upright while orbiting. */
+@keyframes av-icon-orbit     { from { transform: rotate(0deg); }   to { transform: rotate(360deg); } }
+@keyframes av-icon-orbit-rev { from { transform: rotate(0deg); }   to { transform: rotate(-360deg); } }
+
+/* Reduced motion: kill the ambient and orbital motion entirely. */
+@media (prefers-reduced-motion: reduce) {
+  .av-amb-scanline,
+  .av-icon-ring,
+  .av-icon-upright { animation: none !important; }
+}
+
 * {
   box-sizing: border-box;
 }
