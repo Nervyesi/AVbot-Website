@@ -1045,6 +1045,286 @@ export function FlywheelMockup() {
   );
 }
 
+export function GiveawayMockup() {
+  const [ref, inView] = useInViewOnce(0.3);
+  const [stage, setStage] = useState(0); // 0 roles, 1 math, 2 entrants, 3 winner
+  useEffect(() => {
+    if (!inView) return;
+    const t = [
+      setTimeout(() => setStage(1), 1300),
+      setTimeout(() => setStage(2), 2300),
+      setTimeout(() => setStage(3), 3500),
+    ];
+    return () => t.forEach(clearTimeout);
+  }, [inView]);
+
+  const roles = [
+    { name: 'Verified', kind: 'BASE', val: '1x', tone: 'rgba(228,228,231,0.6)' },
+    { name: 'Degen', kind: 'BASE', val: '5x', tone: 'var(--av-gold)' },
+    { name: 'Booster', kind: 'STACK', val: '+2', tone: '#c9a4ff' },
+    { name: 'Leadership', kind: 'STACK', val: '+3', tone: '#7adc9a' },
+  ];
+  const entrants = [
+    { who: 'web3kid', tix: 10, hot: true },
+    { who: 'floorsweep', tix: 6 },
+    { who: 'gmfren', tix: 3 },
+    { who: 'lurker', tix: 1 },
+  ];
+  const total = entrants.reduce((a, b) => a + b.tix, 0);
+
+  return (
+    <div ref={ref} style={mockupCardStyle}>
+      <BotHeader subtitle="Giveaway • Nitro x3" accent="var(--av-gold)" />
+
+      {/* Entrant roles */}
+      <div style={{ ...labelStyle, marginBottom: 8 }}>@web3kid entering with</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+        {roles.map((r, i) => (
+          <motion.div
+            key={r.name}
+            initial={{ x: -14, opacity: 0 }}
+            animate={inView ? { x: 0, opacity: 1 } : { x: -14, opacity: 0 }}
+            transition={{ duration: 0.4, delay: 0.2 + i * 0.22 }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '6px 10px', borderRadius: 6,
+              background: 'rgba(255,255,255,0.035)',
+              border: '1px solid rgba(255,255,255,0.07)',
+            }}
+          >
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: r.tone, flexShrink: 0 }} />
+            <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1 }}>{r.name}</span>
+            <span style={{
+              fontSize: 8.5, fontWeight: 800, letterSpacing: '0.08em',
+              color: 'rgba(228,228,231,0.4)', fontFamily: monoFont,
+            }}>{r.kind}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: r.tone, fontFamily: monoFont, minWidth: 26, textAlign: 'right' }}>{r.val}</span>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Ticket math */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+        padding: '10px 12px', borderRadius: 8, marginBottom: 14,
+        background: 'rgba(200,168,78,0.06)',
+        border: '1px solid rgba(200,168,78,0.22)',
+        fontFamily: monoFont, fontSize: 15, fontWeight: 700,
+        color: 'var(--av-text)',
+        opacity: stage >= 1 ? 1 : 0.35,
+        transition: 'opacity 0.5s',
+      }}>
+        <span>5 + 2 + 3 =</span>
+        <span style={{ color: 'var(--av-gold)', fontSize: 19 }}>
+          {stage >= 1 ? <Counter target={10} inView duration={700} /> : 0}
+        </span>
+        <span style={{ fontSize: 12, color: 'rgba(228,228,231,0.6)', fontWeight: 500 }}>tickets</span>
+      </div>
+
+      {/* Weighted draw bar */}
+      <div style={{ ...labelStyle, marginBottom: 8 }}>Weighted draw • {total} tickets</div>
+      <div style={{ display: 'flex', gap: 3, height: 30, borderRadius: 6, overflow: 'hidden', marginBottom: 10 }}>
+        {entrants.map((e) => {
+          const pct = (e.tix / total) * 100;
+          const won = stage >= 3 && e.hot;
+          return (
+            <div
+              key={e.who}
+              title={`@${e.who} · ${e.tix} tickets`}
+              style={{
+                width: stage >= 2 ? `${pct}%` : '0%',
+                background: won
+                  ? 'linear-gradient(180deg, #f1d586, var(--av-gold))'
+                  : e.hot ? 'rgba(200,168,78,0.45)' : 'rgba(255,255,255,0.1)',
+                border: won ? '1px solid #fff5cf' : '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 4,
+                transition: 'width 0.8s cubic-bezier(0.22,0.6,0.2,1), background 0.4s, box-shadow 0.4s',
+                boxShadow: won ? '0 0 18px rgba(241,213,134,0.7)' : 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 9, fontWeight: 800, color: won ? '#0a0a0a' : 'transparent',
+                whiteSpace: 'nowrap', overflow: 'hidden',
+              }}
+            >{e.tix}</div>
+          );
+        })}
+      </div>
+
+      {/* Winner reveal */}
+      <div style={{
+        textAlign: 'center', padding: '9px 12px', borderRadius: 8,
+        background: stage >= 3 ? 'rgba(59,165,92,0.12)' : 'rgba(255,255,255,0.03)',
+        border: `1px solid ${stage >= 3 ? 'rgba(59,165,92,0.4)' : 'rgba(255,255,255,0.06)'}`,
+        fontSize: 13, fontWeight: 700,
+        color: stage >= 3 ? '#a8e7bc' : 'rgba(228,228,231,0.4)',
+        transition: 'all 0.5s',
+      }}>
+        {stage >= 3 ? '🎉 Winner drawn: @web3kid' : 'Drawing winner…'}
+      </div>
+    </div>
+  );
+}
+
+export function WalletMockup() {
+  const [ref, inView] = useInViewOnce(0.3);
+  const chains = ['EVM', 'Solana', 'Bitcoin', 'Cardano', 'Cosmos', 'Tron', 'Aptos', 'Sui'];
+  const [sel, setSel] = useState(0);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!inView) return;
+    const id = setInterval(() => setSel((s) => (s + 1) % chains.length), 1300);
+    const c = setTimeout(() => setCopied(true), 2800);
+    return () => { clearInterval(id); clearTimeout(c); };
+  }, [inView]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const rows = [
+    { who: 'web3kid', addr: '0x7a3f…91c4' },
+    { who: 'degenmsa', addr: '0xb20a…7e02' },
+    { who: 'floorsweep', addr: '0x4c91…aa38' },
+    { who: 'gmfren', addr: '0x10de…55b1' },
+  ];
+
+  return (
+    <div ref={ref} style={mockupCardStyle}>
+      <BotHeader subtitle="Wallet Collection • Genesis Mint" accent="var(--av-gold)" />
+
+      {/* Chain picker */}
+      <div style={{ ...labelStyle, marginBottom: 8 }}>Chain</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+        {chains.map((c, i) => {
+          const active = i === sel;
+          return (
+            <span key={c} style={{
+              padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 600,
+              background: active ? 'rgba(200,168,78,0.18)' : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${active ? 'var(--av-gold)' : 'rgba(255,255,255,0.08)'}`,
+              color: active ? 'var(--av-gold)' : 'rgba(228,228,231,0.6)',
+              transition: 'all 0.3s',
+            }}>{c}</span>
+          );
+        })}
+      </div>
+
+      {/* Submissions table */}
+      <div style={{ ...labelStyle, marginBottom: 8 }}>Submissions</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
+        {rows.map((r, i) => (
+          <motion.div
+            key={r.who}
+            initial={{ y: 8, opacity: 0 }}
+            animate={inView ? { y: 0, opacity: 1 } : { y: 8, opacity: 0 }}
+            transition={{ duration: 0.4, delay: 0.3 + i * 0.3 }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '7px 11px', borderRadius: 6,
+              background: '#13141a', border: '1px solid rgba(255,255,255,0.06)',
+            }}
+          >
+            <span style={{ fontSize: 12, fontWeight: 700, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>@{r.who}</span>
+            <span style={{ fontSize: 11.5, color: 'var(--av-gold)', fontFamily: monoFont }}>{r.addr}</span>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Copy to sheet */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        padding: '10px 12px', borderRadius: 8,
+        background: copied ? 'rgba(59,165,92,0.1)' : 'rgba(200,168,78,0.06)',
+        border: `1px solid ${copied ? 'rgba(59,165,92,0.4)' : 'rgba(200,168,78,0.25)'}`,
+        transition: 'all 0.4s',
+      }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: copied ? '#a8e7bc' : 'var(--av-gold)' }}>
+          {copied ? '✓ 412 wallets copied to clipboard' : '📋 Copy all wallets'}
+        </span>
+        <span style={{
+          fontSize: 16, opacity: copied ? 1 : 0.4,
+          transition: 'opacity 0.4s',
+        }}>📊</span>
+      </div>
+    </div>
+  );
+}
+
+export function RadarMockup() {
+  const [ref, inView] = useInViewOnce(0.3);
+  const [alert, setAlert] = useState(false);
+  const [digest, setDigest] = useState(false);
+  useEffect(() => {
+    if (!inView) return;
+    const a = setTimeout(() => setAlert(true), 1500);
+    const d = setTimeout(() => setDigest(true), 2700);
+    return () => { clearTimeout(a); clearTimeout(d); };
+  }, [inView]);
+
+  const feeds = [
+    { k: 'Crypto', sym: 'BTC', val: '$67,420', chg: '+3.2%', up: true },
+    { k: 'NFT', sym: 'Floor', val: 'Ξ 1.84', chg: '+0.6%', up: true },
+    { k: 'Meme', sym: 'DOGE', val: '$0.162', chg: '-1.1%', up: false },
+    { k: 'Forex', sym: 'EUR/USD', val: '1.0892', chg: '+0.1%', up: true },
+    { k: 'Commodities', sym: 'Gold', val: '$2,412', chg: '+0.4%', up: true },
+  ];
+
+  return (
+    <div ref={ref} style={mockupCardStyle}>
+      <BotHeader subtitle="Radar • Market Intelligence" accent="var(--av-gold)" />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 12 }}>
+        {feeds.map((f, i) => (
+          <motion.div
+            key={f.k}
+            initial={{ x: -12, opacity: 0 }}
+            animate={inView ? { x: 0, opacity: 1 } : { x: -12, opacity: 0 }}
+            transition={{ duration: 0.4, delay: 0.15 + i * 0.12 }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '7px 11px', borderRadius: 6,
+              background: '#13141a', border: '1px solid rgba(255,255,255,0.06)',
+            }}
+          >
+            <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em', color: 'rgba(228,228,231,0.45)', minWidth: 78, fontFamily: monoFont }}>{f.k}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, flex: 1 }}>{f.sym}</span>
+            <span style={{ fontSize: 12, color: 'var(--av-text)', fontFamily: monoFont }}>{f.val}</span>
+            <span style={{
+              fontSize: 11, fontWeight: 700, fontFamily: monoFont, minWidth: 46, textAlign: 'right',
+              color: f.up ? '#7adc9a' : '#ff8c66',
+            }}>{f.up ? '↗' : '↘'} {f.chg}</span>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Alert pop */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 9,
+        padding: '9px 12px', borderRadius: 8, marginBottom: 8,
+        background: 'rgba(241,213,134,0.1)',
+        border: '1px solid rgba(241,213,134,0.4)',
+        transform: alert ? 'scale(1)' : 'scale(0.9)',
+        opacity: alert ? 1 : 0,
+        transition: 'all 0.45s cubic-bezier(0.22,1.4,0.4,1)',
+      }}>
+        <span style={{ fontSize: 15 }}>⚡</span>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#f1d586' }}>BTC up 3.2% in the last hour</span>
+      </div>
+
+      {/* Digest rolled to channel */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 9,
+        padding: '9px 12px', borderRadius: 8,
+        background: 'rgba(88,101,242,0.1)',
+        border: '1px solid rgba(88,101,242,0.35)',
+        opacity: digest ? 1 : 0,
+        transform: digest ? 'translateY(0)' : 'translateY(6px)',
+        transition: 'all 0.45s ease',
+      }}>
+        <span style={{ fontSize: 14 }}>📥</span>
+        <span style={{ fontSize: 12, color: 'rgba(228,228,231,0.85)' }}>
+          Daily digest posted to <span style={{ color: '#aab4ff', fontWeight: 600 }}>#market-radar</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ── Aggregated panel metadata ───────────────────────────────────────────────
 
 export const MODULE_PANELS = [

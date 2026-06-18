@@ -4,7 +4,6 @@ import { ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 import AmbientBackground from '../components/AmbientBackground';
 import HeroCenterpiece from '../components/HeroCenterpiece';
 import ModulesOverview from '../components/ModulesOverview';
-import FlywheelStation from '../components/FlywheelStation';
 import ScrollJourney from '../components/ScrollJourney';
 import WhySection from '../components/WhySection';
 import FinalCTA from '../components/FinalCTA';
@@ -277,19 +276,22 @@ function HeroSection({ inviteUrl, stats, boot }) {
     target: sectionRef,
     offset: ['start start', 'end start'],
   });
-  // Centerpiece recedes and fades as the user scrolls through the hero.
-  const cpY = useTransform(scrollYProgress, [0, 1], [0, -160]);
-  const cpScale = useTransform(scrollYProgress, [0, 1], [1, 1.18]);
-  const cpOpacity = useTransform(scrollYProgress, [0, 1], [1, 0.12]);
-  // Content drifts up gently and fades a touch (parallax depth).
-  const contentY = useTransform(scrollYProgress, [0, 1], [0, -60]);
+  // Centerpiece recedes and is fully gone (opacity 0) by 85% of the hero,
+  // so no orbital ghosts bleed into the next section.
+  const cpY = useTransform(scrollYProgress, [0, 0.85], [0, -240]);
+  const cpScale = useTransform(scrollYProgress, [0, 0.85], [1, 1.22]);
+  const cpOpacity = useTransform(scrollYProgress, [0, 0.55, 0.85], [1, 0.25, 0]);
+  // Content drifts up gently (parallax depth).
+  const contentY = useTransform(scrollYProgress, [0, 1], [0, -70]);
+  // Bottom edge break fades in as the user scrolls out of the hero.
+  const edgeOpacity = useTransform(scrollYProgress, [0.25, 0.75], [0, 1]);
 
   return (
     <section
       ref={sectionRef}
       style={{
         position: 'relative',
-        minHeight: '110vh',
+        minHeight: '100vh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -305,6 +307,7 @@ function HeroSection({ inviteUrl, stats, boot }) {
           position: 'absolute', inset: 0,
           y: cpY, scale: cpScale, opacity: cpOpacity,
           zIndex: 0,
+          pointerEvents: 'none',
         }}
       >
         <HeroCenterpiece boot={boot} />
@@ -323,29 +326,22 @@ function HeroSection({ inviteUrl, stats, boot }) {
           width: '100%',
         }}
       >
-        {/* Kicker with blinking cursor */}
+        {/* Kicker */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.7, delay: boot ? 0.9 : 0 }}
           style={{
             marginBottom: '26px',
-            display: 'inline-flex', alignItems: 'center', gap: '8px',
-            fontFamily: MONO,
-            fontSize: 'clamp(10px, 1.05vw, 12px)',
-            fontWeight: 600,
-            letterSpacing: '0.16em',
+            fontSize: 'clamp(10px, 1vw, 12px)',
+            fontWeight: 700,
+            letterSpacing: '0.32em',
             textTransform: 'uppercase',
             color: 'var(--av-gold)',
             textShadow: '0 0 24px rgba(0,0,0,0.85)',
           }}
         >
-          Built for Web3. Battle tested in production.
-          <span style={{
-            display: 'inline-block', width: '8px', height: '14px',
-            background: 'var(--av-gold)',
-            animation: 'av-blink 1.1s steps(1) infinite',
-          }} />
+          From Web3, for Web3.
         </motion.div>
 
         {/* Logo */}
@@ -383,29 +379,19 @@ function HeroSection({ inviteUrl, stats, boot }) {
         {/* Headline */}
         <h1 style={{
           margin: 0,
-          fontSize: 'clamp(2.6rem, 8vw, 6rem)',
+          fontSize: 'clamp(2.2rem, 6.5vw, 5rem)',
           fontWeight: 800,
-          lineHeight: 1.02,
-          letterSpacing: '-0.05em',
+          lineHeight: 1.03,
+          letterSpacing: '-0.045em',
           fontFamily: 'Sora, sans-serif',
           textAlign: 'center',
           textShadow: '0 2px 24px rgba(0,0,0,0.6)',
         }}>
           <span style={{ display: 'block', color: 'var(--av-text)' }}>
-            <WordsReveal text="Fourteen modules." boot={boot} baseDelay={1.2} />
+            <WordsReveal text="Your community" boot={boot} baseDelay={1.2} />
           </span>
           <span style={{ display: 'block' }}>
-            <WordsReveal text="One engine." boot={boot} baseDelay={1.5} wordStyle={GOLD_GRADIENT_WORD} />
-          </span>
-          <span style={{
-            display: 'block',
-            marginTop: '0.22em',
-            fontSize: '0.42em',
-            fontWeight: 700,
-            letterSpacing: '-0.02em',
-            color: 'rgba(228,228,231,0.6)',
-          }}>
-            <WordsReveal text="Built so your community runs itself." boot={boot} baseDelay={1.8} />
+            <WordsReveal text="deserves an engine." boot={boot} baseDelay={1.5} wordStyle={GOLD_GRADIENT_WORD} />
           </span>
         </h1>
 
@@ -426,7 +412,7 @@ function HeroSection({ inviteUrl, stats, boot }) {
             textShadow: '0 1px 12px rgba(0,0,0,0.6)',
           }}
         >
-          Engagement, intelligence, and protection, woven into one bot that already powers 10,000+ Web3 members.
+          Engagement, intelligence, and protection. All woven into one bot.
         </motion.p>
 
         {/* Live stat strip */}
@@ -448,6 +434,22 @@ function HeroSection({ inviteUrl, stats, boot }) {
           <PrimaryCTA href={inviteUrl}>Add AVbot to Discord</PrimaryCTA>
           <SecondaryCTA href="#flywheel">See It in Action</SecondaryCTA>
         </motion.div>
+      </motion.div>
+
+      {/* Bottom edge break: grounds the hero and fades in on scroll-out */}
+      <motion.div
+        aria-hidden="true"
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 2, opacity: edgeOpacity, pointerEvents: 'none' }}
+      >
+        <div style={{
+          height: '160px',
+          background: 'linear-gradient(to bottom, rgba(10,10,10,0) 0%, rgba(10,10,10,0.55) 100%)',
+        }} />
+        <div style={{
+          height: '1px',
+          background: 'linear-gradient(90deg, transparent 0%, rgba(200,168,78,0.5) 50%, transparent 100%)',
+          boxShadow: '0 0 16px rgba(200,168,78,0.4)',
+        }} />
       </motion.div>
 
       {/* Scroll indicator */}
@@ -516,7 +518,6 @@ const Landing = () => {
       <div style={{ position: 'relative', zIndex: 1 }}>
         <HeroSection inviteUrl={inviteUrl} stats={stats} boot={boot} />
         <ModulesOverview />
-        <FlywheelStation />
         <ScrollJourney />
         <WhySection />
         <FinalCTA inviteUrl={inviteUrl} />

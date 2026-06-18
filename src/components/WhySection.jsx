@@ -130,11 +130,13 @@ function ComparisonTable() {
         <div style={{
           color: 'var(--av-gold)',
           padding: '0 12px',
-          background: 'rgba(200,168,78,0.05)',
+          background: 'rgba(200,168,78,0.08)',
           margin: '-18px 0',
           paddingTop: '18px', paddingBottom: '18px',
-          borderLeft: '1px solid rgba(200,168,78,0.18)',
-          borderRight: '1px solid rgba(200,168,78,0.18)',
+          borderLeft: '1px solid rgba(200,168,78,0.4)',
+          borderRight: '1px solid rgba(200,168,78,0.4)',
+          borderTop: '2px solid rgba(200,168,78,0.55)',
+          boxShadow: '0 -2px 28px -6px rgba(200,168,78,0.5)',
         }}>AVbot</div>
         <div style={{ padding: '0 12px' }}>Typical Discord bots</div>
         <div style={{ padding: '0 12px' }}>Web3 focused bots</div>
@@ -161,11 +163,11 @@ function ComparisonTable() {
             {row.feature}
           </div>
           <div className="av-cmp-cell av-cmp-cell-avbot" style={{
-            background: 'rgba(200,168,78,0.06)',
+            background: 'rgba(200,168,78,0.07)',
             margin: '-14px 0',
             padding: '14px 12px',
-            borderLeft: '1px solid rgba(200,168,78,0.18)',
-            borderRight: '1px solid rgba(200,168,78,0.18)',
+            borderLeft: '1px solid rgba(200,168,78,0.35)',
+            borderRight: '1px solid rgba(200,168,78,0.35)',
           }}>
             <span className="av-cmp-cell-label">AVbot</span>
             <CellMark value={row.avbot} />
@@ -345,9 +347,13 @@ export default function WhySection() {
               gridTemplateColumns: 'repeat(3, 1fr)',
               gap: '8px',
             }}>
-              {['📊 Analytics', '✅ Verification', '🎭 Role Selection', '📝 Forms', '🎫 Tickets', '⚔️ Raid', '🔁 Engage', '🛡️ Protection', '📋 Logs', '🎁 Giveaway', '💼 Wallet Collection', '📡 Radar', '💬 Embed Messages', '⚙️ Server Settings'].map((m) => (
-                <div
+              {['📊 Analytics', '✅ Verification', '🎭 Role Selection', '📝 Forms', '🎫 Tickets', '⚔️ Raid', '🔁 Engage', '🛡️ Protection', '📋 Logs', '🎁 Giveaway', '💼 Wallet Collection', '📡 Radar', '💬 Embed Messages', '⚙️ Server Settings'].map((m, i) => (
+                <motion.div
                   key={m}
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  whileInView={{ scale: 1, opacity: 1 }}
+                  viewport={{ once: true, amount: 0.4 }}
+                  transition={{ duration: 0.4, delay: 0.15 + i * 0.05, ease: [0.22, 0.6, 0.2, 1] }}
                   style={{
                     padding: '8px 10px',
                     borderRadius: '8px',
@@ -363,7 +369,7 @@ export default function WhySection() {
                   }}
                 >
                   {m}
-                </div>
+                </motion.div>
               ))}
             </div>
           </motion.div>

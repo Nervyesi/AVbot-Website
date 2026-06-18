@@ -15,12 +15,49 @@ export default function FinalCTA({ inviteUrl }) {
     <section
       style={{
         position: 'relative',
-        padding: 'clamp(110px, 16vw, 200px) 24px',
+        minHeight: '88vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 'clamp(90px, 14vw, 180px) 24px',
         textAlign: 'center',
         backgroundColor: 'transparent',
+        overflow: 'hidden',
       }}
     >
-      <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+      {/* Final orbital pulse: the engine signs off */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute', top: '50%', left: '50%',
+          width: 'min(520px, 80vw)', aspectRatio: '1 / 1',
+          transform: 'translate(-50%, -50%)',
+          pointerEvents: 'none', zIndex: 0,
+        }}
+      >
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%',
+          width: '40%', aspectRatio: '1 / 1', borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(200,168,78,0.18) 0%, transparent 70%)',
+          filter: 'blur(20px)',
+          animation: 'av-core-pulse 5s ease-in-out infinite',
+          transform: 'translate(-50%, -50%)',
+        }} />
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%',
+          width: '60%', aspectRatio: '1 / 1', borderRadius: '50%',
+          border: '1px solid rgba(200,168,78,0.4)',
+          animation: 'av-pulse-ring 4.5s ease-out infinite',
+        }} />
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%',
+          width: '60%', aspectRatio: '1 / 1', borderRadius: '50%',
+          border: '1px solid rgba(200,168,78,0.3)',
+          animation: 'av-pulse-ring 4.5s ease-out 2.25s infinite',
+        }} />
+      </div>
+
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: '900px', margin: '0 auto' }}>
         <motion.h2
           initial={{ y: 28, opacity: 0 }}
           whileInView={{ y: 0, opacity: 1 }}
