@@ -285,60 +285,25 @@ export function AnalyticsMockup() {
 
 export function VerifyMockup() {
   const [ref, inView] = useInViewOnce();
-  // 0 = challenge shown, 1 = solving, 2 = verified
+  // 0 = idle, 1 = verifying, 2 = verified
   const [stage, setStage] = useState(0);
-  const [selected, setSelected] = useState([]);
   useEffect(() => {
     if (!inView) return;
-    const timers = [
-      setTimeout(() => { setStage(1); setSelected([1]); }, 800),
-      setTimeout(() => setSelected([1, 4]), 1500),
-      setTimeout(() => setStage(2), 2500),
-    ];
-    return () => timers.forEach(clearTimeout);
+    const t1 = setTimeout(() => setStage(1), 700);
+    const t2 = setTimeout(() => setStage(2), 1900);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [inView]);
-
-  // Tiles 1 and 4 are the coins (the correct answer).
-  const tiles = ['🤖', '🪙', '🎲', '🌐', '🪙', '🎮'];
 
   return (
     <div ref={ref} style={mockupCardStyle}>
-      <BotHeader subtitle="Verification • Human check" />
+      <BotHeader subtitle="Verification panel" />
 
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--av-text)', marginBottom: 6 }}>
           Welcome to AmeretaVerse
         </div>
         <div style={{ fontSize: 13, color: 'rgba(228,228,231,0.7)', lineHeight: 1.55 }}>
-          Solve a quick check to prove you are human.
-        </div>
-      </div>
-
-      {/* Captcha challenge */}
-      <div style={{
-        background: '#13141a', border: '1px solid rgba(255,255,255,0.07)',
-        borderRadius: 8, padding: 12, marginBottom: 12,
-      }}>
-        <div style={{ ...labelStyle, marginBottom: 10 }}>Select every coin</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7 }}>
-          {tiles.map((t, i) => {
-            const on = selected.includes(i);
-            return (
-              <div key={i} style={{
-                aspectRatio: '1 / 1',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 22, borderRadius: 7, position: 'relative',
-                background: on ? 'rgba(200,168,78,0.18)' : 'rgba(255,255,255,0.035)',
-                border: `2px solid ${on ? 'var(--av-gold)' : 'rgba(255,255,255,0.08)'}`,
-                transition: 'all 0.3s',
-              }}>
-                {t}
-                {on && (
-                  <span style={{ position: 'absolute', top: 3, right: 4, fontSize: 10, color: 'var(--av-gold)', fontWeight: 800 }}>✓</span>
-                )}
-              </div>
-            );
-          })}
+          Verify yourself to unlock the creator channels. Takes ten seconds.
         </div>
       </div>
 
@@ -352,7 +317,7 @@ export function VerifyMockup() {
           fontWeight: 700,
           fontSize: 14,
           fontFamily: 'Sora, sans-serif',
-          color: '#0a0a0a',
+          color: stage === 2 ? '#0a0a0a' : '#0a0a0a',
           background: stage === 2 ? '#3ba55c' : 'var(--av-gold)',
           display: 'inline-flex',
           alignItems: 'center',
@@ -365,7 +330,7 @@ export function VerifyMockup() {
             : '0 0 28px -10px rgba(200,168,78,0.55)',
         }}
       >
-        {stage === 0 && <>Solve the challenge</>}
+        {stage === 0 && <>○ Click to verify</>}
         {stage === 1 && (
           <>
             <span style={{
@@ -375,7 +340,7 @@ export function VerifyMockup() {
               animation: 'av-spin 0.8s linear infinite',
               display: 'inline-block',
             }} />
-            Checking
+            Verifying
           </>
         )}
         {stage === 2 && <>✓ Verified</>}
@@ -396,7 +361,7 @@ export function VerifyMockup() {
           animation: 'av-fade-in 0.5s ease 0.1s both',
         }}>
           <span>🎭</span>
-          Role granted: <span style={{ fontWeight: 700, color: '#a8e7bc' }}>Member</span>
+          Role granted: <span style={{ fontWeight: 700, color: '#a8e7bc' }}>Builder</span>
         </div>
       )}
     </div>
@@ -1002,9 +967,19 @@ export function FlywheelMockup() {
     return () => timers.forEach(clearTimeout);
   }, [inView]);
 
+  // Each submitted tweet can require a different mix of tasks; some get skipped.
+  const taskIcon = { like: '❤️', comment: '💬', rt: '🔄' };
   const engageList = [
-    'cryptowizard', 'degenmsa', 'web3kid', 'floorsweep', 'gmfren',
-    'nftqueen', 'onchain_al', 'memelord', 'averse_fan', 'satoshilite',
+    { who: 'cryptowizard', tasks: ['like', 'comment'] },
+    { who: 'degenmsa', tasks: ['like'] },
+    { who: 'web3kid', tasks: ['like', 'comment', 'rt'] },
+    { who: 'floorsweep', skipped: true },
+    { who: 'gmfren', tasks: ['like', 'rt'] },
+    { who: 'nftqueen', tasks: ['like', 'comment'] },
+    { who: 'onchain_al', tasks: ['like', 'rt'] },
+    { who: 'memelord', skipped: true },
+    { who: 'averse_fan', tasks: ['like'] },
+    { who: 'satoshilite', tasks: ['like', 'comment', 'rt'] },
   ];
   const raidTasks = [
     { key: 'like', icon: '❤️', label: 'Like' },
@@ -1036,23 +1011,37 @@ export function FlywheelMockup() {
             Engage with these tweets
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {engageList.map((u, i) => {
+            {engageList.map((row, i) => {
               const show = revealed > i;
               const checked = done > i;
               return (
-                <div key={u} style={{
+                <div key={row.who} style={{
                   display: 'flex', alignItems: 'center', gap: 7,
                   padding: '3px 6px', borderRadius: 4, fontSize: 10.5,
                   opacity: show ? 1 : 0,
                   transform: show ? 'translateX(0)' : 'translateX(-6px)',
                   transition: 'opacity 0.25s, transform 0.25s, background 0.3s',
-                  background: checked ? 'rgba(59,165,92,0.1)' : 'transparent',
+                  background: checked && !row.skipped ? 'rgba(59,165,92,0.1)' : 'transparent',
                 }}>
                   <span style={{ color: 'rgba(228,228,231,0.4)', fontFamily: monoFont, width: 16, flexShrink: 0 }}>{i + 1}.</span>
-                  <span style={{ fontWeight: 600, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>@{u}</span>
-                  <span style={{ fontSize: 9.5, fontWeight: 700, color: checked ? '#7adc9a' : 'rgba(228,228,231,0.4)' }}>
-                    {checked ? '✓ liked' : 'tap to like'}
-                  </span>
+                  <span style={{ fontWeight: 600, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>@{row.who}</span>
+                  {row.skipped ? (
+                    <span style={{ fontSize: 9.5, fontWeight: 600, fontStyle: 'italic', color: 'rgba(228,228,231,0.3)' }}>skipped</span>
+                  ) : (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                      {row.tasks.map((tk, ti) => (
+                        <span key={tk} style={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+                          <span style={{ fontSize: 10 }}>{taskIcon[tk]}</span>
+                          <span style={{
+                            fontSize: 8, fontWeight: 800, color: '#7adc9a',
+                            opacity: checked ? 1 : 0,
+                            transition: 'opacity 0.25s ease',
+                            transitionDelay: checked ? `${ti * 0.12}s` : '0s',
+                          }}>✓</span>
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </div>
               );
             })}

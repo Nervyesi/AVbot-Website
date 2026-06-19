@@ -28,11 +28,11 @@ export default function HeroCenterpiece({ boot = false }) {
     : { duration: 0 };
 
   return (
-    <motion.div
+    // Static parent owns the centering transform. framer-motion animates
+    // scale/opacity on the child, which would otherwise clobber a CSS
+    // translate(-50%, -50%) and shove the orbital to the bottom-right.
+    <div
       aria-hidden="true"
-      initial={eruptInitial}
-      animate={eruptAnimate}
-      transition={eruptTransition}
       style={{
         position: 'absolute',
         top: '50%',
@@ -43,6 +43,12 @@ export default function HeroCenterpiece({ boot = false }) {
         pointerEvents: 'none',
         zIndex: 0,
       }}
+    >
+    <motion.div
+      initial={eruptInitial}
+      animate={eruptAnimate}
+      transition={eruptTransition}
+      style={{ position: 'absolute', inset: 0 }}
     >
       {/* Outer atmospheric halo */}
       <div
@@ -204,5 +210,6 @@ export default function HeroCenterpiece({ boot = false }) {
         }}
       />
     </motion.div>
+    </div>
   );
 }
