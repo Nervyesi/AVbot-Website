@@ -26,50 +26,49 @@ const MONO = 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace';
 // hero content zone (logo, kicker, headline, subline, stat strip, CTAs) and is
 // kept clear of blocks. Blocks scatter irregularly through the left and right
 // margins at varied positions, sizes and slight tilts.
-// Two blocks flank the logo at the top; the other six are pushed to the very
-// edges (left right-edges = 100 / 10%, right left-edges >= 900 / 90%) leaving
-// an 80% clear central content column. Several bleed past the frame edge so the
-// schematic reads as a slice of a larger system. Heights are clustered, not
-// evenly stacked; tilts vary widely. `side` decides where labels anchor so
-// they stay readable from the visible edge inward.
+// Layout in three zones. TOP (y < 15%): a row of five reading edge-corner,
+// flank-left, LOGO, flank-right, edge-corner. MIDDLE (y 25%..70%): completely
+// empty of blocks; the hero content lives here with only faint wires + pulses
+// behind it. BOTTOM (y 75%..95%): four scattered blocks at the corners, one
+// higher and one lower per side. Several blocks bleed past the frame edge.
+// `side` decides where labels anchor so they read from the visible edge inward.
 const BLOCKS = [
   // Flanking the logo (top centre, compact, fully visible)
-  { id: 'verify', side: 'c', x: 212, y: 70, w: 152, h: 44, rot: -5, label: 'VERIFY_HUMAN', note: 'captcha' },
-  { id: 'radar',  side: 'c', x: 700, y: 52, w: 140, h: 44, rot: 4,  label: 'RADAR_FEEDS',  note: 'BTC +3.2%' },
-  // Left edge (right edges = 100, bleed left). engage + raid cluster; protect alone low.
-  { id: 'engage',  side: 'l', x: -44, y: 176, w: 144, h: 56, rot: 5,  label: 'ENGAGE_FLYWHEEL',  note: 'v3' },
-  { id: 'raid',    side: 'l', x: -20, y: 250, w: 120, h: 46, rot: -6, label: 'RAID_VERIFY',      note: 'live' },
-  { id: 'protect', side: 'l', x: -52, y: 496, w: 152, h: 60, rot: 2,  label: 'PROTECTION_GUARD', note: '47/day' },
-  // Right edge (left edges >= 900, bleed right). give + analytics cluster low; core alone top.
-  { id: 'core',      side: 'r', x: 900, y: 44,  w: 156, h: 64, rot: -4, label: 'CORE_ENGINE',      note: '14 modules', hub: true },
-  { id: 'give',      side: 'r', x: 900, y: 336, w: 240, h: 56, rot: 0,  label: 'GIVEAWAY_WEIGHTED',note: '5x' },
-  { id: 'analytics', side: 'r', x: 908, y: 452, w: 180, h: 58, rot: 6,  label: 'ANALYTICS_PULSE',  note: '+212' },
+  { id: 'verify',  side: 'c', x: 270, y: 44,  w: 150, h: 44, rot: -4, label: 'VERIFY_HUMAN',     note: 'captcha' },   // A, left of logo
+  { id: 'radar',   side: 'c', x: 648, y: 40,  w: 140, h: 44, rot: 4,  label: 'RADAR_FEEDS',      note: 'BTC +3.2%' }, // B, right of logo
+  // Top corners
+  { id: 'engage',  side: 'l', x: -24, y: 30,  w: 150, h: 50, rot: 5,  label: 'ENGAGE_FLYWHEEL',  note: 'v3' },        // C, top-left
+  { id: 'core',    side: 'r', x: 905, y: 30,  w: 150, h: 58, rot: -3, label: 'CORE_ENGINE',      note: '14 modules', hub: true }, // D, top-right
+  // Bottom-left (mid + far)
+  { id: 'raid',    side: 'l', x: -24, y: 462, w: 156, h: 54, rot: 2,  label: 'RAID_VERIFY',      note: 'live' },      // E
+  { id: 'protect', side: 'l', x: 2,   y: 540, w: 170, h: 48, rot: 0,  label: 'PROTECTION_GUARD', note: '47/day' },    // F
+  // Bottom-right (mid + far)
+  { id: 'give',      side: 'r', x: 900, y: 456, w: 250, h: 56, rot: 0,  label: 'GIVEAWAY_WEIGHTED',note: '5x' },       // G, bleeds ~15%
+  { id: 'analytics', side: 'r', x: 905, y: 534, w: 180, h: 52, rot: 5,  label: 'ANALYTICS_PULSE',  note: '+212' },     // H
 ];
 
-// Wires. center:true cross the wide content column and stay very faint (only
-// their pulses read). Each pulse has its own duration and peak brightness for
-// a busy, layered "live system" feel; delays are tuned so pulses appear to
-// hand off at shared nodes. Two originate from the logo-flanking blocks and
-// travel down through the centre (the brain spreading energy outward).
+// Wires (orthogonal). center:true cross the empty middle band and stay very
+// faint (only their pulses read); top/margin/bottom wires are brighter. Each
+// pulse has its own duration and peak brightness; delays are tuned so pulses
+// hand off at shared nodes. Pulses originate at the flank blocks (A, B) beside
+// the logo and travel down to the bottom blocks (energy from the brain out).
 const WIRES = [
-  { pts: '288,114 288,364 900,364',         dur: 2.4, peak: 0.90, delay: 0.0, center: true },  // VERIFY(flank) -> give
-  { pts: '770,96 770,300 100,300',          dur: 2.8, peak: 0.85, delay: 0.4, center: true },  // RADAR(flank) -> protect
-  { pts: '900,76 364,76',                   dur: 2.0, peak: 0.80, delay: 0.7, center: true },  // core -> verify(flank), top
-  { pts: '100,204 500,204 500,364 900,364', dur: 1.2, peak: 1.00, delay: 0.2, center: true },  // engage -> give, FAST
-  { pts: '100,273 470,273 470,452 908,452', dur: 3.0, peak: 0.65, delay: 0.9, center: true },  // raid -> analytics, SLOW
-  { pts: '100,526 540,526 540,76 900,76',   dur: 2.6, peak: 0.95, delay: 1.3, center: true },  // protect -> core, long
-  { pts: '950,392 950,452',                 dur: 1.5, peak: 0.95, delay: 0.5, center: false }, // give -> analytics (chain)
-  { pts: '50,232 50,250',                   dur: 1.8, peak: 0.85, delay: 1.1, center: false }, // engage -> raid
-  { pts: '364,92 700,74',                   dur: 2.2, peak: 0.70, delay: 1.6, center: true },  // flank to flank, top
-  { pts: '930,108 930,336',                 dur: 2.0, peak: 0.90, delay: 0.3, center: false }, // core -> give
+  { pts: '345,44 345,22 718,22 718,40',     dur: 2.2, peak: 0.85, delay: 0.0, center: false }, // A <-> B across the top
+  { pts: '345,88 200,88 200,489 132,489',   dur: 2.6, peak: 0.90, delay: 0.3, center: true },  // A -> E (left, down through middle)
+  { pts: '718,84 820,84 820,484 900,484',   dur: 2.8, peak: 0.85, delay: 0.6, center: true },  // B -> G (right, down through middle)
+  { pts: '51,80 51,462',                    dur: 1.4, peak: 1.00, delay: 0.2, center: false }, // C -> E (left edge, FAST)
+  { pts: '980,88 980,456',                  dur: 2.0, peak: 0.90, delay: 0.4, center: false }, // D -> G (right edge)
+  { pts: '132,489 900,489',                 dur: 3.0, peak: 0.65, delay: 0.9, center: true },  // E -> G bottom bridge (SLOW, low)
+  { pts: '345,88 280,88 280,564 172,564',   dur: 2.4, peak: 0.75, delay: 1.2, center: true },  // A -> F (left, down)
+  { pts: '950,108 950,534',                 dur: 1.6, peak: 0.95, delay: 0.5, center: false }, // D -> H (right edge)
+  { pts: '126,55 270,55',                   dur: 1.8, peak: 0.90, delay: 1.5, center: false }, // C -> A (top-left link)
 ];
 
-// Nodes sit in the safe top/bottom gaps (never behind the headline) plus a few
-// at block edges, reading as data-flow crossings.
+// Nodes sit only in the TOP and BOTTOM zones (never in the empty middle band),
+// reading as data-flow crossings.
 const NODES = [
-  [500, 76], [532, 92], [470, 114],
-  [486, 526], [540, 520],
-  [100, 204], [900, 364], [100, 526],
+  [345, 22], [718, 22], [51, 80], [980, 88],     // top
+  [200, 489], [820, 484], [132, 489], [905, 534], // bottom
 ];
 
 const GRID = [];
