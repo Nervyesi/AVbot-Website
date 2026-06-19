@@ -176,7 +176,7 @@ function HeroStatStrip({ stats, delay }) {
   if (loaded) {
     const allZero =
       !stats.members_total && !stats.servers_count &&
-      !stats.tasks_verified_total && !stats.engagements_tracked;
+      !stats.tasks_verified_total && !stats.protection_actions_total;
     if (allZero) return null;
   }
 
@@ -184,7 +184,7 @@ function HeroStatStrip({ stats, delay }) {
     { key: 'members_total',        label: 'members' },
     { key: 'servers_count',        label: 'servers' },
     { key: 'tasks_verified_total', label: 'tasks verified' },
-    { key: 'engagements_tracked',  label: 'engagements tracked' },
+    { key: 'protection_actions_total', label: 'threats blocked' },
   ];
 
   return (
