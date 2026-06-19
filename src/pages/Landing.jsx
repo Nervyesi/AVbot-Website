@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
 import AmbientBackground from '../components/AmbientBackground';
+import CursorGas from '../components/CursorGas';
 import HeroCenterpiece from '../components/HeroCenterpiece';
 import ModulesOverview from '../components/ModulesOverview';
 import ScrollJourney from '../components/ScrollJourney';
@@ -517,10 +518,12 @@ const Landing = () => {
       fontFamily: 'Sora, sans-serif',
       overflowX: 'hidden',
     }}>
-      {/* Ambient layer sits behind everything at zIndex 0 (CursorGas retired). */}
+      {/* Layered background: ambient particles/scanline/grain at z0, the
+          subtle cursor gas at z1, all page content at z2. */}
       <AmbientBackground />
+      <CursorGas />
 
-      <div style={{ position: 'relative', zIndex: 1 }}>
+      <div style={{ position: 'relative', zIndex: 2 }}>
         <HeroSection inviteUrl={inviteUrl} stats={stats} boot={boot} />
         <ModulesOverview />
         <ScrollJourney />

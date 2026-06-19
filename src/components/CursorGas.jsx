@@ -45,14 +45,14 @@ export default function CursorGas() {
     // ── Tunables ────────────────────────────────────────────────────────────
     const SIM_RESOLUTION       = 128;   // velocity grid (coarse = fast)
     const DYE_RESOLUTION       = 512;   // dye grid (fine + bilinear = soft)
-    const DENSITY_DISSIPATION  = 3.2;   // HIGH → fog is short-lived, no flood
+    const DENSITY_DISSIPATION  = 4.6;   // raised → fog fades faster, less buildup
     const VELOCITY_DISSIPATION = 2.0;   // momentum bleeds off quickly → local
     const PRESSURE             = 0.8;
     const PRESSURE_ITERATIONS  = 18;
-    const CURL                 = 30;    // vorticity confinement → swirl/billow
+    const CURL                 = 18;    // softened vorticity → gentler swirl
     const SPLAT_RADIUS         = 0.0022;// small → localized near cursor
-    const SPLAT_FORCE          = 5800;  // cursor velocity → fluid momentum
-    const DISPLAY_ALPHA        = 0.9;   // overall fog opacity (subtle/premium)
+    const SPLAT_FORCE          = 3480;  // cursor velocity → fluid momentum (~40% softer)
+    const DISPLAY_ALPHA        = 0.55;  // overall fog opacity (subtle ambient)
     const MAX_DT               = 0.0166666;
 
     // Brand gold. Body is the deep gold, with luminous highlights mixed in per
@@ -411,9 +411,9 @@ export default function CursorGas() {
       const vy = dyN * SPLAT_FORCE;
       const speed = Math.min(1.0, dist * 12.0);
       // Brighter, denser cores on faster sweeps; soft glow on slow drags.
-      // Injected density trimmed ~30% from (0.10 + speed*0.22) for a more
-      // subtle, elegant read. Physics (velocity, dissipation, curl) unchanged.
-      const lift = 0.07 + speed * 0.154;
+      // Injected density halved again from (0.07 + speed*0.154) for a gentle,
+      // low-opacity gold trail rather than a thick plume.
+      const lift = 0.035 + speed * 0.077;
       const color = [
         (GOLD_BODY[0] * (1 - speed) + GOLD_HIGHLIGHT[0] * speed) * lift,
         (GOLD_BODY[1] * (1 - speed) + GOLD_HIGHLIGHT[1] * speed) * lift,
@@ -539,7 +539,7 @@ export default function CursorGas() {
         top: 0, left: 0,
         width: '100vw', height: '100vh',
         pointerEvents: 'none',
-        zIndex: 60,
+        zIndex: 1,
       }}
     />
   );
