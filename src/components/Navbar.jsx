@@ -5,6 +5,8 @@ import { ADD_TO_DISCORD_URL } from '../constants';
 const LINKS = [
   { id: 'showcase', label: 'Modules' },
   { id: 'why',      label: 'Why AVbot' },
+  { id: 'faq',      label: 'FAQ' },
+  { id: 'docs',     label: 'Docs' },
 ];
 
 const Navbar = () => {
