@@ -192,8 +192,25 @@ export default function Footer() {
               >
                 Resources
               </div>
-              <FooterLink href="#showcase">In Action</FooterLink>
-              <FooterLink href="#why">Comparison</FooterLink>
+              <FooterLink href="/docs">Documentation</FooterLink>
+              <FooterLink href="/faq">FAQ</FooterLink>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div
+                style={{
+                  fontSize: '11px',
+                  letterSpacing: '0.16em',
+                  textTransform: 'uppercase',
+                  color: 'rgba(228,228,231,0.4)',
+                  marginBottom: '6px',
+                  fontWeight: 700,
+                }}
+              >
+                Legal
+              </div>
+              <FooterLink href="/privacy">Privacy Policy</FooterLink>
+              <FooterLink href="/terms">Terms of Service</FooterLink>
+              <FooterLink href="/security">Security</FooterLink>
             </div>
           </div>
         </div>
