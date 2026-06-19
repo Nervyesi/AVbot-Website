@@ -78,19 +78,15 @@
   to   { stroke-dashoffset: 0; }
 }
 
-/* Hero "Engine Core" centerpiece. Breathing core + travelling circuit pulses. */
-@keyframes av-eng-pulse {
-  0%, 100% { opacity: 0.82; transform: scale(1); }
-  50%      { opacity: 1;    transform: scale(1.06); }
-}
+/* Hero blueprint centerpiece: light pulses travelling along circuit traces. */
 @keyframes av-trace {
-  from { stroke-dashoffset: 120; }
-  to   { stroke-dashoffset: -120; }
+  from { stroke-dashoffset: 240; }
+  to   { stroke-dashoffset: 0; }
 }
 
-/* Reduced motion: freeze the engine into a static schematic. */
+/* Reduced motion: freeze the blueprint into a static schematic. */
 @media (prefers-reduced-motion: reduce) {
-  .av-engine * { animation: none !important; }
+  .av-blueprint * { animation: none !important; }
 }
 
 @keyframes av-spin {
