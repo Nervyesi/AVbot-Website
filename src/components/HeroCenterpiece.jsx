@@ -26,34 +26,41 @@ const MONO = 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace';
 // hero content zone (logo, kicker, headline, subline, stat strip, CTAs) and is
 // kept clear of blocks. Blocks scatter irregularly through the left and right
 // margins at varied positions, sizes and slight tilts.
+// Blocks are pushed to the very edges: left right-edges <= 150 (15%), right
+// left-edges >= 850 (85%), leaving a 70% clear central content column. A few
+// of the larger blocks bleed past the frame edge so the schematic reads as a
+// slice of something bigger. Labels are kept on-screen.
 const BLOCKS = [
-  // Left margin (right edges all <= 260, clear of the content column)
-  { id: 'engage',    x: 40,  y: 84,  w: 200, h: 60, rot: 3,  label: 'ENGAGE_FLYWHEEL',  note: 'v3' },
-  { id: 'raid',      x: 60,  y: 224, w: 168, h: 50, rot: -4, label: 'RAID_VERIFY',      note: 'live' },
-  { id: 'protect',   x: 36,  y: 430, w: 212, h: 64, rot: 0,  label: 'PROTECTION_GUARD', note: '47/day' },
-  { id: 'verify',    x: 70,  y: 544, w: 168, h: 46, rot: 0,  label: 'VERIFY_HUMAN',     note: 'captcha' },
-  // Right margin (left edges all >= 740, clear of the content column)
-  { id: 'core',      x: 778, y: 44,  w: 188, h: 66, rot: -3, label: 'CORE_ENGINE',      note: '14 modules', hub: true },
-  { id: 'radar',     x: 800, y: 196, w: 166, h: 50, rot: 4,  label: 'RADAR_FEEDS',      note: 'BTC +3.2%' },
-  { id: 'give',      x: 748, y: 372, w: 226, h: 56, rot: 0,  label: 'GIVEAWAY_WEIGHTED',note: '5x' },
-  { id: 'analytics', x: 756, y: 510, w: 204, h: 60, rot: 3,  label: 'ANALYTICS_PULSE',  note: '+212' },
+  // Left edge (right edges <= 150)
+  { id: 'engage',    x: 0,   y: 72,  w: 148, h: 58, rot: 3,  label: 'ENGAGE_FLYWHEEL',  note: 'v3' },
+  { id: 'raid',      x: 10,  y: 216, w: 128, h: 48, rot: -4, label: 'RAID_VERIFY',      note: 'live' },
+  { id: 'protect',   x: -16, y: 420, w: 164, h: 64, rot: 0,  label: 'PROTECTION_GUARD', note: '47/day' }, // bleeds left
+  { id: 'verify',    x: 18,  y: 552, w: 120, h: 44, rot: 0,  label: 'VERIFY_HUMAN',     note: 'captcha' },
+  // Right edge (left edges >= 850)
+  { id: 'core',      x: 850, y: 36,  w: 156, h: 64, rot: -3, label: 'CORE_ENGINE',      note: '14 modules', hub: true },
+  { id: 'radar',     x: 872, y: 192, w: 126, h: 48, rot: 4,  label: 'RADAR_FEEDS',      note: 'BTC +3.2%' },
+  { id: 'give',      x: 850, y: 360, w: 248, h: 56, rot: 0,  label: 'GIVEAWAY_WEIGHTED',note: '5x' }, // bleeds ~10% right
+  { id: 'analytics', x: 860, y: 504, w: 168, h: 58, rot: 3,  label: 'ANALYTICS_PULSE',  note: '+212' }, // bleeds slightly right
 ];
 
-// Orthogonal wires. center:true ones cross the hero content column and stay
+// Orthogonal wires. center:true ones cross the wide content column and stay
 // very faint (only their pulses read); peripheral ones are a touch brighter.
 const WIRES = [
-  { pts: '240,114 505,114 505,400 748,400',  delay: 0.0,  center: true },  // engage -> give
-  { pts: '228,249 480,249 480,540 756,540',  delay: 0.6,  center: true },  // raid -> analytics
-  { pts: '778,77 540,77 540,568 238,568',    delay: 0.3,  center: true },  // core -> verify (long vertical)
-  { pts: '248,462 520,462 520,221 800,221',  delay: 0.9,  center: true },  // protect -> radar
-  { pts: '748,400 800,400 800,246',          delay: 1.3,  center: false }, // give -> radar (right margin)
-  { pts: '146,144 146,430',                  delay: 1.1,  center: false }, // engage -> protect (left margin)
-  { pts: '800,510 800,428',                  delay: 0.45, center: false }, // analytics -> give (right margin)
-  { pts: '150,540 150,274',                  delay: 1.5,  center: false }, // verify -> raid (left margin)
+  { pts: '148,101 500,101 500,388 850,388',  delay: 0.0,  center: true },  // engage -> give
+  { pts: '138,240 470,240 470,533 860,533',  delay: 0.6,  center: true },  // raid -> analytics
+  { pts: '850,68 530,68 530,574 138,574',    delay: 0.3,  center: true },  // core -> verify (long sweep)
+  { pts: '148,452 520,452 520,216 872,216',  delay: 0.9,  center: true },  // protect -> radar
+  { pts: '900,388 900,216',                  delay: 1.3,  center: false }, // give -> radar (right margin)
+  { pts: '40,130 40,420',                    delay: 1.1,  center: false }, // engage -> protect (left margin)
+  { pts: '930,504 930,416',                  delay: 0.45, center: false }, // analytics -> give (right margin)
+  { pts: '60,552 60,264',                    delay: 1.5,  center: false }, // verify -> raid (left margin)
 ];
 
+// Some nodes sit in the now-wide centre (in the safe top/bottom gaps, never
+// behind the headline text), reading as data-flow crossings.
 const NODES = [
-  [505, 114], [505, 400], [540, 300], [480, 249], [520, 462], [800, 246], [146, 287],
+  [500, 101], [530, 80], [486, 560],
+  [148, 452], [850, 68], [872, 216], [138, 240],
 ];
 
 const GRID = [];
