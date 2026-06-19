@@ -34,8 +34,8 @@ const MONO = 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace';
 // `side` decides where labels anchor so they read from the visible edge inward.
 const BLOCKS = [
   // Flanking the logo (top centre, compact, fully visible)
-  { id: 'verify',  side: 'c', x: 270, y: 44,  w: 150, h: 44, rot: -4, label: 'VERIFY_HUMAN',     note: 'captcha' },   // A, left of logo
-  { id: 'radar',   side: 'c', x: 648, y: 40,  w: 140, h: 44, rot: 4,  label: 'RADAR_FEEDS',      note: 'BTC +3.2%' }, // B, right of logo
+  { id: 'verify',  side: 'c', x: 270, y: 100, w: 150, h: 44, rot: -4, label: 'VERIFY_HUMAN',     note: 'captcha' },   // A, beside logo at its eye-line
+  { id: 'radar',   side: 'c', x: 648, y: 96,  w: 140, h: 44, rot: 4,  label: 'RADAR_FEEDS',      note: 'BTC +3.2%' }, // B, beside logo at its eye-line
   // Top corners
   { id: 'engage',  side: 'l', x: -24, y: 30,  w: 150, h: 50, rot: 5,  label: 'ENGAGE_FLYWHEEL',  note: 'v3' },        // C, top-left
   { id: 'core',    side: 'r', x: 905, y: 30,  w: 150, h: 58, rot: -3, label: 'CORE_ENGINE',      note: '14 modules', hub: true }, // D, top-right
@@ -53,15 +53,15 @@ const BLOCKS = [
 // hand off at shared nodes. Pulses originate at the flank blocks (A, B) beside
 // the logo and travel down to the bottom blocks (energy from the brain out).
 const WIRES = [
-  { pts: '345,44 345,22 718,22 718,40',     dur: 2.2, peak: 0.85, delay: 0.0, center: false }, // A <-> B across the top
-  { pts: '345,88 200,88 200,489 132,489',   dur: 2.6, peak: 0.90, delay: 0.3, center: true },  // A -> E (left, down through middle)
-  { pts: '718,84 820,84 820,484 900,484',   dur: 2.8, peak: 0.85, delay: 0.6, center: true },  // B -> G (right, down through middle)
-  { pts: '51,80 51,462',                    dur: 1.4, peak: 1.00, delay: 0.2, center: false }, // C -> E (left edge, FAST)
-  { pts: '980,88 980,456',                  dur: 2.0, peak: 0.90, delay: 0.4, center: false }, // D -> G (right edge)
-  { pts: '132,489 900,489',                 dur: 3.0, peak: 0.65, delay: 0.9, center: true },  // E -> G bottom bridge (SLOW, low)
-  { pts: '345,88 280,88 280,564 172,564',   dur: 2.4, peak: 0.75, delay: 1.2, center: true },  // A -> F (left, down)
-  { pts: '950,108 950,534',                 dur: 1.6, peak: 0.95, delay: 0.5, center: false }, // D -> H (right edge)
-  { pts: '126,55 270,55',                   dur: 1.8, peak: 0.90, delay: 1.5, center: false }, // C -> A (top-left link)
+  { pts: '345,100 345,22 718,22 718,96',    dur: 2.2, peak: 0.85, delay: 0.0, center: false }, // A <-> B up and over the top, above the logo
+  { pts: '345,144 200,144 200,489 132,489', dur: 2.6, peak: 0.90, delay: 0.3, center: true },  // A bottom -> E right
+  { pts: '718,140 820,140 820,484 900,484', dur: 2.8, peak: 0.85, delay: 0.6, center: true },  // B bottom -> G left
+  { pts: '51,80 51,462',                    dur: 1.4, peak: 1.00, delay: 0.2, center: false }, // C bottom -> E top (left edge, FAST)
+  { pts: '980,88 980,456',                  dur: 2.0, peak: 0.90, delay: 0.4, center: false }, // D bottom -> G top (right edge)
+  { pts: '132,489 900,489',                 dur: 3.0, peak: 0.65, delay: 0.9, center: true },  // E right -> G left, bottom bridge (SLOW)
+  { pts: '345,144 280,144 280,564 172,564', dur: 2.4, peak: 0.75, delay: 1.2, center: true },  // A bottom -> F right
+  { pts: '950,88 950,534',                  dur: 1.6, peak: 0.95, delay: 0.5, center: false }, // D bottom -> H top (right edge)
+  { pts: '126,55 198,55 198,122 270,122',   dur: 1.8, peak: 0.90, delay: 1.5, center: false }, // C right -> A left
 ];
 
 // Nodes sit only in the TOP and BOTTOM zones (never in the empty middle band),
