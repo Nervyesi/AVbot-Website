@@ -22,34 +22,38 @@ import { motion } from 'framer-motion';
 
 const MONO = 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace';
 
-// viewBox 1000 x 600. Blocks sit at the periphery; the centre band is empty.
+// viewBox 1000 x 600. The central column (x ~320..680, full height) is the
+// hero content zone (logo, kicker, headline, subline, stat strip, CTAs) and is
+// kept clear of blocks. Blocks scatter irregularly through the left and right
+// margins at varied positions, sizes and slight tilts.
 const BLOCKS = [
-  { id: 'engage',    x: 40,  y: 44,  w: 212, h: 58, label: 'ENGAGE_FLYWHEEL',  note: 'v3' },
-  { id: 'core',      x: 404, y: 26,  w: 192, h: 66, label: 'CORE_ENGINE',      note: '14 modules', hub: true },
-  { id: 'raid',      x: 748, y: 44,  w: 212, h: 58, label: 'RAID_VERIFY',      note: 'live' },
-  { id: 'protect',   x: 40,  y: 262, w: 200, h: 56, label: 'PROTECTION_GUARD', note: '47/day' },
-  { id: 'radar',     x: 784, y: 262, w: 176, h: 56, label: 'RADAR_FEEDS',      note: 'BTC +3.2%' },
-  { id: 'analytics', x: 40,  y: 498, w: 200, h: 56, label: 'ANALYTICS_PULSE',  note: '+212' },
-  { id: 'verify',    x: 402, y: 510, w: 196, h: 56, label: 'VERIFY_HUMAN',     note: 'captcha' },
-  { id: 'give',      x: 716, y: 498, w: 244, h: 56, label: 'GIVEAWAY_WEIGHTED',note: '5x' },
+  // Left margin (right edges all <= 260, clear of the content column)
+  { id: 'engage',    x: 40,  y: 84,  w: 200, h: 60, rot: 3,  label: 'ENGAGE_FLYWHEEL',  note: 'v3' },
+  { id: 'raid',      x: 60,  y: 224, w: 168, h: 50, rot: -4, label: 'RAID_VERIFY',      note: 'live' },
+  { id: 'protect',   x: 36,  y: 430, w: 212, h: 64, rot: 0,  label: 'PROTECTION_GUARD', note: '47/day' },
+  { id: 'verify',    x: 70,  y: 544, w: 168, h: 46, rot: 0,  label: 'VERIFY_HUMAN',     note: 'captcha' },
+  // Right margin (left edges all >= 740, clear of the content column)
+  { id: 'core',      x: 778, y: 44,  w: 188, h: 66, rot: -3, label: 'CORE_ENGINE',      note: '14 modules', hub: true },
+  { id: 'radar',     x: 800, y: 196, w: 166, h: 50, rot: 4,  label: 'RADAR_FEEDS',      note: 'BTC +3.2%' },
+  { id: 'give',      x: 748, y: 372, w: 226, h: 56, rot: 0,  label: 'GIVEAWAY_WEIGHTED',note: '5x' },
+  { id: 'analytics', x: 756, y: 510, w: 204, h: 60, rot: 3,  label: 'ANALYTICS_PULSE',  note: '+212' },
 ];
 
-// Orthogonal wires. Several deliberately cross the empty centre band so the
-// pulses are what reads behind the headline.
+// Orthogonal wires. center:true ones cross the hero content column and stay
+// very faint (only their pulses read); peripheral ones are a touch brighter.
 const WIRES = [
-  { pts: '146,102 146,300 838,300 838,498', delay: 0.0 },  // engage -> give, across centre @300
-  { pts: '854,102 854,360 140,360 140,498', delay: 0.6 },  // raid -> analytics, across centre @360
-  { pts: '500,92 500,510',                  delay: 0.3 },  // core -> verify, vertical through centre
-  { pts: '240,290 784,290',                 delay: 0.9 },  // protect -> radar, horizontal through centre
-  { pts: '716,526 660,526 660,420 140,420 140,318', delay: 1.3 }, // give -> protect, across centre @420
-  { pts: '596,59 700,59 700,290 784,290',   delay: 1.6 },  // core -> radar, upper right
-  { pts: '252,73 330,73 330,59 404,59',     delay: 1.1 },  // engage -> core, top link
-  { pts: '240,526 340,526 340,538 402,538', delay: 0.45 }, // analytics -> verify, bottom link
+  { pts: '240,114 505,114 505,400 748,400',  delay: 0.0,  center: true },  // engage -> give
+  { pts: '228,249 480,249 480,540 756,540',  delay: 0.6,  center: true },  // raid -> analytics
+  { pts: '778,77 540,77 540,568 238,568',    delay: 0.3,  center: true },  // core -> verify (long vertical)
+  { pts: '248,462 520,462 520,221 800,221',  delay: 0.9,  center: true },  // protect -> radar
+  { pts: '748,400 800,400 800,246',          delay: 1.3,  center: false }, // give -> radar (right margin)
+  { pts: '146,144 146,430',                  delay: 1.1,  center: false }, // engage -> protect (left margin)
+  { pts: '800,510 800,428',                  delay: 0.45, center: false }, // analytics -> give (right margin)
+  { pts: '150,540 150,274',                  delay: 1.5,  center: false }, // verify -> raid (left margin)
 ];
 
 const NODES = [
-  [146, 300], [838, 300], [854, 360], [140, 360], [500, 300],
-  [240, 290], [784, 290], [660, 420], [140, 420],
+  [505, 114], [505, 400], [540, 300], [480, 249], [520, 462], [800, 246], [146, 287],
 ];
 
 const GRID = [];
@@ -158,10 +162,10 @@ export default function HeroCenterpiece({ boot = false }) {
       <text x="30" y="26" fill="rgba(200,168,78,0.5)" fontFamily={MONO} fontSize="11" letterSpacing="2">AVBOT // SYSTEM SCHEMATIC</text>
       <text x="970" y="556" textAnchor="end" fill="rgba(200,168,78,0.4)" fontFamily={MONO} fontSize="10" letterSpacing="2">REV 2.6</text>
 
-      {/* Wires: faint base lines */}
+      {/* Wires: faint base lines (very faint where they cross the centre) */}
       <g>
         {WIRES.map((t, i) => (
-          <polyline key={i} points={t.pts} fill="none" stroke="rgba(200,168,78,0.16)" strokeWidth="1.2" />
+          <polyline key={i} points={t.pts} fill="none" stroke={`rgba(200,168,78,${t.center ? 0.15 : 0.3})`} strokeWidth="1.2" />
         ))}
       </g>
 
@@ -170,7 +174,7 @@ export default function HeroCenterpiece({ boot = false }) {
         {WIRES.map((t, i) => (
           <polyline
             key={i} points={t.pts} fill="none"
-            stroke="rgba(255,245,207,0.95)" strokeWidth="2" strokeDasharray="8 130" strokeLinecap="round"
+            stroke={`rgba(255,245,207,${t.center ? 0.85 : 0.95})`} strokeWidth="2" strokeDasharray="8 130" strokeLinecap="round"
             style={{ animation: 'av-trace 2.9s linear infinite', animationDelay: `${t.delay}s` }}
           />
         ))}
@@ -181,26 +185,26 @@ export default function HeroCenterpiece({ boot = false }) {
         <Diamond key={i} cx={cx} cy={cy} delay={(i % 4) * 0.4} />
       ))}
 
-      {/* Module blocks (out at the edges, more visible than the wires) */}
+      {/* Module blocks: irregular, tilted, varied sizes, all in the margins */}
       {BLOCKS.map((b) => (
-        <g key={b.id}>
+        <g key={b.id} transform={b.rot ? `rotate(${b.rot} ${b.x + b.w / 2} ${b.y + b.h / 2})` : undefined}>
           <rect
             x={b.x} y={b.y} width={b.w} height={b.h}
-            fill={b.hub ? 'rgba(200,168,78,0.1)' : 'rgba(200,168,78,0.045)'}
-            stroke={b.hub ? 'rgba(248,225,138,0.8)' : 'rgba(200,168,78,0.55)'}
-            strokeWidth={b.hub ? 1.6 : 1.1}
+            fill={b.hub ? 'rgba(200,168,78,0.09)' : 'rgba(200,168,78,0.04)'}
+            stroke={b.hub ? 'rgba(248,225,138,0.78)' : 'rgba(200,168,78,0.58)'}
+            strokeWidth={b.hub ? 1.5 : 1}
           />
-          <line x1={b.x + 12} y1={b.y + 24} x2={b.x + b.w - 12} y2={b.y + 24} stroke="rgba(200,168,78,0.2)" strokeWidth="1" />
+          <line x1={b.x + 12} y1={b.y + 24} x2={b.x + b.w - 12} y2={b.y + 24} stroke="rgba(200,168,78,0.18)" strokeWidth="1" />
           <rect
             x={b.x + b.w - 19} y={b.y + 7} width={8} height={8}
             transform={`rotate(45 ${b.x + b.w - 15} ${b.y + 11})`}
-            fill={b.hub ? 'rgba(248,225,138,0.95)' : 'rgba(200,168,78,0.75)'}
+            fill={b.hub ? 'rgba(248,225,138,0.9)' : 'rgba(200,168,78,0.7)'}
             style={{ animation: 'av-logo-pulse 2.6s ease-in-out infinite' }}
           />
-          <text x={b.x + 12} y={b.y + 17} fill={b.hub ? '#f1d586' : 'rgba(232,200,105,0.95)'} fontFamily={MONO} fontSize={b.hub ? 14 : 12.5} fontWeight="700" letterSpacing="0.5">
+          <text x={b.x + 12} y={b.y + 17} fill={b.hub ? '#f1d586' : 'rgba(232,200,105,0.82)'} fontFamily={MONO} fontSize={b.hub ? 14 : 12} fontWeight="700" letterSpacing="0.5">
             {b.label}
           </text>
-          <text x={b.x + b.w - 12} y={b.y + b.h - 11} textAnchor="end" fill="rgba(228,228,231,0.55)" fontFamily={MONO} fontSize="11">
+          <text x={b.x + b.w - 12} y={b.y + b.h - 11} textAnchor="end" fill="rgba(228,228,231,0.5)" fontFamily={MONO} fontSize="10.5">
             {b.note}
           </text>
         </g>
