@@ -134,6 +134,7 @@ function StationCopy({ station, onRight }) {
       whileInView={{ x: 0, opacity: 1 }}
       viewport={{ once: true, amount: 0.3 }}
       transition={{ duration: 0.8, ease: [0.22, 0.6, 0.2, 1] }}
+      className="av-dd-copy"
       style={{ flex: '1 1 360px', minWidth: 0, maxWidth: '520px' }}
     >
       <div style={{
@@ -199,6 +200,7 @@ function DeepDiveStation({ station, index }) {
       whileInView={{ x: 0, opacity: 1 }}
       viewport={{ once: true, amount: 0.2 }}
       transition={{ duration: 0.85, delay: 0.1, ease: [0.22, 0.6, 0.2, 1] }}
+      className="av-dd-mockup"
       style={{ flex: '1 1 420px', minWidth: 0, display: 'flex', justifyContent: 'center' }}
     >
       <Mockup />
@@ -218,7 +220,7 @@ function DeepDiveStation({ station, index }) {
         backgroundColor: 'transparent',
       }}
     >
-      <div style={{
+      <div className="av-dd-row" style={{
         width: '100%', maxWidth: '1140px',
         display: 'flex', flexWrap: 'wrap',
         alignItems: 'center', justifyContent: 'center',

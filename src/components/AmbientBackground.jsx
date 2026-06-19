@@ -50,6 +50,7 @@ export default function AmbientBackground() {
     if (!ctx) return;
 
     let raf = 0;
+    let frame = 0;
     let particles = [];
     let w = 0;
     let h = 0;
@@ -57,7 +58,9 @@ export default function AmbientBackground() {
 
     const seed = () => {
       // Particle density scales with viewport area, capped for sanity.
-      const count = Math.min(90, Math.round((w * h) / 26000));
+      // Far fewer particles on small screens to preserve battery.
+      const isMobile = w < 768;
+      const count = Math.min(isMobile ? 28 : 90, Math.round((w * h) / (isMobile ? 42000 : 26000)));
       particles = new Array(count).fill(0).map(() => {
         const depth = Math.random(); // 0 = far/slow/faint, 1 = near
         return {
@@ -85,6 +88,10 @@ export default function AmbientBackground() {
     };
 
     const draw = (t) => {
+      raf = requestAnimationFrame(draw);
+      frame++;
+      // Throttle to roughly half rate on small screens.
+      if (w < 768 && (frame & 1)) return;
       ctx.clearRect(0, 0, w, h);
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
@@ -99,7 +106,6 @@ export default function AmbientBackground() {
         ctx.fillStyle = `rgba(210, 178, 96, ${p.a})`;
         ctx.fill();
       }
-      raf = requestAnimationFrame(draw);
     };
 
     resize();

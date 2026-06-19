@@ -422,6 +422,7 @@ function HeroSection({ inviteUrl, stats, boot }) {
 
         {/* CTAs */}
         <motion.div
+          className="av-hero-ctas"
           initial={{ y: 24, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: boot ? 0.9 : 0.5, delay: boot ? 2.35 : 0.25, ease: [0.22, 0.6, 0.2, 1] }}
@@ -514,6 +515,7 @@ const Landing = () => {
       color: 'var(--av-text)',
       minHeight: '100vh',
       fontFamily: 'Sora, sans-serif',
+      overflowX: 'hidden',
     }}>
       {/* Ambient layer sits behind everything at zIndex 0 (CursorGas retired). */}
       <AmbientBackground />

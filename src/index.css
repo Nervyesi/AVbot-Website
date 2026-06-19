@@ -89,6 +89,19 @@
   .av-blueprint * { animation: none !important; }
 }
 
+/* Deep-dive stations: stack copy above the mockup on tablet and below. */
+@media (max-width: 900px) {
+  .av-dd-row { flex-direction: column !important; }
+  .av-dd-copy { order: 1 !important; max-width: 100% !important; }
+  .av-dd-mockup { order: 2 !important; width: 100%; }
+}
+
+/* Hero CTAs go full width and stack on narrow screens. */
+@media (max-width: 560px) {
+  .av-hero-ctas { flex-direction: column !important; align-items: stretch !important; width: 100%; }
+  .av-hero-ctas > a { width: 100%; text-align: center; justify-content: center; }
+}
+
 @keyframes av-spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
