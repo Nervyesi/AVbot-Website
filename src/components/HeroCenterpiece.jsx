@@ -34,17 +34,17 @@ const MONO = 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace';
 // `side` decides where labels anchor so they read from the visible edge inward.
 const BLOCKS = [
   // Flanking the logo (top centre, compact, fully visible)
-  { id: 'verify',  side: 'c', x: 270, y: 100, w: 150, h: 44, rot: -4, label: 'VERIFY_HUMAN',     note: 'captcha' },   // A, beside logo at its eye-line
+  { id: 'verify',  side: 'c', x: 156, y: 100, w: 148, h: 44, rot: -4, label: 'VERIFY_HUMAN',     note: 'captcha' },   // A, beside logo at its eye-line (right edge ~30%)
   { id: 'radar',   side: 'c', x: 648, y: 96,  w: 140, h: 44, rot: 4,  label: 'RADAR_FEEDS',      note: 'BTC +3.2%' }, // B, beside logo at its eye-line
   // Top corners
   { id: 'engage',  side: 'l', x: -24, y: 30,  w: 150, h: 50, rot: 5,  label: 'ENGAGE_FLYWHEEL',  note: 'v3' },        // C, top-left
   { id: 'core',    side: 'r', x: 905, y: 30,  w: 150, h: 58, rot: -3, label: 'CORE_ENGINE',      note: '14 modules', hub: true }, // D, top-right
   // Bottom-left (mid + far)
-  { id: 'raid',    side: 'l', x: -24, y: 462, w: 156, h: 54, rot: 2,  label: 'RAID_VERIFY',      note: 'live' },      // E
-  { id: 'protect', side: 'l', x: 2,   y: 540, w: 170, h: 48, rot: 0,  label: 'PROTECTION_GUARD', note: '47/day' },    // F
+  { id: 'raid',    side: 'l', x: -36, y: 408, w: 156, h: 54, rot: 2,  label: 'RAID_VERIFY',      note: 'live' },      // E, lifted + deeper in corner
+  { id: 'protect', side: 'l', x: 2,   y: 540, w: 170, h: 48, rot: 0,  label: 'PROTECTION_GUARD', note: '47/day' },    // F (unchanged)
   // Bottom-right (mid + far)
-  { id: 'give',      side: 'r', x: 900, y: 456, w: 250, h: 56, rot: 0,  label: 'GIVEAWAY_WEIGHTED',note: '5x' },       // G, bleeds ~15%
-  { id: 'analytics', side: 'r', x: 905, y: 534, w: 180, h: 52, rot: 5,  label: 'ANALYTICS_PULSE',  note: '+212' },     // H
+  { id: 'give',      side: 'r', x: 930, y: 408, w: 250, h: 56, rot: 0,  label: 'GIVEAWAY_WEIGHTED',note: '5x' },       // G, lifted + deeper, bleeds ~18%
+  { id: 'analytics', side: 'r', x: 905, y: 534, w: 180, h: 52, rot: 5,  label: 'ANALYTICS_PULSE',  note: '+212' },     // H (unchanged)
 ];
 
 // Wires (orthogonal). center:true cross the empty middle band and stay very
@@ -53,22 +53,22 @@ const BLOCKS = [
 // hand off at shared nodes. Pulses originate at the flank blocks (A, B) beside
 // the logo and travel down to the bottom blocks (energy from the brain out).
 const WIRES = [
-  { pts: '345,100 345,22 718,22 718,96',    dur: 2.2, peak: 0.85, delay: 0.0, center: false }, // A <-> B up and over the top, above the logo
-  { pts: '345,144 200,144 200,489 132,489', dur: 2.6, peak: 0.90, delay: 0.3, center: true },  // A bottom -> E right
-  { pts: '718,140 820,140 820,484 900,484', dur: 2.8, peak: 0.85, delay: 0.6, center: true },  // B bottom -> G left
-  { pts: '51,80 51,462',                    dur: 1.4, peak: 1.00, delay: 0.2, center: false }, // C bottom -> E top (left edge, FAST)
-  { pts: '980,88 980,456',                  dur: 2.0, peak: 0.90, delay: 0.4, center: false }, // D bottom -> G top (right edge)
-  { pts: '132,489 900,489',                 dur: 3.0, peak: 0.65, delay: 0.9, center: true },  // E right -> G left, bottom bridge (SLOW)
-  { pts: '345,144 280,144 280,564 172,564', dur: 2.4, peak: 0.75, delay: 1.2, center: true },  // A bottom -> F right
+  { pts: '230,100 230,22 718,22 718,96',    dur: 2.2, peak: 0.85, delay: 0.0, center: false }, // A top -> B top, up and over above the logo
+  { pts: '230,144 200,144 200,435 120,435', dur: 2.6, peak: 0.90, delay: 0.3, center: true },  // A bottom -> E right
+  { pts: '718,140 820,140 820,436 930,436', dur: 2.8, peak: 0.85, delay: 0.6, center: true },  // B bottom -> G left
+  { pts: '51,80 51,408',                    dur: 1.4, peak: 1.00, delay: 0.2, center: false }, // C bottom -> E top (left edge, FAST)
+  { pts: '980,88 980,408',                  dur: 2.0, peak: 0.90, delay: 0.4, center: false }, // D bottom -> G top (right edge)
+  { pts: '120,435 120,508 930,508 930,436', dur: 3.0, peak: 0.65, delay: 0.9, center: true },  // E right -> G left, low bottom bridge (SLOW)
+  { pts: '230,144 210,144 210,564 172,564', dur: 2.4, peak: 0.75, delay: 1.2, center: true },  // A bottom -> F right
   { pts: '950,88 950,534',                  dur: 1.6, peak: 0.95, delay: 0.5, center: false }, // D bottom -> H top (right edge)
-  { pts: '126,55 198,55 198,122 270,122',   dur: 1.8, peak: 0.90, delay: 1.5, center: false }, // C right -> A left
+  { pts: '126,55 156,55 156,122',           dur: 1.8, peak: 0.90, delay: 1.5, center: false }, // C right -> A left
 ];
 
 // Nodes sit only in the TOP and BOTTOM zones (never in the empty middle band),
 // reading as data-flow crossings.
 const NODES = [
-  [345, 22], [718, 22], [51, 80], [980, 88],     // top
-  [200, 489], [820, 484], [132, 489], [905, 534], // bottom
+  [230, 22], [718, 22], [51, 80], [980, 88],      // top
+  [200, 435], [820, 436], [120, 435], [905, 534], // bottom
 ];
 
 const GRID = [];
@@ -171,10 +171,11 @@ export default function HeroCenterpiece({ boot = false }) {
         ))}
       </g>
 
-      {/* Corner brackets + annotations (asymmetric framing) */}
-      <polyline points="24,70 24,32 80,32" fill="none" stroke="rgba(200,168,78,0.32)" strokeWidth="1.2" />
+      {/* Annotations + a bottom-right corner bracket (top-left bracket removed
+          so it cannot clash with the ENGAGE_FLYWHEEL corner block). The title
+          sits at the very top edge, clear above that block. */}
       <polyline points="976,530 976,568 920,568" fill="none" stroke="rgba(200,168,78,0.32)" strokeWidth="1.2" />
-      <text x="30" y="26" fill="rgba(200,168,78,0.5)" fontFamily={MONO} fontSize="11" letterSpacing="2">AVBOT // SYSTEM SCHEMATIC</text>
+      <text x="30" y="14" fill="rgba(200,168,78,0.5)" fontFamily={MONO} fontSize="11" letterSpacing="2">AVBOT // SYSTEM SCHEMATIC</text>
       <text x="970" y="556" textAnchor="end" fill="rgba(200,168,78,0.4)" fontFamily={MONO} fontSize="10" letterSpacing="2">REV 2.6</text>
 
       {/* Wires: faint base lines (very faint where they cross the centre) */}
