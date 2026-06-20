@@ -7,7 +7,7 @@ import {
   loginWithDiscord, apiLogout, fetchMeBootstrap, fetchServers, fetchServerStats,
   fetchServerAnalytics, fetchConfig, saveConfig,
   sendProtectionMessage, sendTicketsPanel, sendVerifyMessage,
-  clearToken, setToken,
+  clearToken,
   listRolePanels, createRolePanel, updateRolePanel, deleteRolePanel,
   createRoleButton, updateRoleButton, deleteRoleButton,
   sendRolePanel, refreshRolePanel,
@@ -8520,12 +8520,9 @@ const Dashboard = () => {
   }, [server?.id]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlToken = params.get('token');
-    if (urlToken) { setToken(urlToken); window.history.replaceState({}, '', '/dashboard'); }
-    // Always attempt /auth/me: auth may come from the HttpOnly cookie even with
-    // no localStorage token. fetchMeBootstrap returns null (instead of
-    // redirecting) when unauthenticated, so we fall through to the login screen.
+    // Cookie-only auth: /auth/me authenticates via the HttpOnly cookie.
+    // fetchMeBootstrap returns null (instead of redirecting) when
+    // unauthenticated, so we fall through to the login screen.
     fetchMeBootstrap()
       .then(u => {
         if (!u) { clearToken(); return null; }

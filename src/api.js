@@ -9,24 +9,23 @@
 import { API_BASE_URL } from './constants';
 
 // ── Token storage ──────────────────────────────────────────────────────────
+// Auth is cookie-based (HttpOnly auth_token cookie on api.avbot.app). clearToken
+// remains to purge any legacy localStorage token left from before the migration.
 
-export const getToken = () => localStorage.getItem('avbot_token');
-export const setToken = t => localStorage.setItem('avbot_token', t);
 export const clearToken = () => localStorage.removeItem('avbot_token');
 
 // ── Base fetch ─────────────────────────────────────────────────────────────
 
 async function apiFetch(path, options = {}) {
-  const token = getToken();
   const headers = {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers,
   };
   const res = await fetch(`${API_BASE_URL}${path}`, { ...options, credentials: 'include', headers });
   if (res.status === 401) {
     clearToken();
-    window.location.href = '/login';
+    // No /login route; /dashboard renders the login screen when unauthenticated.
+    window.location.href = '/dashboard';
     throw new Error('Not authenticated');
   }
   if (res.status === 403) {
@@ -57,15 +56,9 @@ export async function apiLogout() {
 
 // Bootstrap auth check. Returns the user object, or null if not authenticated.
 // Unlike fetchMe/apiFetch it never redirects on 401 — the caller renders the
-// login screen instead. Sends the cookie (credentials) plus the legacy bearer
-// token if one is still in localStorage, so it works during the migration and
-// after the URL token is removed.
+// login screen instead. Auth comes from the HttpOnly cookie (credentials).
 export async function fetchMeBootstrap() {
-  const token = getToken();
-  const res = await fetch(`${API_BASE_URL}/auth/me`, {
-    credentials: 'include',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const res = await fetch(`${API_BASE_URL}/auth/me`, { credentials: 'include' });
   if (!res.ok) return null;
   return res.json();
 }
@@ -432,11 +425,9 @@ export const listAssets = (serverId) =>
 export const uploadAsset = async (serverId, file) => {
   const formData = new FormData();
   formData.append('file', file);
-  const token = getToken();
   const res = await fetch(`${API_BASE_URL}/api/servers/${serverId}/assets/upload`, {
     method: 'POST',
     credentials: 'include',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,
   });
   if (res.status === 401) { clearToken(); throw new Error('Unauthorized'); }
@@ -497,12 +488,10 @@ export const logsExportUrl = (sid, params = {}) => {
 // CSV export endpoint requires the bearer token, so we cannot use a bare <a href>.
 // Fetch with auth, turn the response into a Blob, then trigger a download.
 export async function downloadLogs(sid, params = {}) {
-  const token = getToken();
   const qs = buildQuery(params);
   const url = `${API_BASE_URL}/api/servers/${sid}/logs/export${qs ? '?' + qs : ''}`;
   const res = await fetch(url, {
     credentials: 'include',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -525,10 +514,8 @@ export async function downloadLogs(sid, params = {}) {
 // use a raw fetch (not apiFetch) and pull the token from the same place.
 
 export async function downloadBackup() {
-  const token = getToken();
   const res = await fetch(`${API_BASE_URL}/api/admin/backup/download`, {
     credentials: 'include',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
