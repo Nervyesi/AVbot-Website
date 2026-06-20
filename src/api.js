@@ -23,7 +23,7 @@ async function apiFetch(path, options = {}) {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers,
   };
-  const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  const res = await fetch(`${API_BASE_URL}${path}`, { ...options, credentials: 'include', headers });
   if (res.status === 401) {
     clearToken();
     window.location.href = '/login';
@@ -412,6 +412,7 @@ export const uploadAsset = async (serverId, file) => {
   const token = getToken();
   const res = await fetch(`${API_BASE_URL}/api/servers/${serverId}/assets/upload`, {
     method: 'POST',
+    credentials: 'include',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,
   });
@@ -477,6 +478,7 @@ export async function downloadLogs(sid, params = {}) {
   const qs = buildQuery(params);
   const url = `${API_BASE_URL}/api/servers/${sid}/logs/export${qs ? '?' + qs : ''}`;
   const res = await fetch(url, {
+    credentials: 'include',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) {
@@ -502,6 +504,7 @@ export async function downloadLogs(sid, params = {}) {
 export async function downloadBackup() {
   const token = getToken();
   const res = await fetch(`${API_BASE_URL}/api/admin/backup/download`, {
+    credentials: 'include',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) {
