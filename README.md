@@ -1,70 +1,57 @@
-# Getting Started with Create React App
+# AVbot Website
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+The marketing site and dashboard frontend for AVbot, a Discord bot built for Web3 communities.
 
-## Available Scripts
+Live at: https://www.avbot.app
+Documentation: https://www.avbot.app/docs
 
-In the project directory, you can run:
+## What this repository is
 
-### `npm start`
+This is the public-facing React (Create React App) application that includes:
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+- Marketing landing page (home, modules showcase, why-AVbot, FAQ, docs, legal pages)
+- Dashboard for server admins to configure AVbot per server
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+The Discord bot backend lives in a separate repository.
 
-### `npm test`
+The source is published for transparency. See the License section below before reusing it.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Tech stack
 
-### `npm run build`
+- React 19 (Create React App)
+- React Router 7
+- Framer Motion for animations
+- Inline styles (no external CSS framework)
+- React Markdown for legal pages and docs
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Local development
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Clone the repository and install dependencies:
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+    npm install
 
-### `npm run eject`
+Copy .env.example to .env.local and configure for local development.
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Run the dev server:
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+    npm start
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+This serves the site at http://localhost:3000.
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+To build for production:
 
-## Learn More
+    CI=true npm run build
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## Contact
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+- Discord DM: nervyesi1
+- Email: ameretaverse@gmail.com
+- Community: https://discord.com/invite/ameretaverse
 
-### Code Splitting
+## Security
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+To report a security vulnerability, follow the disclosure policy at https://www.avbot.app/security. Do not open public issues for security reports.
 
-### Analyzing the Bundle Size
+## License
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+The AVbot name, logo, and source code are the property of the AVbot operator. The source is made available for transparency and review. It is not licensed for redistribution, for forking into a competing or production service, or for rebranding. See the Terms of Service at https://www.avbot.app/terms for details.
