@@ -8520,6 +8520,9 @@ const Dashboard = () => {
   }, [server?.id]);
 
   useEffect(() => {
+    // Purge any legacy localStorage token left over from before the cookie
+    // migration (the frontend no longer uses it). Auth is now cookie-only.
+    clearToken();
     // Cookie-only auth: /auth/me authenticates via the HttpOnly cookie.
     // fetchMeBootstrap returns null (instead of redirecting) when
     // unauthenticated, so we fall through to the login screen.
