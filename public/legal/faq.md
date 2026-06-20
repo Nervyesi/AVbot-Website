@@ -10,7 +10,7 @@ If you don't find what you're looking for, message `nervyesi1` on Discord or joi
 
 ### What is AVbot?
 
-AVbot is a Discord bot built for Web3 communities. It combines fourteen modules in one bot, including verification, role selection, forms, tickets, X engagement systems, raid coordination, giveaways with role-based ticket multipliers, multi-chain wallet collection, Web3 market intelligence, protection (anti-spam, anti-raid, anti-scam), analytics, logging, and more.
+AVbot is a Discord bot built for Web3 communities. It combines fourteen modules in one bot, including verification, role selection, forms, tickets, X engagement systems, raid coordination, giveaways with role based ticket multipliers, multi chain wallet collection, Web3 market intelligence, protection (anti spam, anti raid, anti scam), analytics, logging, and more.
 
 If you've ever installed five different Discord bots just to cover all these features, AVbot replaces them with one.
 
@@ -18,17 +18,13 @@ If you've ever installed five different Discord bots just to cover all these fea
 
 Yes. AVbot is completely free to add to your server and use.
 
-Visual customization (custom embed colors, custom logos in module messages) is currently limited to the AmeretaVerse main server while we build out the customization system. All other servers use AVbot's default visual settings. This may change in the future, but no functionality you currently have will be removed without notice.
-
 ### Who built AVbot?
 
-AVbot is built and operated independently. Reach out via Discord DM to `nervyesi1` or in the AmeretaVerse server for anything community, support, or partnership related.
+AVbot is built and operated independently. Reach out via Discord DM to `nervyesi1` for anything community, support, or partnership related.
 
 ### Where can I see AVbot in action?
 
 Join the AmeretaVerse Discord server: https://discord.com/invite/ameretaverse
-
-AmeretaVerse is the flagship community where every module is deployed and used daily.
 
 ---
 
@@ -45,19 +41,11 @@ That's it. Once added, head to the dashboard at https://www.avbot.app/dashboard 
 
 ### What permissions does AVbot need?
 
-AVbot requests the following permissions:
+AVbot requests **Administrator** permission when you add it to your server.
 
-- **Read Messages** and **Send Messages**: To respond to commands and post embeds
-- **Manage Channels**: For tickets module (creating ticket channels) and certain verification flows
-- **Manage Roles**: To assign verified/role-based roles to members
-- **Kick / Ban / Timeout Members**: For protection module enforcement
-- **Manage Messages**: To delete spam/phishing messages caught by protection
-- **Embed Links** and **Attach Files**: For rich embeds and module visuals
-- **Read Message History**: To process replies and reactions
-- **Use External Emojis** and **Add Reactions**: For interactive embeds
-- **View Audit Log**: To detect anti-raid patterns
+Administrator is requested because AVbot spans fourteen modules with very different needs. Role assignment for verification and giveaway gating, channel creation for tickets, message filtering for protection, audit log access for anti raid detection, role management for level rewards, and many other operations across modules would otherwise require a long list of granular permissions. Requesting Administrator keeps the install flow simple and lets every module work correctly out of the box.
 
-AVbot will only use these permissions for the modules you enable.
+AVbot uses this access only for the modules you enable. We don't read DMs, we don't store messages outside of the protection processing pipeline, and we don't change server settings you haven't asked us to change. See the Privacy Policy for what data AVbot accesses and the Terms of Service for the commitments around how we use that access.
 
 ### Where do I configure AVbot?
 
@@ -65,13 +53,13 @@ Everything is configured in the dashboard at https://www.avbot.app/dashboard. Lo
 
 ### Do I need to know how to code?
 
-No. The dashboard is fully visual. Module configuration is point-and-click. Discord commands are slash-commands that the bot teaches you how to use.
+No. The dashboard is fully visual. Module configuration is point and click. Discord commands are slash commands that the bot teaches you how to use.
 
-### What's the AmeretaVerse main server thing about customization?
+### Can I customize the visual look of AVbot's messages (colors, logos)?
 
-AVbot's visual customization system (custom embed colors, brand logos in module messages) is currently in beta. While we polish it, custom visual settings are enabled only in the AmeretaVerse main server, which is where we test new features.
+Visual customization of embeds (custom colors, custom logos, branded module messages) is a feature on the roadmap that is not yet available to every server. Right now AVbot uses its default visual style across all servers it's installed in.
 
-All other servers can use every feature of AVbot, just with the default visual style (the AVbot brand colors and logo). Functionality is identical. Only the visual customization layer differs.
+If you want early access to visual customization for your server, message `nervyesi1` on Discord and we can talk.
 
 ---
 
@@ -81,42 +69,40 @@ All other servers can use every feature of AVbot, just with the default visual s
 
 In short:
 
-- **Verification**: Captcha + human verification to stop bot accounts at the door
-- **Role Selection**: Members pick their own roles via reaction or button panels
+- **Verification**: CAPTCHA challenge to keep bot accounts out at the door
+- **Role Selection**: Members pick their own roles via panels with buttons and dropdowns
 - **Forms**: Visual form builder for applications, approvals, audits
-- **Tickets**: Categorized support threads with status tracking
-- **Engage-for-Engage**: Members earn points by engaging with each other's X posts, spend points to submit their own
-- **Raid**: Reward members for engaging with your community's X posts
-- **Giveaway**: Role-gated giveaways with ticket multipliers and weighted draws
-- **Wallet Collection**: Multi-chain wallet whitelist collection (EVM, Solana, Bitcoin, Cardano, Cosmos, Tron, Aptos, Sui, and more)
+- **Tickets**: Support ticket channels with status tracking and auto close on inactivity
+- **Engage**: Members earn engage points by engaging with each other's X posts, spend points to submit their own
+- **Raid**: Your team posts a tweet, members engage with it on X, earn community points for participating
+- **Giveaway**: Role gated giveaways with ticket multipliers and weighted draws
+- **Wallet Collection**: Multi chain wallet collection for whitelist or airdrop workflows (EVM, Solana, Bitcoin, Cardano, Cosmos, Tron, Aptos, Sui, and an "other" option)
 - **Radar**: Web3 market intelligence with feeds for Crypto, NFT, Meme coins, Forex, and Commodities
-- **Protection**: Anti-spam, anti-raid, anti-scam guardrails
-- **Analytics**: Real-time community dashboard
+- **Protection**: Anti spam, anti raid, anti scam guardrails
+- **Analytics**: Real time community activity dashboard
 - **Embed Messages**: Build branded Discord embeds from the dashboard
 - **Logs**: Unified audit trail across every module
 - **Server Settings**: Branding, levels, points configuration
 
-For deep details on each, see the full documentation.
+For deep details on each, see the full documentation at https://www.avbot.app/docs.
 
-### How does the engage-for-engage system actually work?
+### How does the engage system work?
 
-1. A member uses `/engage submit` to submit their X tweet to the pool, paying a small engagement-point cost
+1. A member uses `/submit` in the configured engage channel to submit their X tweet to the pool, paying a small engage point cost
 2. Other members use `/engage` to see a list of tweets waiting for engagement, with the tasks required (Like, Comment, Retweet, or combinations)
 3. They complete the tasks on X, then verify in the bot
-4. Successful verification rewards them with engagement points
+4. Successful verification rewards them with engage points
 5. They can spend those points to submit their own tweet, completing the flywheel
 
-It's a peer-to-peer engagement marketplace, denominated in points your community already values.
+It's a peer to peer engagement marketplace, denominated in points your community already values.
 
-### How does Raid differ from Engage-for-Engage?
+### How does Raid differ from Engage?
 
-Raid is for amplifying YOUR community's official posts (typically the server's announcement or brand X account). Engage-for-Engage is for peer-to-peer engagement among members.
+Raid is for amplifying the server's official posts. The server's team or admin posts a tweet through the bot (using `/raid post`), and members engage with that tweet to earn community points (sometimes called raid points). It's one official post, many participants, all rewarded.
 
-Raid: one creator's post, many members engage, all members earn raid points (sometimes called community points).
+Engage is peer to peer. Any member can submit their own tweet to the pool, other members engage with it, the engager earns engage points to spend on their own future submissions.
 
-Engage-for-Engage: any member can post their tweet to the pool, other members engage, earners get engagement points to spend on their own posts.
-
-Both run on the same X verification infrastructure.
+Both systems run on the same X verification infrastructure but serve different purposes.
 
 ### How do the giveaway role multipliers work?
 
@@ -130,21 +116,25 @@ The bot uses these ticket counts as weights when drawing winners. More tickets m
 Example display in the giveaway embed:
 
 ```
-Join Discord (AmeretaVerse) and have the role
+Join Discord (server name) and have the role
 (Verified 1x) (Degen 5x) (🎟️ Booster +2)
 ```
 
 ### What chains does Wallet Collection support?
 
-Out of the box: EVM-compatible chains (Ethereum, Layer 2s like Arbitrum, Base, Optimism, Polygon), Solana, Bitcoin, Cardano, Cosmos, Tron, Aptos, Sui, plus a freeform "other" category for chains you specify manually.
+Out of the box: EVM compatible chains (Ethereum, Layer 2s like Arbitrum, Base, Optimism, Polygon), Solana, Bitcoin, Cardano, Cosmos, Tron, Aptos, Sui, plus a freeform "other" category for chains you specify manually.
 
-The bot doesn't validate the address against the actual chain (we don't perform on-chain checks). We collect, store, validate format-level (when possible), and let you copy out the list for your downstream workflow.
+The bot doesn't validate the address against the actual chain (we don't perform on chain checks). It collects the address, validates format level when possible, stores the submission, and lets you export the list for your downstream workflow.
 
-### Can I download wallet submissions to use in a mint?
+### How does the team get the collected wallets?
 
-Yes. The dashboard has a "Copy All" button on the wallet collection submissions table. It copies the list in tab-separated format (Discord username, then wallet address) so you can paste straight into Google Sheets or Excel — each value lands in its own column.
+When you (the server admin or team) set up a wallet collection through the dashboard, members submit their wallets via a button on the embed. Once you've collected enough, you have two ways to get the list:
 
-You can also use `/wallet-list` in Discord to see and copy the list directly there.
+1. **From the dashboard**: Open the Giveaway → Wallet Collections tab on the dashboard for your server. The submissions table has a "Copy All" button that copies the list in tab separated format (Discord username, then wallet address), so you can paste straight into Google Sheets or Excel with each value in its own column.
+
+2. **From Discord**: Use `/wallet-list` in your server (admin only). The bot replies with a paginated view of the collected wallets.
+
+Either way, you control when to close the collection (`/wallet-collection-close`) and the data is yours to use for whatever workflow needs it.
 
 ---
 
@@ -152,7 +142,7 @@ You can also use `/wallet-list` in Discord to see and copy the list directly the
 
 ### Is my data safe?
 
-We collect only what's needed to run the bot. Specifically:
+AVbot collects only what's needed to run the bot. Specifically:
 
 - Discord user IDs, usernames, server IDs, role IDs (everything Discord exposes)
 - X usernames you've linked to your Discord account (only after explicit verification)
@@ -179,7 +169,7 @@ Your point balance and history for that server are kept for 90 days in case you 
 
 ### Where is my data stored?
 
-In a relational database hosted on third-party cloud infrastructure. Daily backups for disaster recovery. We use industry-standard practices appropriate to a free Discord bot. Full details in the Privacy Policy.
+In a relational database hosted on third party cloud infrastructure. Daily backups for disaster recovery. We use industry standard practices appropriate to a free Discord bot. Full details in the Privacy Policy.
 
 ---
 
@@ -203,18 +193,18 @@ Settings save automatically when you click "Save" in the dashboard. If you don't
 
 ### A giveaway didn't pick the right winner
 
-The bot uses a weighted random draw based on ticket counts. Higher tickets = higher probability, not guaranteed win. If you believe there's a bug (e.g., a user with 0 tickets won, or weighting was clearly broken), report it on Discord with the giveaway ID and we'll investigate.
+The bot uses a weighted random draw based on ticket counts. Higher tickets equals higher probability, not guaranteed win. If you believe there's a bug (for example, a user with 0 tickets won, or weighting was clearly broken), report it on Discord with the giveaway ID and we'll investigate.
 
 ### The bot is offline
 
 Check the AmeretaVerse Discord server for announcements. If a major outage is happening, we'll post there first.
 
-For real-time status, you can check the bot's online status in any server it's in.
+For real time status, you can check the bot's online status in any server it's in.
 
 ### I think there's a bug
 
 Report bugs by:
-- Posting in the AmeretaVerse Discord server in #support
+- Posting in the AmeretaVerse Discord server
 - DM `nervyesi1`
 - Email ameretaverse@gmail.com
 
@@ -222,7 +212,7 @@ Please include: what you tried to do, what happened instead, the server ID, and 
 
 ### I think there's a security vulnerability
 
-Don't post it publicly. Email ameretaverse@gmail.com with the subject "Security Disclosure" or DM `nervyesi1`. See the Security Disclosure policy: https://www.avbot.app/security
+Don't post it publicly. Email ameretaverse@gmail.com with the subject "Security Disclosure" or DM `nervyesi1`. See the Security policy: https://www.avbot.app/security
 
 ---
 
@@ -230,7 +220,7 @@ Don't post it publicly. Email ameretaverse@gmail.com with the subject "Security 
 
 ### Can multiple Discord bots work alongside AVbot?
 
-Yes. AVbot doesn't conflict with most other Discord bots. The exception: don't run two bots that try to do the same exact thing (e.g., two verification bots). Pick one and stick with it.
+Yes. AVbot doesn't conflict with most other Discord bots. The exception: don't run two bots that try to do the same exact thing (for example, two verification bots). Pick one and stick with it.
 
 ### What happens if AVbot shuts down?
 
@@ -238,15 +228,15 @@ If we ever permanently shut down AVbot, we'll announce it at least 30 days in ad
 
 ### Can I get AVbot in another language?
 
-Currently AVbot's user-facing messages are in English. Multi-language support is on the roadmap but not yet shipped.
+Currently AVbot's user facing messages are in English. Multi language support is on the roadmap but not yet shipped.
 
 ### Can I contribute to AVbot?
 
-The website source code is published in a public repository for transparency. The backend bot code is private. We don't currently accept external contributions, but we welcome feature suggestions and bug reports.
+The website source code and backend source code are both published in public repositories for transparency. We don't currently accept external contributions, but we welcome feature suggestions and bug reports.
 
 ### Is there a roadmap?
 
-Not a public one. New features are announced in the AmeretaVerse Discord server as they ship. Major in-flight items include FAQ + Documentation (this content), additional language support, and continued module polish.
+Not a public one. New features are announced in the AmeretaVerse Discord server as they ship.
 
 ### How do I stay updated?
 
@@ -255,7 +245,5 @@ Not a public one. New features are announced in the AmeretaVerse Discord server 
 - Watch the AVbot website for new features
 
 ---
-
-*Last updated: June 19, 2026*
 
 Have a question that isn't answered here? Reach out via Discord DM to `nervyesi1` or in the AmeretaVerse server.
