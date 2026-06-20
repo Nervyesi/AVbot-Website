@@ -47,6 +47,14 @@ async function apiFetch(path, options = {}) {
 export const loginWithDiscord = () => { window.location.href = `${API_BASE_URL}/auth/login`; };
 export const fetchMe = () => apiFetch('/auth/me');
 
+// Clears the server-side HttpOnly auth cookie. Best-effort; ignores network
+// errors. Callers should still clear local state afterward.
+export async function apiLogout() {
+  try {
+    await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
+  } catch { /* ignore network errors on logout */ }
+}
+
 // Bootstrap auth check. Returns the user object, or null if not authenticated.
 // Unlike fetchMe/apiFetch it never redirects on 401 — the caller renders the
 // login screen instead. Sends the cookie (credentials) plus the legacy bearer

@@ -4,7 +4,7 @@ import { HexColorPicker } from 'react-colorful';
 import Analytics from './Analytics';
 import { DashboardContext } from '../DashboardContext';
 import {
-  loginWithDiscord, fetchMeBootstrap, fetchServers, fetchServerStats,
+  loginWithDiscord, apiLogout, fetchMeBootstrap, fetchServers, fetchServerStats,
   fetchServerAnalytics, fetchConfig, saveConfig,
   sendProtectionMessage, sendTicketsPanel, sendVerifyMessage,
   clearToken, setToken,
@@ -8536,7 +8536,11 @@ const Dashboard = () => {
       .finally(() => setAuthLoading(false));
   }, []);
 
-  const logout = () => { clearToken(); setUser(null); setServers([]); setServer(null); };
+  const logout = async () => {
+    await apiLogout();            // clear the HttpOnly auth cookie server-side
+    clearToken();                 // clear the legacy localStorage token
+    setUser(null); setServers([]); setServer(null);
+  };
 
   if (authLoading) return (
     <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Sora, sans-serif', color: C.muted, fontSize: '14px' }}>Loading…</div>
