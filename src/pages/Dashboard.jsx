@@ -4,10 +4,10 @@ import { HexColorPicker } from 'react-colorful';
 import Analytics from './Analytics';
 import { DashboardContext } from '../DashboardContext';
 import {
-  loginWithDiscord, fetchMe, fetchServers, fetchServerStats,
+  loginWithDiscord, fetchMeBootstrap, fetchServers, fetchServerStats,
   fetchServerAnalytics, fetchConfig, saveConfig,
   sendProtectionMessage, sendTicketsPanel, sendVerifyMessage,
-  clearToken, getToken, setToken,
+  clearToken, setToken,
   listRolePanels, createRolePanel, updateRolePanel, deleteRolePanel,
   createRoleButton, updateRoleButton, deleteRoleButton,
   sendRolePanel, refreshRolePanel,
@@ -8523,10 +8523,15 @@ const Dashboard = () => {
     const params = new URLSearchParams(window.location.search);
     const urlToken = params.get('token');
     if (urlToken) { setToken(urlToken); window.history.replaceState({}, '', '/dashboard'); }
-    if (!getToken()) { setAuthLoading(false); return; }
-    fetchMe()
-      .then(u => { setUser(u); return fetchServers(); })
-      .then(list => { setServers(list); if (list.length) setServer(list[0]); })
+    // Always attempt /auth/me: auth may come from the HttpOnly cookie even with
+    // no localStorage token. fetchMeBootstrap returns null (instead of
+    // redirecting) when unauthenticated, so we fall through to the login screen.
+    fetchMeBootstrap()
+      .then(u => {
+        if (!u) { clearToken(); return null; }
+        setUser(u);
+        return fetchServers().then(list => { setServers(list); if (list.length) setServer(list[0]); });
+      })
       .catch(() => { clearToken(); })
       .finally(() => setAuthLoading(false));
   }, []);

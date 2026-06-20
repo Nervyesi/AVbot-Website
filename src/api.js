@@ -47,6 +47,21 @@ async function apiFetch(path, options = {}) {
 export const loginWithDiscord = () => { window.location.href = `${API_BASE_URL}/auth/login`; };
 export const fetchMe = () => apiFetch('/auth/me');
 
+// Bootstrap auth check. Returns the user object, or null if not authenticated.
+// Unlike fetchMe/apiFetch it never redirects on 401 — the caller renders the
+// login screen instead. Sends the cookie (credentials) plus the legacy bearer
+// token if one is still in localStorage, so it works during the migration and
+// after the URL token is removed.
+export async function fetchMeBootstrap() {
+  const token = getToken();
+  const res = await fetch(`${API_BASE_URL}/auth/me`, {
+    credentials: 'include',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 // ── Servers ────────────────────────────────────────────────────────────────
 
 export const fetchServers = () => apiFetch('/api/servers');
