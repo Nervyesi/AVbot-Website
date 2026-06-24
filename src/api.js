@@ -104,6 +104,12 @@ export const updateEngagePool = (serverId, poolId, body) =>
 export const fetchLeaderboard = (id, limit = 25) =>
   apiFetch(`/api/servers/${id}/leaderboard?limit=${limit}`);
 
+export const fetchEngageLeaderboard = (id, poolId, limit = 100) =>
+  apiFetch(`/api/servers/${id}/engage/leaderboard?pool_id=${poolId}&limit=${limit}`);
+
+export const fetchCombinedLeaderboard = (id, limit = 100) =>
+  apiFetch(`/api/servers/${id}/leaderboard/combined?limit=${limit}`);
+
 // ── Wallet Collections (inside the Engage module) ────────────────────────────
 
 export const listWalletCollections = (sid) =>

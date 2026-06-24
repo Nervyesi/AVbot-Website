@@ -34,7 +34,7 @@ import {
   resolveDiscordServer, fetchDiscordRoles,
   fetchSettings, updateBrand, updateAccess, updateLevels,
   fetchLogs, downloadLogs, fetchFlags, resolveFlag,
-  fetchUserPoints, adjustPoints, fetchLeaderboard,
+  fetchUserPoints, adjustPoints, fetchLeaderboard, fetchEngageLeaderboard, fetchCombinedLeaderboard,
   downloadBackup, runBackupNow, fetchGlobalOverview,
 } from '../api';
 import { DISCORD_INVITE_URL, ADD_TO_DISCORD_URL, API_BASE_URL } from '../constants';
@@ -4546,6 +4546,48 @@ const AIHelpButton = () => {
   );
 };
 
+// ── Paginated leaderboard list (top 100, 10 per page) ─────────────────────────
+// Mirrors the Community Points leaderboard row style. valueFn returns the score
+// shown on the right; subFn (optional) returns a small middle breakdown label.
+const LB_PAGE = 10;
+const LeaderboardPager = ({ rows, valueFn, subFn }) => {
+  const [page, setPage] = useState(0);
+  if (!rows || rows.length === 0) {
+    return <div style={{ color: C.muted, fontSize: '13px' }}>No entries yet.</div>;
+  }
+  const pages = Math.max(1, Math.ceil(rows.length / LB_PAGE));
+  const p = Math.min(page, pages - 1);
+  const slice = rows.slice(p * LB_PAGE, p * LB_PAGE + LB_PAGE);
+  const pagerBtn = {
+    background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px',
+    padding: '6px 12px', color: '#fff', cursor: 'pointer', fontSize: '12px',
+    fontFamily: 'Sora, sans-serif', fontWeight: 700,
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      {slice.map((r, i) => {
+        const rank = p * LB_PAGE + i + 1;
+        const badge = rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : `#${rank}`;
+        return (
+          <div key={r.user_id || (p * LB_PAGE + i)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', fontSize: '13px' }}>
+            <span style={{ width: '34px', color: C.muted, fontWeight: 700 }}>{badge}</span>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.username || `User ${r.user_id}`}</span>
+            {subFn && <span style={{ color: C.muted, fontSize: '11px', whiteSpace: 'nowrap' }}>{subFn(r)}</span>}
+            <strong style={{ color: C.gold }}>{(valueFn(r) || 0).toLocaleString()}</strong>
+          </div>
+        );
+      })}
+      {pages > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginTop: '8px' }}>
+          <button onClick={() => setPage(Math.max(0, p - 1))} disabled={p <= 0} style={{ ...pagerBtn, opacity: p <= 0 ? 0.4 : 1 }}>◀ Prev</button>
+          <span style={{ color: C.muted, fontSize: '12px' }}>Page {p + 1} of {pages}</span>
+          <button onClick={() => setPage(Math.min(pages - 1, p + 1))} disabled={p >= pages - 1} style={{ ...pagerBtn, opacity: p >= pages - 1 ? 0.4 : 1 }}>Next ▶</button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Points admin (Community Points + Engage Points) ────────────────────────────
 //
 // Shared panel powering both the "Community Points" and "Engage Points" settings
@@ -4567,6 +4609,11 @@ const PointsAdmin = ({ sid, mode }) => {
   const [busy, setBusy]     = useState(false);
   const [msg, setMsg]       = useState('');
 
+  // Engage leaderboard view (per pool; offset-aware contribution from the API).
+  const [engLbPool, setEngLbPool]       = useState('');
+  const [engLb, setEngLb]               = useState(null);
+  const [engLbLoading, setEngLbLoading] = useState(false);
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -4578,11 +4625,21 @@ const PointsAdmin = ({ sid, mode }) => {
         const list = Array.isArray(p) ? p : (p?.pools || []);
         setPools(list);
         if (list.length === 1) setPoolId(String(list[0].pool_id));
+        if (list.length) setEngLbPool(prev => prev || String(list[0].pool_id));
       }
     } catch (e) { setMsg('Load error: ' + (e.message || e)); }
     finally { setLoading(false); }
   };
   useEffect(() => { if (sid) loadData(); /* eslint-disable-line */ }, [sid, mode]);
+
+  useEffect(() => {
+    if (isCommunity || !sid || !engLbPool) return;
+    setEngLbLoading(true);
+    fetchEngageLeaderboard(sid, engLbPool, 100)
+      .then(r => setEngLb(r.leaderboard || []))
+      .catch(() => setEngLb([]))
+      .finally(() => setEngLbLoading(false));
+  }, [sid, engLbPool, isCommunity]);
 
   const doLookup = async () => {
     if (!uid.trim()) return;
@@ -4701,6 +4758,50 @@ const PointsAdmin = ({ sid, mode }) => {
           ) : <div style={{ color: C.muted, fontSize: '13px' }}>No engage pools configured.</div>
         )}
       </div>
+
+      {/* Engage leaderboard (offset-aware contribution; pool switcher when multi-pool) */}
+      {!isCommunity && (
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '14px', padding: '22px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              Engage leaderboard
+            </div>
+            {pools && pools.length > 1 && (
+              <select value={engLbPool} onChange={e => setEngLbPool(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                {pools.map(p => <option key={p.pool_id} value={p.pool_id}>{p.display_name || p.name}</option>)}
+              </select>
+            )}
+          </div>
+          {engLbLoading
+            ? <div style={{ color: C.muted, fontSize: '13px' }}>Loading…</div>
+            : <LeaderboardPager rows={engLb} valueFn={r => r.points} />}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Combined leaderboard (raid + engage contribution; matches the bot's /leaderboard) ──
+const CombinedLeaderboard = ({ sid }) => {
+  const [rows, setRows]       = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    if (!sid) return;
+    setLoading(true);
+    fetchCombinedLeaderboard(sid, 100)
+      .then(r => setRows(r.leaderboard || []))
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }, [sid]);
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '14px', padding: '22px' }}>
+      <div style={{ fontSize: '15px', fontWeight: 800, marginBottom: '4px' }}>Combined Leaderboard</div>
+      <div style={{ color: C.muted, fontSize: '13px', marginBottom: '18px' }}>
+        Raid points plus engage leaderboard contribution, aggregated across all pools. Matches the bot's <code style={{ color: C.gold }}>/leaderboard</code> command.
+      </div>
+      {loading
+        ? <div style={{ color: C.muted, fontSize: '13px' }}>Loading…</div>
+        : <LeaderboardPager rows={rows} valueFn={r => r.total} subFn={r => `raid ${(r.raid || 0).toLocaleString()} · engage ${(r.engage || 0).toLocaleString()}`} />}
     </div>
   );
 };
@@ -4799,7 +4900,7 @@ const SettingsModule = () => {
       <PageHeader icon="⚙️" title="Server Settings" badge="SERVER" desc="Bot-wide brand defaults and per-module access control." />
 
       <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${C.border}`, marginBottom: '20px' }}>
-        {[['brand', '🎨 Brand'], ['levels', '⭐ Levels'], ['community_points', '⚔️ Community Points'], ['engage_points', '🔁 Engage Points'], ['access', '🔒 Access Control']].map(([id, label]) => (
+        {[['brand', '🎨 Brand'], ['levels', '⭐ Levels'], ['community_points', '⚔️ Community Points'], ['engage_points', '🔁 Engage Points'], ['leaderboard', '🏆 Leaderboard'], ['access', '🔒 Access Control']].map(([id, label]) => (
           <button key={id} onClick={() => setSubTab(id)} style={{
             padding: '8px 16px', fontSize: '13px', fontWeight: 600,
             fontFamily: 'Sora, sans-serif', cursor: 'pointer', background: 'none', border: 'none',
@@ -4933,6 +5034,8 @@ const SettingsModule = () => {
       {subTab === 'community_points' && <PointsAdmin sid={sid} mode="community" />}
 
       {subTab === 'engage_points' && <PointsAdmin sid={sid} mode="engage" />}
+
+      {subTab === 'leaderboard' && <CombinedLeaderboard sid={sid} />}
 
       {subTab === 'access' && data && (
         <SettingsCard title="Module Access by Role">
